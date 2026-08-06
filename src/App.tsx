@@ -286,7 +286,7 @@ function AuthGate({ onAuth }) {
       <div className="authCard">
         <div className="authBrand">
           <Flame size={22} className="brandIcon" />
-          <span>DRY POWDER</span>
+          <span>TRADE FREE</span>
         </div>
         <div className="authSub">Paper trading terminal &middot; NSE &amp; BSE</div>
 
@@ -596,7 +596,7 @@ function TradingApp({ username, onLogout }) {
       <div className="topbar">
         <div className="brand">
           <Flame size={20} className="brandIcon" />
-          <span>DRY POWDER</span>
+          <span>TRADE FREE</span>
           <span className="brandSub">paper terminal</span>
         </div>
         <div className="stats">
