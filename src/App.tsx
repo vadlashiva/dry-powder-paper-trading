@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { createChart, CrosshairMode } from "lightweight-charts";
+import { createChart, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries } from "lightweight-charts";
 import {
   TrendingUp, TrendingDown, RotateCcw, X, Flame, Activity, LogOut, Lock, User as UserIcon, Bell, Trash2, Maximize2, Palette,
 } from "lucide-react";
@@ -280,11 +280,11 @@ function PriceChart({ data, showMA, syncGroupRef }) {
       handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: true },
       kineticScroll: { touch: true, mouse: true },
     });
-    const candleSeries = chart.addCandlestickSeries({
+    const candleSeries = chart.addSeries(CandlestickSeries, {
       upColor: LW_COLORS.bull, downColor: LW_COLORS.bear, borderVisible: false,
       wickUpColor: LW_COLORS.bull, wickDownColor: LW_COLORS.bear,
     });
-    const maSeries = chart.addLineSeries({ color: LW_COLORS.amber, lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+    const maSeries = chart.addSeries(LineSeries, { color: LW_COLORS.amber, lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
 
     chart.subscribeCrosshairMove((param) => {
       if (!legendRef.current) return;
@@ -348,7 +348,7 @@ function RSIChart({ data, syncGroupRef }) {
       handleScroll: { mouseWheel: true, pressedMouseMove: true },
       handleScale: { mouseWheel: true, pinch: true },
     });
-    const series = chart.addLineSeries({ color: LW_COLORS.accent, lineWidth: 1.5, priceLineVisible: false, lastValueVisible: false });
+    const series = chart.addSeries(LineSeries, { color: LW_COLORS.accent, lineWidth: 1.5, priceLineVisible: false, lastValueVisible: false });
     series.createPriceLine({ price: 70, color: LW_COLORS.bear, lineWidth: 1, lineStyle: 2, axisLabelVisible: true });
     series.createPriceLine({ price: 30, color: LW_COLORS.bull, lineWidth: 1, lineStyle: 2, axisLabelVisible: true });
 
@@ -396,9 +396,9 @@ function MACDChart({ data, syncGroupRef }) {
       handleScroll: { mouseWheel: true, pressedMouseMove: true },
       handleScale: { mouseWheel: true, pinch: true },
     });
-    const hist = chart.addHistogramSeries({ priceLineVisible: false, lastValueVisible: false });
-    const macdLine = chart.addLineSeries({ color: LW_COLORS.bull, lineWidth: 1.5, priceLineVisible: false, lastValueVisible: false });
-    const signalLine = chart.addLineSeries({ color: LW_COLORS.bear, lineWidth: 1.5, priceLineVisible: false, lastValueVisible: false });
+    const hist = chart.addSeries(HistogramSeries, { priceLineVisible: false, lastValueVisible: false });
+    const macdLine = chart.addSeries(LineSeries, { color: LW_COLORS.bull, lineWidth: 1.5, priceLineVisible: false, lastValueVisible: false });
+    const signalLine = chart.addSeries(LineSeries, { color: LW_COLORS.bear, lineWidth: 1.5, priceLineVisible: false, lastValueVisible: false });
 
     chartRef.current = chart;
     histRef.current = hist;
