@@ -1,8 +1,27 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { createChart, CrosshairMode } from "lightweight-charts";
 import {
-  TrendingUp, TrendingDown, RotateCcw, X, Flame, Activity, LogOut, Lock, User as UserIcon, Bell, Trash2, Maximize2,
+  TrendingUp, TrendingDown, RotateCcw, X, Flame, Activity, LogOut, Lock, User as UserIcon, Bell, Trash2, Maximize2, Palette,
 } from "lucide-react";
+
+/* ---------------- background themes ---------------- */
+const THEMES = [
+  { name: "Midnight", vars: { "--bg": "#0A0D14", "--surface": "#121722", "--surface-2": "#1A2130", "--border": "#232B3D", "--text": "#E7ECF6", "--text-dim": "#8B96AA" } },
+  { name: "Slate", vars: { "--bg": "#0E1013", "--surface": "#16181C", "--surface-2": "#1F2226", "--border": "#2B2F35", "--text": "#ECEDEF", "--text-dim": "#9498A0" } },
+  { name: "Ocean", vars: { "--bg": "#061821", "--surface": "#0C2733", "--surface-2": "#123542", "--border": "#1D4E5E", "--text": "#E3F4F8", "--text-dim": "#7FA9B5" } },
+  { name: "Plum", vars: { "--bg": "#140B1E", "--surface": "#1E1129", "--surface-2": "#291736", "--border": "#3C2450", "--text": "#F1E9FA", "--text-dim": "#A78FC2" } },
+  { name: "Daylight", vars: { "--bg": "#F3F4F7", "--surface": "#FFFFFF", "--surface-2": "#EEF0F4", "--border": "#DADDE3", "--text": "#12151C", "--text-dim": "#5B6270" } },
+];
+const LS_THEME = "tf_theme";
+function loadThemeIdx() {
+  try {
+    const i = parseInt(localStorage.getItem(LS_THEME), 10);
+    return Number.isInteger(i) && i >= 0 && i < THEMES.length ? i : 0;
+  } catch { return 0; }
+}
+function saveThemeIdx(i) {
+  try { localStorage.setItem(LS_THEME, String(i)); } catch { /* storage unavailable */ }
+}
 
 /* ----------------------------------------------------------------------
    TRADE FREE — Paper Trading Terminal (NSE / BSE)
@@ -475,7 +494,7 @@ async function fetchYahoo(symbol, interval = "5m", range = "1d") {
 /* ======================================================================
    AUTH GATE (accounts persist in this browser via localStorage)
 ====================================================================== */
-function AuthGate({ onAuth }) {
+function AuthGate({ onAuth, themeIdx, cycleTheme }) {
   const [mode, setMode] = useState("login");
   const [users, setUsers] = useState(() => loadUsers());
   const [username, setUsername] = useState("");
@@ -507,8 +526,11 @@ function AuthGate({ onAuth }) {
   };
 
   return (
-    <div className="authWrap">
+    <div className="authWrap" style={THEMES[themeIdx].vars}>
       <style>{CSS}</style>
+      <button type="button" className="themeBtn authThemeBtn" onClick={cycleTheme} title="Change background theme">
+        <Palette size={13} /> {THEMES[themeIdx].name}
+      </button>
       <div className="authCard">
         <div className="authBrand">
           <Flame size={22} className="brandIcon" />
@@ -549,7 +571,7 @@ function AuthGate({ onAuth }) {
 /* ======================================================================
    TRADING APP
 ====================================================================== */
-function TradingApp({ username, onLogout }) {
+function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
   const saved = useMemo(() => loadPortfolio(username), [username]);
   const syncGroupRef = useRef([]);
 
@@ -838,7 +860,7 @@ function TradingApp({ username, onLogout }) {
   const T = currentExpiry ? (currentExpiry.getTime() - Date.now()) / (365 * 24 * 3600 * 1000) : 0;
 
   return (
-    <div className="app">
+    <div className="app" style={THEMES[themeIdx].vars}>
       <style>{CSS}</style>
 
       <div className="topbar">
@@ -854,6 +876,7 @@ function TradingApp({ username, onLogout }) {
         </div>
         <div className="topbarActions">
           <div className="userBadge"><UserIcon size={13} />{username}</div>
+          <button className="themeBtn" onClick={cycleTheme} title="Change background theme"><Palette size={14} /> {THEMES[themeIdx].name}</button>
           <button className="resetBtn" onClick={() => setConfirmReset(true)}><RotateCcw size={14} /> Reset</button>
           <button className="resetBtn" onClick={onLogout}><LogOut size={14} /> Log out</button>
         </div>
@@ -1233,6 +1256,7 @@ function OptionTicket({ ticket, quotes, onClose, onSubmit, heldQty }) {
 ====================================================================== */
 export default function App() {
   const [user, setUser] = useState(() => loadSession());
+  const [themeIdx, setThemeIdx] = useState(() => loadThemeIdx());
 
   const handleAuth = (uname) => {
     saveSession(uname);
@@ -1242,9 +1266,16 @@ export default function App() {
     clearSession();
     setUser(null);
   };
+  const cycleTheme = () => {
+    setThemeIdx((i) => {
+      const next = (i + 1) % THEMES.length;
+      saveThemeIdx(next);
+      return next;
+    });
+  };
 
-  if (!user) return <AuthGate onAuth={handleAuth} />;
-  return <TradingApp username={user} onLogout={handleLogout} />;
+  if (!user) return <AuthGate onAuth={handleAuth} themeIdx={themeIdx} cycleTheme={cycleTheme} />;
+  return <TradingApp username={user} onLogout={handleLogout} themeIdx={themeIdx} cycleTheme={cycleTheme} />;
 }
 
 /* ---------------------------------- CSS ---------------------------------- */
@@ -1262,7 +1293,7 @@ const CSS = `
 .mono { font-family: 'JetBrains Mono', monospace; }
 .bull { color: var(--bull); } .bear { color: var(--bear); } .dim { color: var(--text-dim); }
 
-.authWrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+.authWrap { position: relative; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
 .authCard { width: 360px; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 28px; }
 .authBrand { display: flex; align-items: center; gap: 8px; font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 18px; justify-content: center; }
 .authSub { text-align: center; color: var(--text-dim); font-size: 12px; margin: 6px 0 22px; }
@@ -1292,6 +1323,9 @@ const CSS = `
 .userBadge { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); background: var(--surface-2); border: 1px solid var(--border); padding: 7px 12px; border-radius: 20px; }
 .resetBtn { display: flex; align-items: center; gap: 6px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim); padding: 8px 14px; border-radius: 8px; font-size: 12px; cursor: pointer; transition: all 0.15s; }
 .resetBtn:hover { color: var(--text); border-color: var(--accent); }
+.themeBtn { display: flex; align-items: center; gap: 6px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim); padding: 8px 14px; border-radius: 8px; font-size: 12px; cursor: pointer; transition: all 0.15s; }
+.themeBtn:hover { color: var(--text); border-color: var(--amber); }
+.authThemeBtn { position: absolute; top: 18px; right: 18px; padding: 6px 12px; font-size: 11px; }
 
 .body { display: flex; flex: 1; min-height: 0; }
 
