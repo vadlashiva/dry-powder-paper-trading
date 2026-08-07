@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { createChart, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries } from "lightweight-charts";
 import {
-  TrendingUp, TrendingDown, RotateCcw, X, Flame, Activity, LogOut, Lock, User as UserIcon, Bell, Trash2, Maximize2, Palette,
+  TrendingUp, TrendingDown, RotateCcw, X, Flame, Activity, LogOut, Lock, User as UserIcon, Bell, Trash2, Maximize2,
 } from "lucide-react";
 
 /* ---------------- background themes ---------------- */
@@ -529,7 +529,7 @@ function AuthGate({ onAuth, themeIdx, cycleTheme }) {
     <div className="authWrap" style={THEMES[themeIdx].vars}>
       <style>{CSS}</style>
       <button type="button" className="themeBtn authThemeBtn" onClick={cycleTheme} title="Change background theme">
-        <Palette size={13} /> {THEMES[themeIdx].name}
+        <span className="themeEmoji">🎨</span> {THEMES[themeIdx].name}
       </button>
       <div className="authCard">
         <div className="authBrand">
@@ -876,7 +876,7 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
         </div>
         <div className="topbarActions">
           <div className="userBadge"><UserIcon size={13} />{username}</div>
-          <button className="themeBtn" onClick={cycleTheme} title="Change background theme"><Palette size={14} /> {THEMES[themeIdx].name}</button>
+          <button className="themeBtn" onClick={cycleTheme} title="Change background theme"><span className="themeEmoji">🎨</span> {THEMES[themeIdx].name}</button>
           <button className="resetBtn" onClick={() => setConfirmReset(true)}><RotateCcw size={14} /> Reset</button>
           <button className="resetBtn" onClick={onLogout}><LogOut size={14} /> Log out</button>
         </div>
@@ -1325,6 +1325,7 @@ const CSS = `
 .resetBtn:hover { color: var(--text); border-color: var(--accent); }
 .themeBtn { display: flex; align-items: center; gap: 6px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim); padding: 8px 14px; border-radius: 8px; font-size: 12px; cursor: pointer; transition: all 0.15s; }
 .themeBtn:hover { color: var(--text); border-color: var(--amber); }
+.themeEmoji { font-size: 12px; line-height: 1; }
 .authThemeBtn { position: absolute; top: 18px; right: 18px; padding: 6px 12px; font-size: 11px; }
 
 .body { display: flex; flex: 1; min-height: 0; }
