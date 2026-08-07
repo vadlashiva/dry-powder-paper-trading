@@ -491,6 +491,23 @@ async function fetchYahoo(symbol, interval = "5m", range = "1d") {
   };
 }
 
+/** Looks up any NSE/BSE-listed equity by name or ticker, for symbols outside the built-in watchlist. */
+async function searchYahooSymbols(query) {
+  const res = await fetch(
+    `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=8&newsCount=0`
+  );
+  if (!res.ok) throw new Error("search failed");
+  const json = await res.json();
+  const quotes = json.quotes || [];
+  return quotes
+    .filter((r) => r.symbol && r.quoteType === "EQUITY" && (r.symbol.endsWith(".NS") || r.symbol.endsWith(".BO")))
+    .map((r) => ({
+      symbol: r.symbol,
+      name: r.longname || r.shortname || r.symbol,
+      exchange: r.symbol.endsWith(".NS") ? "NSE" : "BSE",
+    }));
+}
+
 /* ======================================================================
    AUTH GATE (accounts persist in this browser via localStorage)
 ====================================================================== */
@@ -597,6 +614,13 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
   const [confirmReset, setConfirmReset] = useState(false);
   const [pulse, setPulse] = useState(null);
   const [search, setSearch] = useState("");
+  const [customInstruments, setCustomInstruments] = useState([]);
+  const [remoteResults, setRemoteResults] = useState([]);
+  const [searchingRemote, setSearchingRemote] = useState(false);
+
+  const allInstruments = useMemo(() => [...INSTRUMENTS, ...customInstruments], [customInstruments]);
+  const allInstrumentsRef = useRef(allInstruments);
+  useEffect(() => { allInstrumentsRef.current = allInstruments; }, [allInstruments]);
 
   const [timeframe, setTimeframe] = useState("1D");
   const [chartHistory, setChartHistory] = useState([]);
@@ -619,14 +643,15 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
   useEffect(() => {
     let cancelled = false;
     const pull = async () => {
-      const results = await Promise.allSettled(INSTRUMENTS.map((s) => fetchYahoo(s.symbol)));
+      const list = allInstrumentsRef.current;
+      const results = await Promise.allSettled(list.map((s) => fetchYahoo(s.symbol)));
       if (cancelled) return;
       setQuotes((prev) => {
         const next = { ...prev };
         results.forEach((r, i) => {
-          const sym = INSTRUMENTS[i].symbol;
+          const sym = list[i].symbol;
           if (r.status === "fulfilled" && r.value.price) {
-            const hist = r.value.history.length ? r.value.history.slice(-90) : prev[sym].history;
+            const hist = r.value.history.length ? r.value.history.slice(-90) : prev[sym]?.history ?? [];
             next[sym] = { price: r.value.price, prevClose: r.value.prevClose, history: hist, live: true };
           }
         });
@@ -642,8 +667,9 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
     const iv = setInterval(() => {
       setQuotes((prev) => {
         const next = { ...prev };
-        INSTRUMENTS.forEach((s) => {
+        allInstrumentsRef.current.forEach((s) => {
           const cur = prev[s.symbol];
+          if (!cur) return;
           const open = cur.price;
           const close = +(open + open * (Math.random() - 0.5) * 0.0015).toFixed(2);
           const wick = open * Math.random() * 0.0008;
@@ -668,12 +694,12 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
         if (!cancelled && r.history.length >= 5) {
           setChartHistory(r.history.slice(-200));
         } else if (!cancelled) {
-          const base = quotesRef.current[selected]?.price ?? INSTRUMENTS.find((s) => s.symbol === selected)?.fallback ?? 100;
+          const base = quotesRef.current[selected]?.price ?? allInstrumentsRef.current.find((s) => s.symbol === selected)?.fallback ?? 100;
           setChartHistory(genSyntheticHistory(base, 90, TIMEFRAME_MS[timeframe]));
         }
       } catch {
         if (!cancelled) {
-          const base = quotesRef.current[selected]?.price ?? INSTRUMENTS.find((s) => s.symbol === selected)?.fallback ?? 100;
+          const base = quotesRef.current[selected]?.price ?? allInstrumentsRef.current.find((s) => s.symbol === selected)?.fallback ?? 100;
           setChartHistory(genSyntheticHistory(base, 90, TIMEFRAME_MS[timeframe]));
         }
       }
@@ -702,15 +728,65 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quotes]);
 
+  /* live NSE/BSE symbol search — only runs when the typed text has no local watchlist match */
+  useEffect(() => {
+    const query = search.trim();
+    if (query.length < 2) { setRemoteResults([]); setSearchingRemote(false); return; }
+    const q = query.toLowerCase();
+    const hasLocalMatch = allInstruments.some(
+      (s) => displayTicker(s.symbol).toLowerCase().includes(q) || s.name.toLowerCase().includes(q)
+    );
+    if (hasLocalMatch) { setRemoteResults([]); setSearchingRemote(false); return; }
+
+    let cancelled = false;
+    setSearchingRemote(true);
+    const t = setTimeout(async () => {
+      try {
+        const results = await searchYahooSymbols(query);
+        if (cancelled) return;
+        setRemoteResults(results.filter((r) => !allInstruments.some((s) => s.symbol === r.symbol)));
+      } catch {
+        if (!cancelled) setRemoteResults([]);
+      } finally {
+        if (!cancelled) setSearchingRemote(false);
+      }
+    }, 400);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [search, allInstruments]);
+
+  const addCustomInstrument = async (result) => {
+    showToast(`Adding ${displayTicker(result.symbol)}…`, "bull");
+    let price, prevClose, history, live;
+    try {
+      const r = await fetchYahoo(result.symbol, "1d", "6mo");
+      price = r.price ?? 100;
+      prevClose = r.prevClose ?? price;
+      history = r.history.length ? r.history.slice(-90) : genSyntheticHistory(price, 60, TIMEFRAME_MS["1D"]);
+      live = !!r.price;
+    } catch {
+      price = 100;
+      prevClose = 100;
+      history = genSyntheticHistory(price, 60, TIMEFRAME_MS["1D"]);
+      live = false;
+    }
+    setCustomInstruments((prev) => [...prev, { symbol: result.symbol, name: result.name, exchange: result.exchange, fallback: price, iv: 0.35 }]);
+    setQuotes((prev) => ({ ...prev, [result.symbol]: { price, prevClose, history, live } }));
+    setSelected(result.symbol);
+    setSearch("");
+    setRemoteResults([]);
+    setTab("trade");
+    showToast(live ? `${displayTicker(result.symbol)} added to your watchlist` : `Added ${displayTicker(result.symbol)} (live price unavailable, using placeholder)`, live ? "bull" : "bear");
+  };
+
   const q = quotes[selected];
-  const meta = INSTRUMENTS.find((s) => s.symbol === selected);
+  const meta = allInstruments.find((s) => s.symbol === selected);
   const isIndex = meta.exchange === "INDEX";
   const chartSeries = useMemo(() => buildChartSeries(chartHistory.length ? chartHistory : q.history, indicators), [chartHistory, q.history, indicators]);
 
   const stockMktValue = stockPositions.reduce((sum, p) => sum + (quotes[p.symbol]?.price ?? 0) * p.qty, 0);
   const optionMktValue = optionPositions.reduce((sum, p) => {
     const spot = quotes[p.symbol]?.price ?? 0;
-    const symMeta = INSTRUMENTS.find((s) => s.symbol === p.symbol);
+    const symMeta = allInstruments.find((s) => s.symbol === p.symbol);
     const T = (p.expiry - Date.now()) / (365 * 24 * 3600 * 1000);
     const sigma = symMeta.iv * (1 + 0.15 * Math.abs(p.strike - spot) / spot);
     const { price } = blackScholes(spot, p.strike, T, RISK_FREE, sigma, p.type);
@@ -772,7 +848,7 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
   const placeOptionOrder = (mode, qty) => {
     if (!ticket || qty <= 0) return;
     const spot = quotes[ticket.symbol]?.price ?? 0;
-    const symMeta = INSTRUMENTS.find((s) => s.symbol === ticket.symbol);
+    const symMeta = allInstruments.find((s) => s.symbol === ticket.symbol);
     const T = (ticket.expiry - Date.now()) / (365 * 24 * 3600 * 1000);
     const sigma = symMeta.iv * (1 + 0.15 * Math.abs(ticket.strike - spot) / spot);
     const { price } = blackScholes(spot, ticket.strike, T, RISK_FREE, sigma, ticket.type);
@@ -809,7 +885,7 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
 
   const closeOptionPosition = (pos) => {
     const spot = quotes[pos.symbol]?.price ?? 0;
-    const symMeta = INSTRUMENTS.find((s) => s.symbol === pos.symbol);
+    const symMeta = allInstruments.find((s) => s.symbol === pos.symbol);
     const T = (pos.expiry - Date.now()) / (365 * 24 * 3600 * 1000);
     const sigma = symMeta.iv * (1 + 0.15 * Math.abs(pos.strike - spot) / spot);
     const { price } = blackScholes(spot, pos.strike, T, RISK_FREE, sigma, pos.type);
@@ -849,9 +925,12 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
   const deleteAlert = (id) => setAlerts((prev) => prev.filter((a) => a.id !== id));
   const activeAlerts = alerts.filter((a) => !a.triggered).length;
 
-  const filteredInstruments = INSTRUMENTS.filter((s) => {
-    const matchesExchange = exchangeFilter === "ALL" || s.exchange === exchangeFilter;
-    const matchesSearch = displayTicker(s.symbol).toLowerCase().includes(search.toLowerCase()) || s.name.toLowerCase().includes(search.toLowerCase());
+  const filteredInstruments = allInstruments.filter((s) => {
+    const query = search.trim().toLowerCase();
+    const matchesSearch = !query || displayTicker(s.symbol).toLowerCase().includes(query) || s.name.toLowerCase().includes(query);
+    // While actively searching, search text takes priority over the exchange tab —
+    // otherwise a valid symbol on a different exchange than the selected tab silently vanishes.
+    const matchesExchange = query ? true : (exchangeFilter === "ALL" || s.exchange === exchangeFilter);
     return matchesExchange && matchesSearch;
   });
 
@@ -895,23 +974,44 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
             <Activity size={12} className={quotes[selected]?.live ? "liveDot" : "liveDotOff"} />
           </div>
           <div className="wlList">
-            {filteredInstruments.map((s) => {
-              const qq = quotes[s.symbol];
-              const chg = qq.prevClose ? ((qq.price - qq.prevClose) / qq.prevClose) * 100 : 0;
-              const up = chg >= 0;
-              return (
-                <button key={s.symbol} className={`wlRow ${selected === s.symbol ? "wlRowActive" : ""}`} onClick={() => setSelected(s.symbol)}>
-                  <div className="wlSym">
-                    <span className="wlTicker">{displayTicker(s.symbol)}<span className={`exBadge exBadge-${s.exchange}`}>{exchangeBadge(s.exchange)}</span></span>
-                    <span className="wlName">{s.name}</span>
-                  </div>
-                  <div className="wlPriceCol">
-                    <span className="wlPrice mono">{fmtMoney(qq.price)}</span>
-                    <span className={`wlChg mono ${up ? "bull" : "bear"}`}>{up ? <TrendingUp size={11} /> : <TrendingDown size={11} />}{fmtPct(chg)}</span>
-                  </div>
-                </button>
-              );
-            })}
+            {filteredInstruments.length > 0 ? (
+              filteredInstruments.map((s) => {
+                const qq = quotes[s.symbol];
+                const chg = qq.prevClose ? ((qq.price - qq.prevClose) / qq.prevClose) * 100 : 0;
+                const up = chg >= 0;
+                return (
+                  <button key={s.symbol} className={`wlRow ${selected === s.symbol ? "wlRowActive" : ""}`} onClick={() => setSelected(s.symbol)}>
+                    <div className="wlSym">
+                      <span className="wlTicker">{displayTicker(s.symbol)}<span className={`exBadge exBadge-${s.exchange}`}>{exchangeBadge(s.exchange)}</span></span>
+                      <span className="wlName">{s.name}</span>
+                    </div>
+                    <div className="wlPriceCol">
+                      <span className="wlPrice mono">{fmtMoney(qq.price)}</span>
+                      <span className={`wlChg mono ${up ? "bull" : "bear"}`}>{up ? <TrendingUp size={11} /> : <TrendingDown size={11} />}{fmtPct(chg)}</span>
+                    </div>
+                  </button>
+                );
+              })
+            ) : searchingRemote ? (
+              <div className="wlEmpty dim">Searching NSE &amp; BSE for &ldquo;{search}&rdquo;…</div>
+            ) : remoteResults.length > 0 ? (
+              <>
+                <div className="wlRemoteLabel dim">Not in your watchlist — add from NSE/BSE:</div>
+                {remoteResults.map((r) => (
+                  <button key={r.symbol} className="wlRow wlRowAdd" onClick={() => addCustomInstrument(r)}>
+                    <div className="wlSym">
+                      <span className="wlTicker">{displayTicker(r.symbol)}<span className={`exBadge exBadge-${r.exchange}`}>{exchangeBadge(r.exchange)}</span></span>
+                      <span className="wlName">{r.name}</span>
+                    </div>
+                    <span className="addBadge">+ Add</span>
+                  </button>
+                ))}
+              </>
+            ) : search.trim().length >= 2 ? (
+              <div className="wlEmpty dim">No symbols match &ldquo;{search}&rdquo; on NSE or BSE.</div>
+            ) : (
+              <div className="wlEmpty dim">No symbols match &ldquo;{search}&rdquo;.</div>
+            )}
           </div>
         </div>
 
@@ -1114,7 +1214,7 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
                   <tbody>
                     {optionPositions.map((p) => {
                       const spot = quotes[p.symbol]?.price ?? 0;
-                      const symMeta = INSTRUMENTS.find((s) => s.symbol === p.symbol);
+                      const symMeta = allInstruments.find((s) => s.symbol === p.symbol);
                       const pT = (p.expiry - Date.now()) / (365 * 24 * 3600 * 1000);
                       const sigma = symMeta.iv * (1 + 0.15 * Math.abs(p.strike - spot) / spot);
                       const { price } = blackScholes(spot, p.strike, pT, RISK_FREE, sigma, p.type);
@@ -1202,6 +1302,7 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
         <OptionTicket
           ticket={ticket}
           quotes={quotes}
+          instruments={allInstruments}
           onClose={() => setTicket(null)}
           onSubmit={placeOptionOrder}
           heldQty={optionPositions.find((p) => p.symbol === ticket.symbol && p.type === ticket.type && p.strike === ticket.strike && p.expiry === ticket.expiry)?.qty ?? 0}
@@ -1235,10 +1336,10 @@ function Stat({ label, value, tone, pulse }) {
   );
 }
 
-function OptionTicket({ ticket, quotes, onClose, onSubmit, heldQty }) {
+function OptionTicket({ ticket, quotes, instruments, onClose, onSubmit, heldQty }) {
   const [qty, setQty] = useState(1);
   const spot = quotes[ticket.symbol]?.price ?? 0;
-  const symMeta = INSTRUMENTS.find((s) => s.symbol === ticket.symbol);
+  const symMeta = instruments.find((s) => s.symbol === ticket.symbol);
   const T = (ticket.expiry - Date.now()) / (365 * 24 * 3600 * 1000);
   const sigma = symMeta.iv * (1 + 0.15 * Math.abs(ticket.strike - spot) / spot);
   const greeks = blackScholes(spot, ticket.strike, T, RISK_FREE, sigma, ticket.type);
@@ -1368,6 +1469,10 @@ const CSS = `
 .liveDot { color: var(--bull); }
 .liveDotOff { color: var(--text-dim); }
 .wlList { overflow-y: auto; flex: 1; }
+.wlEmpty { padding: 26px 16px; font-size: 12.5px; text-align: center; line-height: 1.5; }
+.wlRemoteLabel { padding: 10px 14px 6px; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.5px; }
+.wlRowAdd { border-left: 3px solid var(--accent); }
+.addBadge { font-size: 11px; font-weight: 700; color: var(--accent); background: color-mix(in srgb, var(--accent) 15%, transparent); padding: 4px 10px; border-radius: 20px; flex-shrink: 0; }
 .wlRow { width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: transparent; border: none; border-left: 3px solid transparent; cursor: pointer; text-align: left; }
 .wlRow:hover { background: var(--surface-2); }
 .wlRowActive { background: var(--surface-2); border-left: 3px solid var(--accent); }
