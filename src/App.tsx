@@ -16,21 +16,21 @@ import {
 ------------------------------------------------------------------------- */
 
 const INSTRUMENTS = [
-  { symbol: "RELIANCE.NS", name: "Reliance Industries", exchange: "NSE", fallback: 2950, iv: 0.24 },
-  { symbol: "TCS.NS", name: "Tata Consultancy Services", exchange: "NSE", fallback: 4180, iv: 0.22 },
-  { symbol: "HDFCBANK.NS", name: "HDFC Bank", exchange: "NSE", fallback: 1750, iv: 0.23 },
-  { symbol: "INFY.NS", name: "Infosys", exchange: "NSE", fallback: 1920, iv: 0.26 },
-  { symbol: "ICICIBANK.NS", name: "ICICI Bank", exchange: "NSE", fallback: 1290, iv: 0.25 },
-  { symbol: "SBIN.NS", name: "State Bank of India", exchange: "NSE", fallback: 880, iv: 0.30 },
-  { symbol: "ITC.NS", name: "ITC Limited", exchange: "NSE", fallback: 478, iv: 0.20 },
-  { symbol: "BHARTIARTL.NS", name: "Bharti Airtel", exchange: "NSE", fallback: 1680, iv: 0.28 },
-  { symbol: "RELIANCE.BO", name: "Reliance Industries", exchange: "BSE", fallback: 2950, iv: 0.24 },
-  { symbol: "TCS.BO", name: "Tata Consultancy Services", exchange: "BSE", fallback: 4180, iv: 0.22 },
-  { symbol: "HDFCBANK.BO", name: "HDFC Bank", exchange: "BSE", fallback: 1750, iv: 0.23 },
-  { symbol: "INFY.BO", name: "Infosys", exchange: "BSE", fallback: 1920, iv: 0.26 },
-  { symbol: "^NSEI", name: "NIFTY 50", exchange: "INDEX", fallback: 24850, iv: 0.13 },
-  { symbol: "^NSEBANK", name: "NIFTY BANK", exchange: "INDEX", fallback: 53600, iv: 0.16 },
-  { symbol: "^BSESN", name: "SENSEX", exchange: "INDEX", fallback: 81600, iv: 0.13 },
+  { symbol: "RELIANCE.NS", name: "Reliance Industries", exchange: "NSE", fallback: 1340, iv: 0.24 },
+  { symbol: "TCS.NS", name: "Tata Consultancy Services", exchange: "NSE", fallback: 3085, iv: 0.22 },
+  { symbol: "HDFCBANK.NS", name: "HDFC Bank", exchange: "NSE", fallback: 952, iv: 0.23 },
+  { symbol: "INFY.NS", name: "Infosys", exchange: "NSE", fallback: 1470, iv: 0.26 },
+  { symbol: "ICICIBANK.NS", name: "ICICI Bank", exchange: "NSE", fallback: 1398, iv: 0.25 },
+  { symbol: "SBIN.NS", name: "State Bank of India", exchange: "NSE", fallback: 802, iv: 0.30 },
+  { symbol: "ITC.NS", name: "ITC Limited", exchange: "NSE", fallback: 415, iv: 0.20 },
+  { symbol: "BHARTIARTL.NS", name: "Bharti Airtel", exchange: "NSE", fallback: 1889, iv: 0.28 },
+  { symbol: "RELIANCE.BO", name: "Reliance Industries", exchange: "BSE", fallback: 1340, iv: 0.24 },
+  { symbol: "TCS.BO", name: "Tata Consultancy Services", exchange: "BSE", fallback: 3085, iv: 0.22 },
+  { symbol: "HDFCBANK.BO", name: "HDFC Bank", exchange: "BSE", fallback: 952, iv: 0.23 },
+  { symbol: "INFY.BO", name: "Infosys", exchange: "BSE", fallback: 1470, iv: 0.26 },
+  { symbol: "^NSEI", name: "NIFTY 50", exchange: "INDEX", fallback: 24636, iv: 0.13 },
+  { symbol: "^NSEBANK", name: "NIFTY BANK", exchange: "INDEX", fallback: 58064, iv: 0.16 },
+  { symbol: "^BSESN", name: "SENSEX", exchange: "INDEX", fallback: 78955, iv: 0.13 },
 ];
 
 const STARTING_CASH = 1000000; // ₹10,00,000
