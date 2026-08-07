@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 
 /* ----------------------------------------------------------------------
-   DRY POWDER — Paper Trading Terminal (NSE / BSE)
+   TRADE FREE — Paper Trading Terminal (NSE / BSE)
    Tokens
    bg #0A0D14  surface #121722  surface-2 #1A2130  border #232B3D
    text #E7ECF6  text-dim #8B96AA  bull #14E8A0  bear #FF5470
@@ -44,6 +44,7 @@ const TIMEFRAMES = {
   "1H": { interval: "60m", range: "1mo" },
   "1D": { interval: "1d", range: "6mo" },
 };
+const TIMEFRAME_MS = { "1m": 60000, "5m": 300000, "15m": 900000, "1H": 3600000, "1D": 86400000 };
 
 const displayTicker = (s) => s.replace(/\.(NS|BO)$/, "").replace(/^\^/, "");
 const exchangeBadge = (ex) => (ex === "INDEX" ? "IDX" : ex);
@@ -108,6 +109,32 @@ function strikesAround(spot, count = 9) {
   const out = [];
   for (let i = -half; i <= half; i++) out.push(+(center + i * step).toFixed(2));
   return out;
+}
+
+/* ---------------- realistic synthetic OHLC (used only when the live feed is unreachable) ---------------- */
+function genSyntheticHistory(basePrice, count, intervalMs, volatility = 0.004) {
+  const now = Date.now();
+  let price = basePrice * (1 - (Math.random() - 0.5) * 0.03);
+  const arr = [];
+  for (let i = count - 1; i >= 0; i--) {
+    const time = now - i * intervalMs;
+    const open = price;
+    const drift = open * (Math.random() - 0.5) * volatility * 2;
+    const close = +(open + drift).toFixed(2);
+    const wick = Math.abs(open * volatility * (0.4 + Math.random() * 0.6));
+    const high = +(Math.max(open, close) + wick).toFixed(2);
+    const low = +(Math.min(open, close) - wick).toFixed(2);
+    arr.push({ time, price: close, open, high, low: Math.max(low, 0.01), close });
+    price = close;
+  }
+  if (arr.length) {
+    const last = arr[arr.length - 1];
+    last.close = basePrice;
+    last.price = basePrice;
+    last.high = Math.max(last.high, basePrice);
+    last.low = Math.min(last.low, basePrice);
+  }
+  return arr;
 }
 
 /* ---------------- technical indicators ---------------- */
@@ -225,6 +252,38 @@ const fmtPct = (n) => (n >= 0 ? "+" : "") + n.toFixed(2) + "%";
 const fmtDate = (d) => d.toLocaleDateString("en-IN", { month: "short", day: "numeric" });
 const uid = () => Math.random().toString(36).slice(2, 10);
 
+/* ---------------- local persistence (accounts + portfolios stay saved in this browser) ---------------- */
+const LS_USERS = "tf_users";
+const LS_SESSION = "tf_session";
+const portfolioKey = (username) => `tf_portfolio_${username}`;
+
+function loadUsers() {
+  try { return JSON.parse(localStorage.getItem(LS_USERS)) || []; } catch { return []; }
+}
+function saveUsers(list) {
+  try { localStorage.setItem(LS_USERS, JSON.stringify(list)); } catch { /* storage unavailable */ }
+}
+function loadSession() {
+  try { return localStorage.getItem(LS_SESSION) || null; } catch { return null; }
+}
+function saveSession(username) {
+  try { localStorage.setItem(LS_SESSION, username); } catch { /* storage unavailable */ }
+}
+function clearSession() {
+  try { localStorage.removeItem(LS_SESSION); } catch { /* storage unavailable */ }
+}
+function loadPortfolio(username) {
+  try {
+    const raw = localStorage.getItem(portfolioKey(username));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return { ...parsed, trades: (parsed.trades || []).map((t) => ({ ...t, time: new Date(t.time) })) };
+  } catch { return null; }
+}
+function savePortfolio(username, data) {
+  try { localStorage.setItem(portfolioKey(username), JSON.stringify(data)); } catch { /* storage unavailable */ }
+}
+
 /* ---------------- data layer ---------------- */
 async function fetchYahoo(symbol, interval = "5m", range = "1d") {
   const res = await fetch(
@@ -249,11 +308,11 @@ async function fetchYahoo(symbol, interval = "5m", range = "1d") {
 }
 
 /* ======================================================================
-   AUTH GATE (local, in-memory only — no backend)
+   AUTH GATE (accounts persist in this browser via localStorage)
 ====================================================================== */
 function AuthGate({ onAuth }) {
   const [mode, setMode] = useState("login");
-  const [users, setUsers] = useState([]);
+  const [users, setUsers] = useState(() => loadUsers());
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -269,7 +328,9 @@ function AuthGate({ onAuth }) {
       if (password !== confirm) return setError("Passwords don't match.");
       if (users.some((u) => u.username.toLowerCase() === uname.toLowerCase()))
         return setError("That username is already taken.");
-      setUsers((prev) => [...prev, { username: uname, password }]);
+      const next = [...users, { username: uname, password }];
+      setUsers(next);
+      saveUsers(next);
       onAuth(uname);
     } else {
       const match = users.find(
@@ -314,7 +375,7 @@ function AuthGate({ onAuth }) {
           <button type="submit" className="btn btnBull authSubmit">{mode === "register" ? "Create account" : "Log in"}</button>
         </form>
 
-        <div className="authNote">No account yet? Register above — this is a local demo, credentials live only in this browser tab and reset on refresh.</div>
+        <div className="authNote">Accounts and portfolios are saved in this browser (localStorage) — refreshing keeps you logged in, and your positions stay put. They won't sync to another device or browser.</div>
       </div>
     </div>
   );
@@ -324,20 +385,23 @@ function AuthGate({ onAuth }) {
    TRADING APP
 ====================================================================== */
 function TradingApp({ username, onLogout }) {
+  const saved = useMemo(() => loadPortfolio(username), [username]);
+
   const [quotes, setQuotes] = useState(() => {
     const q = {};
     INSTRUMENTS.forEach((s) => {
-      q[s.symbol] = { price: s.fallback, prevClose: s.fallback, history: [{ time: Date.now(), price: s.fallback }], live: false };
+      const hist = genSyntheticHistory(s.fallback, 60, TIMEFRAME_MS["1D"]);
+      q[s.symbol] = { price: s.fallback, prevClose: s.fallback, history: hist, live: false };
     });
     return q;
   });
   const [exchangeFilter, setExchangeFilter] = useState("ALL");
   const [selected, setSelected] = useState("RELIANCE.NS");
   const [tab, setTab] = useState("trade");
-  const [cash, setCash] = useState(STARTING_CASH);
-  const [stockPositions, setStockPositions] = useState([]);
-  const [optionPositions, setOptionPositions] = useState([]);
-  const [trades, setTrades] = useState([]);
+  const [cash, setCash] = useState(() => saved?.cash ?? STARTING_CASH);
+  const [stockPositions, setStockPositions] = useState(() => saved?.stockPositions ?? []);
+  const [optionPositions, setOptionPositions] = useState(() => saved?.optionPositions ?? []);
+  const [trades, setTrades] = useState(() => saved?.trades ?? []);
   const [orderQty, setOrderQty] = useState(10);
   const [expiryIdx, setExpiryIdx] = useState(0);
   const [ticket, setTicket] = useState(null);
@@ -350,7 +414,7 @@ function TradingApp({ username, onLogout }) {
   const [chartHistory, setChartHistory] = useState([]);
   const [indicators, setIndicators] = useState({ ma: true, rsi: false, macd: false });
 
-  const [alerts, setAlerts] = useState([]);
+  const [alerts, setAlerts] = useState(() => saved?.alerts ?? []);
   const [alertTarget, setAlertTarget] = useState("");
   const [alertDirection, setAlertDirection] = useState("above");
 
@@ -358,7 +422,12 @@ function TradingApp({ username, onLogout }) {
   const quotesRef = useRef(quotes);
   useEffect(() => { quotesRef.current = quotes; }, [quotes]);
 
-  /* watchlist quotes: poll every 20s + jitter every 2.2s */
+  /* persist this user's portfolio whenever it changes */
+  useEffect(() => {
+    savePortfolio(username, { cash, stockPositions, optionPositions, trades, alerts });
+  }, [username, cash, stockPositions, optionPositions, trades, alerts]);
+
+  /* watchlist quotes: poll every 20s + realistic jitter every 2.2s */
   useEffect(() => {
     let cancelled = false;
     const pull = async () => {
@@ -369,7 +438,7 @@ function TradingApp({ username, onLogout }) {
         results.forEach((r, i) => {
           const sym = INSTRUMENTS[i].symbol;
           if (r.status === "fulfilled" && r.value.price) {
-            const hist = r.value.history.length ? r.value.history.slice(-80) : prev[sym].history;
+            const hist = r.value.history.length ? r.value.history.slice(-90) : prev[sym].history;
             next[sym] = { price: r.value.price, prevClose: r.value.prevClose, history: hist, live: true };
           }
         });
@@ -387,10 +456,13 @@ function TradingApp({ username, onLogout }) {
         const next = { ...prev };
         INSTRUMENTS.forEach((s) => {
           const cur = prev[s.symbol];
-          const jitter = cur.price * (Math.random() - 0.5) * 0.0015;
-          const price = +(cur.price + jitter).toFixed(2);
-          const history = [...cur.history, { time: Date.now(), price }].slice(-90);
-          next[s.symbol] = { ...cur, price, history };
+          const open = cur.price;
+          const close = +(open + open * (Math.random() - 0.5) * 0.0015).toFixed(2);
+          const wick = open * Math.random() * 0.0008;
+          const high = +(Math.max(open, close) + wick).toFixed(2);
+          const low = +(Math.min(open, close) - wick).toFixed(2);
+          const history = [...cur.history, { time: Date.now(), price: close, open, high, low, close }].slice(-90);
+          next[s.symbol] = { ...cur, price: close, history };
         });
         return next;
       });
@@ -405,9 +477,17 @@ function TradingApp({ username, onLogout }) {
       const { interval, range } = TIMEFRAMES[timeframe];
       try {
         const r = await fetchYahoo(selected, interval, range);
-        if (!cancelled && r.history.length) setChartHistory(r.history.slice(-200));
+        if (!cancelled && r.history.length >= 5) {
+          setChartHistory(r.history.slice(-200));
+        } else if (!cancelled) {
+          const base = quotesRef.current[selected]?.price ?? INSTRUMENTS.find((s) => s.symbol === selected)?.fallback ?? 100;
+          setChartHistory(genSyntheticHistory(base, 90, TIMEFRAME_MS[timeframe]));
+        }
       } catch {
-        if (!cancelled) setChartHistory(quotesRef.current[selected]?.history ?? []);
+        if (!cancelled) {
+          const base = quotesRef.current[selected]?.price ?? INSTRUMENTS.find((s) => s.symbol === selected)?.fallback ?? 100;
+          setChartHistory(genSyntheticHistory(base, 90, TIMEFRAME_MS[timeframe]));
+        }
       }
     };
     load();
@@ -431,7 +511,8 @@ function TradingApp({ username, onLogout }) {
       return a;
     });
     if (changed) setAlerts(next);
-  }, [quotes, alerts]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quotes]);
 
   const q = quotes[selected];
   const meta = INSTRUMENTS.find((s) => s.symbol === selected);
@@ -565,6 +646,7 @@ function TradingApp({ username, onLogout }) {
     setStockPositions([]);
     setOptionPositions([]);
     setTrades([]);
+    setAlerts([]);
     setConfirmReset(false);
     showToast("Account reset", "bull");
   };
@@ -1008,9 +1090,19 @@ function OptionTicket({ ticket, quotes, onClose, onSubmit, heldQty }) {
    ROOT
 ====================================================================== */
 export default function App() {
-  const [user, setUser] = useState(null);
-  if (!user) return <AuthGate onAuth={setUser} />;
-  return <TradingApp username={user} onLogout={() => setUser(null)} />;
+  const [user, setUser] = useState(() => loadSession());
+
+  const handleAuth = (uname) => {
+    saveSession(uname);
+    setUser(uname);
+  };
+  const handleLogout = () => {
+    clearSession();
+    setUser(null);
+  };
+
+  if (!user) return <AuthGate onAuth={handleAuth} />;
+  return <TradingApp username={user} onLogout={handleLogout} />;
 }
 
 /* ---------------------------------- CSS ---------------------------------- */
