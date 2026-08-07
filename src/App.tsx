@@ -1,9 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
+import { createChart, CrosshairMode } from "lightweight-charts";
 import {
-  ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
-} from "recharts";
-import {
-  TrendingUp, TrendingDown, RotateCcw, X, Flame, Activity, LogOut, Lock, User as UserIcon, Bell, Trash2,
+  TrendingUp, TrendingDown, RotateCcw, X, Flame, Activity, LogOut, Lock, User as UserIcon, Bell, Trash2, Maximize2,
 } from "lucide-react";
 
 /* ----------------------------------------------------------------------
@@ -198,7 +196,6 @@ function buildChartSeries(history, ind) {
       time: d.time,
       price: d.price,
       open, high, low, close,
-      range: [low, high],
       ma: sma ? sma[i] : null,
       rsi: rsi ? rsi[i] : null,
       macdLine: macd ? macd.macdLine[i] : null,
@@ -208,41 +205,209 @@ function buildChartSeries(history, ind) {
   });
 }
 
-/* ---------------- candlestick rendering ---------------- */
-function CandleShape(props) {
-  const { x, y, width, height, payload } = props;
-  const { open, high, low, close } = payload;
-  const cx = x + width / 2;
-  if (high === low) {
-    return <line x1={cx} x2={cx} y1={y} y2={y + height} stroke="var(--text-dim)" strokeWidth={1} />;
+/* ---------------- lightweight-charts helpers ---------------- */
+// Converts our ms-based series into strictly-increasing second timestamps lightweight-charts requires.
+function prepLW(data) {
+  const out = [];
+  let lastT = -Infinity;
+  for (const d of data) {
+    const t = Math.floor(d.time / 1000);
+    if (t <= lastT) continue;
+    lastT = t;
+    out.push({ t, d });
   }
-  const isUp = close >= open;
-  const color = isUp ? "var(--bull)" : "var(--bear)";
-  const bodyTopVal = Math.max(open, close);
-  const bodyBotVal = Math.min(open, close);
-  const bodyTop = y + (height * (high - bodyTopVal)) / (high - low);
-  const bodyBottom = y + (height * (high - bodyBotVal)) / (high - low);
-  const bodyHeight = Math.max(bodyBottom - bodyTop, 1);
-  const bw = Math.max(width * 0.6, 1);
-  return (
-    <g>
-      <line x1={cx} x2={cx} y1={y} y2={y + height} stroke={color} strokeWidth={1} />
-      <rect x={cx - bw / 2} y={bodyTop} width={bw} height={bodyHeight} fill={color} />
-    </g>
-  );
+  return out;
 }
-function CandleTooltip({ active, payload, label }) {
-  if (!active || !payload || !payload.length) return null;
-  const d = payload[0].payload;
+
+const LW_COLORS = { bull: "#14E8A0", bear: "#FF5470", accent: "#7B61FF", amber: "#FFB020", grid: "#232B3D", text: "#8B96AA" };
+
+function joinSyncGroup(chart, syncGroupRef) {
+  syncGroupRef.current.push(chart);
+  chart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+    if (!range) return;
+    syncGroupRef.current.forEach((c) => {
+      if (c !== chart) {
+        try { c.timeScale().setVisibleLogicalRange(range); } catch { /* chart mid-teardown */ }
+      }
+    });
+  });
+}
+function leaveSyncGroup(chart, syncGroupRef) {
+  syncGroupRef.current = syncGroupRef.current.filter((c) => c !== chart);
+}
+function fitAllInGroup(syncGroupRef) {
+  syncGroupRef.current.forEach((c) => { try { c.timeScale().fitContent(); } catch { /* ignore */ } });
+}
+
+/* ---------------- Price chart (candlesticks + MA + crosshair OHLC legend) ---------------- */
+function PriceChart({ data, showMA, syncGroupRef }) {
+  const containerRef = useRef(null);
+  const legendRef = useRef(null);
+  const chartRef = useRef(null);
+  const candleRef = useRef(null);
+  const maRef = useRef(null);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const chart = createChart(containerRef.current, {
+      width: containerRef.current.clientWidth,
+      height: 340,
+      layout: { background: { color: "transparent" }, textColor: LW_COLORS.text, fontFamily: "JetBrains Mono, monospace", fontSize: 11 },
+      grid: { vertLines: { color: LW_COLORS.grid }, horzLines: { color: LW_COLORS.grid } },
+      crosshair: { mode: CrosshairMode.Normal },
+      rightPriceScale: { borderColor: LW_COLORS.grid },
+      timeScale: { borderColor: LW_COLORS.grid, timeVisible: true, secondsVisible: false },
+      handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: true },
+      handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: true },
+      kineticScroll: { touch: true, mouse: true },
+    });
+    const candleSeries = chart.addCandlestickSeries({
+      upColor: LW_COLORS.bull, downColor: LW_COLORS.bear, borderVisible: false,
+      wickUpColor: LW_COLORS.bull, wickDownColor: LW_COLORS.bear,
+    });
+    const maSeries = chart.addLineSeries({ color: LW_COLORS.amber, lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+
+    chart.subscribeCrosshairMove((param) => {
+      if (!legendRef.current) return;
+      const point = param.seriesData && param.seriesData.get(candleSeries);
+      if (param.time && point) {
+        legendRef.current.textContent = `O ${point.open.toFixed(2)}   H ${point.high.toFixed(2)}   L ${point.low.toFixed(2)}   C ${point.close.toFixed(2)}`;
+      } else {
+        legendRef.current.textContent = "";
+      }
+    });
+
+    chartRef.current = chart;
+    candleRef.current = candleSeries;
+    maRef.current = maSeries;
+    joinSyncGroup(chart, syncGroupRef);
+
+    const onResize = () => { if (containerRef.current) chart.applyOptions({ width: containerRef.current.clientWidth }); };
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      leaveSyncGroup(chart, syncGroupRef);
+      chart.remove();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!candleRef.current) return;
+    const prepped = prepLW(data);
+    candleRef.current.setData(prepped.map(({ t, d }) => ({ time: t, open: d.open, high: d.high, low: d.low, close: d.close })));
+    if (maRef.current) {
+      maRef.current.setData(showMA ? prepped.filter(({ d }) => d.ma != null).map(({ t, d }) => ({ time: t, value: d.ma })) : []);
+    }
+    if (chartRef.current) chartRef.current.timeScale().fitContent();
+  }, [data, showMA]);
+
   return (
-    <div className="candleTip mono">
-      <div className="dim">{new Date(label).toLocaleString()}</div>
-      <div>O <b>{d.open?.toFixed(2)}</b></div>
-      <div>H <b>{d.high?.toFixed(2)}</b></div>
-      <div>L <b>{d.low?.toFixed(2)}</b></div>
-      <div>C <b>{d.close?.toFixed(2)}</b></div>
+    <div className="lwWrap">
+      <div ref={legendRef} className="lwLegend mono" />
+      <div ref={containerRef} className="lwChart" />
     </div>
   );
+}
+
+/* ---------------- RSI pane ---------------- */
+function RSIChart({ data, syncGroupRef }) {
+  const containerRef = useRef(null);
+  const chartRef = useRef(null);
+  const seriesRef = useRef(null);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const chart = createChart(containerRef.current, {
+      width: containerRef.current.clientWidth,
+      height: 110,
+      layout: { background: { color: "transparent" }, textColor: LW_COLORS.text, fontFamily: "JetBrains Mono, monospace", fontSize: 10 },
+      grid: { vertLines: { color: LW_COLORS.grid }, horzLines: { color: LW_COLORS.grid } },
+      crosshair: { mode: CrosshairMode.Normal },
+      rightPriceScale: { borderColor: LW_COLORS.grid },
+      timeScale: { borderColor: LW_COLORS.grid, visible: false },
+      handleScroll: { mouseWheel: true, pressedMouseMove: true },
+      handleScale: { mouseWheel: true, pinch: true },
+    });
+    const series = chart.addLineSeries({ color: LW_COLORS.accent, lineWidth: 1.5, priceLineVisible: false, lastValueVisible: false });
+    series.createPriceLine({ price: 70, color: LW_COLORS.bear, lineWidth: 1, lineStyle: 2, axisLabelVisible: true });
+    series.createPriceLine({ price: 30, color: LW_COLORS.bull, lineWidth: 1, lineStyle: 2, axisLabelVisible: true });
+
+    chartRef.current = chart;
+    seriesRef.current = series;
+    joinSyncGroup(chart, syncGroupRef);
+
+    const onResize = () => { if (containerRef.current) chart.applyOptions({ width: containerRef.current.clientWidth }); };
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      leaveSyncGroup(chart, syncGroupRef);
+      chart.remove();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!seriesRef.current) return;
+    const prepped = prepLW(data).filter(({ d }) => d.rsi != null).map(({ t, d }) => ({ time: t, value: d.rsi }));
+    seriesRef.current.setData(prepped);
+  }, [data]);
+
+  return <div ref={containerRef} className="lwChart" />;
+}
+
+/* ---------------- MACD pane ---------------- */
+function MACDChart({ data, syncGroupRef }) {
+  const containerRef = useRef(null);
+  const chartRef = useRef(null);
+  const histRef = useRef(null);
+  const macdRef = useRef(null);
+  const signalRef = useRef(null);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const chart = createChart(containerRef.current, {
+      width: containerRef.current.clientWidth,
+      height: 110,
+      layout: { background: { color: "transparent" }, textColor: LW_COLORS.text, fontFamily: "JetBrains Mono, monospace", fontSize: 10 },
+      grid: { vertLines: { color: LW_COLORS.grid }, horzLines: { color: LW_COLORS.grid } },
+      crosshair: { mode: CrosshairMode.Normal },
+      rightPriceScale: { borderColor: LW_COLORS.grid },
+      timeScale: { borderColor: LW_COLORS.grid, timeVisible: true, secondsVisible: false },
+      handleScroll: { mouseWheel: true, pressedMouseMove: true },
+      handleScale: { mouseWheel: true, pinch: true },
+    });
+    const hist = chart.addHistogramSeries({ priceLineVisible: false, lastValueVisible: false });
+    const macdLine = chart.addLineSeries({ color: LW_COLORS.bull, lineWidth: 1.5, priceLineVisible: false, lastValueVisible: false });
+    const signalLine = chart.addLineSeries({ color: LW_COLORS.bear, lineWidth: 1.5, priceLineVisible: false, lastValueVisible: false });
+
+    chartRef.current = chart;
+    histRef.current = hist;
+    macdRef.current = macdLine;
+    signalRef.current = signalLine;
+    joinSyncGroup(chart, syncGroupRef);
+
+    const onResize = () => { if (containerRef.current) chart.applyOptions({ width: containerRef.current.clientWidth }); };
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      leaveSyncGroup(chart, syncGroupRef);
+      chart.remove();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!histRef.current) return;
+    const prepped = prepLW(data);
+    histRef.current.setData(
+      prepped.filter(({ d }) => d.hist != null).map(({ t, d }) => ({ time: t, value: d.hist, color: d.hist >= 0 ? "rgba(20,232,160,0.5)" : "rgba(255,84,112,0.5)" }))
+    );
+    macdRef.current.setData(prepped.filter(({ d }) => d.macdLine != null).map(({ t, d }) => ({ time: t, value: d.macdLine })));
+    signalRef.current.setData(prepped.filter(({ d }) => d.signalLine != null).map(({ t, d }) => ({ time: t, value: d.signalLine })));
+  }, [data]);
+
+  return <div ref={containerRef} className="lwChart" />;
 }
 
 /* ---------------- formatting ---------------- */
@@ -386,6 +551,7 @@ function AuthGate({ onAuth }) {
 ====================================================================== */
 function TradingApp({ username, onLogout }) {
   const saved = useMemo(() => loadPortfolio(username), [username]);
+  const syncGroupRef = useRef([]);
 
   const [quotes, setQuotes] = useState(() => {
     const q = {};
@@ -758,53 +924,29 @@ function TradingApp({ username, onLogout }) {
                     {[["ma", "MA(20)"], ["rsi", "RSI(14)"], ["macd", "MACD"]].map(([key, label]) => (
                       <button key={key} className={`indToggle ${indicators[key] ? "indToggleActive" : ""}`} onClick={() => setIndicators((prev) => ({ ...prev, [key]: !prev[key] }))}>{label}</button>
                     ))}
+                    <button className="indToggle" title="Reset zoom / fit all candles" onClick={() => fitAllInGroup(syncGroupRef)}>
+                      <Maximize2 size={11} /> Fit
+                    </button>
                   </div>
                 </div>
 
-                <ResponsiveContainer width="100%" height={indicators.rsi || indicators.macd ? 250 : 320}>
-                  <ComposedChart data={chartSeries}>
-                    <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
-                    <XAxis dataKey="time" tickFormatter={(t) => new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} stroke="var(--text-dim)" tick={{ fontSize: 11, fontFamily: "JetBrains Mono, monospace" }} minTickGap={40} />
-                    <YAxis domain={["auto", "auto"]} stroke="var(--text-dim)" tick={{ fontSize: 11, fontFamily: "JetBrains Mono, monospace" }} width={70} tickFormatter={(v) => v.toFixed(0)} />
-                    <ReferenceLine y={q.prevClose} stroke="var(--text-dim)" strokeDasharray="4 4" />
-                    <Tooltip content={<CandleTooltip />} />
-                    <Bar dataKey="range" shape={CandleShape} isAnimationActive={false} />
-                    {indicators.ma && <Line type="monotone" dataKey="ma" stroke="var(--amber)" strokeWidth={1.5} dot={false} isAnimationActive={false} />}
-                  </ComposedChart>
-                </ResponsiveContainer>
+                <PriceChart data={chartSeries} showMA={indicators.ma} syncGroupRef={syncGroupRef} />
 
                 {indicators.rsi && (
                   <div className="subChart">
                     <span className="subChartLabel">RSI (14)</span>
-                    <ResponsiveContainer width="100%" height={90}>
-                      <ComposedChart data={chartSeries}>
-                        <XAxis dataKey="time" hide />
-                        <YAxis domain={[0, 100]} stroke="var(--text-dim)" tick={{ fontSize: 10, fontFamily: "JetBrains Mono, monospace" }} width={30} ticks={[30, 50, 70]} />
-                        <ReferenceLine y={70} stroke="var(--bear)" strokeDasharray="3 3" />
-                        <ReferenceLine y={30} stroke="var(--bull)" strokeDasharray="3 3" />
-                        <Tooltip contentStyle={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 }} formatter={(v) => [v?.toFixed?.(1), "RSI"]} labelFormatter={() => ""} />
-                        <Line type="monotone" dataKey="rsi" stroke="var(--accent)" strokeWidth={1.5} dot={false} isAnimationActive={false} />
-                      </ComposedChart>
-                    </ResponsiveContainer>
+                    <RSIChart data={chartSeries} syncGroupRef={syncGroupRef} />
                   </div>
                 )}
 
                 {indicators.macd && (
                   <div className="subChart">
                     <span className="subChartLabel">MACD (12, 26, 9)</span>
-                    <ResponsiveContainer width="100%" height={90}>
-                      <ComposedChart data={chartSeries}>
-                        <XAxis dataKey="time" hide />
-                        <YAxis stroke="var(--text-dim)" tick={{ fontSize: 10, fontFamily: "JetBrains Mono, monospace" }} width={40} />
-                        <ReferenceLine y={0} stroke="var(--border)" />
-                        <Tooltip contentStyle={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 }} labelFormatter={() => ""} />
-                        <Bar dataKey="hist" fill="var(--text-dim)" opacity={0.5} isAnimationActive={false} />
-                        <Line type="monotone" dataKey="macdLine" stroke="var(--bull)" strokeWidth={1.5} dot={false} isAnimationActive={false} />
-                        <Line type="monotone" dataKey="signalLine" stroke="var(--bear)" strokeWidth={1.5} dot={false} isAnimationActive={false} />
-                      </ComposedChart>
-                    </ResponsiveContainer>
+                    <MACDChart data={chartSeries} syncGroupRef={syncGroupRef} />
                   </div>
                 )}
+
+                <div className="chartHint dim">Scroll / pinch to zoom &middot; drag to pan &middot; hover for OHLC &middot; Fit resets zoom</div>
               </div>
 
               {isIndex ? (
@@ -1193,15 +1335,17 @@ const CSS = `
 .tradeGrid { display: grid; grid-template-columns: 1fr 260px; gap: 20px; }
 .chartCard { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
 .chartHead { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px; }
-.tfTabs, .indToggles { display: flex; gap: 4px; }
+.tfTabs, .indToggles { display: flex; gap: 4px; align-items: center; }
 .tfTab { background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim); padding: 5px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; }
 .tfTabActive { background: var(--accent); color: white; border-color: var(--accent); }
-.indToggle { background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim); padding: 5px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; }
+.indToggle { background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim); padding: 5px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
 .indToggleActive { background: var(--amber); color: #241800; border-color: var(--amber); }
 .subChart { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 8px; }
 .subChartLabel { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.6px; }
-.candleTip { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 11px; line-height: 1.6; }
-.candleTip b { color: var(--text); font-weight: 600; margin-left: 4px; }
+.chartHint { margin-top: 8px; font-size: 10px; text-align: center; }
+.lwWrap { position: relative; }
+.lwChart { width: 100%; }
+.lwLegend { position: absolute; top: 4px; left: 4px; z-index: 5; font-size: 11px; color: var(--text-dim); background: rgba(18,23,34,0.75); padding: 2px 8px; border-radius: 6px; pointer-events: none; }
 
 .orderCard { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px; height: fit-content; }
 .orderCard h3 { margin: 0 0 14px; font-family: 'Space Grotesk'; font-size: 14px; }
