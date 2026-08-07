@@ -944,10 +944,12 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
                     ))}
                   </div>
                   <div className="indToggles">
-                    {[["ma", "MA(20)"], ["rsi", "RSI(14)"], ["macd", "MACD"]].map(([key, label]) => (
-                      <button key={key} className={`indToggle ${indicators[key] ? "indToggleActive" : ""}`} onClick={() => setIndicators((prev) => ({ ...prev, [key]: !prev[key] }))}>{label}</button>
+                    {[["ma", "MA(20)", LW_COLORS.amber], ["rsi", "RSI(14)", LW_COLORS.accent], ["macd", "MACD", LW_COLORS.bull]].map(([key, label, dot]) => (
+                      <button key={key} className={`indToggle ${indicators[key] ? "indToggleActive" : ""}`} onClick={() => setIndicators((prev) => ({ ...prev, [key]: !prev[key] }))}>
+                        <span className="indDot" style={{ background: dot }} />{label}
+                      </button>
                     ))}
-                    <button className="indToggle" title="Reset zoom / fit all candles" onClick={() => fitAllInGroup(syncGroupRef)}>
+                    <button className="indToggle fitBtn" title="Reset zoom / fit all candles" onClick={() => fitAllInGroup(syncGroupRef)}>
                       <Maximize2 size={11} /> Fit
                     </button>
                   </div>
@@ -957,14 +959,14 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
 
                 {indicators.rsi && (
                   <div className="subChart">
-                    <span className="subChartLabel">RSI (14)</span>
+                    <span className="subChartLabel"><span className="indDot" style={{ background: LW_COLORS.accent }} />RSI (14)</span>
                     <RSIChart data={chartSeries} syncGroupRef={syncGroupRef} />
                   </div>
                 )}
 
                 {indicators.macd && (
                   <div className="subChart">
-                    <span className="subChartLabel">MACD (12, 26, 9)</span>
+                    <span className="subChartLabel"><span className="indDot" style={{ background: LW_COLORS.bull }} />MACD (12, 26, 9)</span>
                     <MACDChart data={chartSeries} syncGroupRef={syncGroupRef} />
                   </div>
                 )}
@@ -979,17 +981,43 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
                 </div>
               ) : (
                 <div className="orderCard">
-                  <h3>Market Order</h3>
+                  <div className="orderCardHead">
+                    <h3>Market Order</h3>
+                    <span className="orderCardSym mono">{displayTicker(selected)}</span>
+                  </div>
+
                   <div className="orderRow">
                     <label>Quantity</label>
                     <input type="number" min="1" className="qtyInput mono" value={orderQty} onChange={(e) => setOrderQty(Math.max(1, parseInt(e.target.value) || 1))} />
                   </div>
-                  <div className="orderEst mono">Est. cost: <span>{fmtMoney(q.price * orderQty)}</span></div>
-                  <div className="orderBtns">
-                    <button className="btn btnBull" onClick={() => placeStockOrder("buy")}>Buy</button>
-                    <button className="btn btnBear" onClick={() => placeStockOrder("sell")}>Sell</button>
+                  <div className="orderEst mono">
+                    <span className="dim">Est. cost</span>
+                    <span>{fmtMoney(q.price * orderQty)}</span>
                   </div>
-                  <div className="held mono">Held: {stockPositions.find((p) => p.symbol === selected)?.qty ?? 0} shares</div>
+
+                  <div className="orderBtns">
+                    <button className="btn btnBull" onClick={() => placeStockOrder("buy")}><TrendingUp size={14} /> Buy</button>
+                    <button className="btn btnBear" onClick={() => placeStockOrder("sell")}><TrendingDown size={14} /> Sell</button>
+                  </div>
+
+                  {(() => {
+                    const pos = stockPositions.find((p) => p.symbol === selected);
+                    if (!pos) return <div className="held mono">Held: 0 shares</div>;
+                    const mv = q.price * pos.qty;
+                    const pnl = mv - pos.avgPrice * pos.qty;
+                    return (
+                      <div className="posSummary">
+                        <div className="posSummaryRow">
+                          <span className="dim">Held</span>
+                          <span className="mono">{pos.qty} sh &middot; avg {fmtMoney(pos.avgPrice)}</span>
+                        </div>
+                        <div className="posSummaryRow">
+                          <span className="dim">Unrealized P&amp;L</span>
+                          <span className={`mono ${pnl >= 0 ? "bull" : "bear"}`}>{fmtMoney(pnl)}</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
             </div>
@@ -1368,35 +1396,49 @@ const CSS = `
 .tabActive { color: var(--text); border-bottom: 2px solid var(--accent); }
 
 .tradeGrid { display: grid; grid-template-columns: 1fr 260px; gap: 20px; }
-.chartCard { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
-.chartHead { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px; }
+.chartCard { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; transition: box-shadow 0.2s ease, border-color 0.2s ease; }
+.chartCard:hover { border-color: color-mix(in srgb, var(--border) 60%, var(--text-dim)); box-shadow: 0 10px 30px rgba(0,0,0,0.22); }
+.chartHead { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--border); flex-wrap: wrap; gap: 10px; }
 .tfTabs, .indToggles { display: flex; gap: 4px; align-items: center; }
-.tfTab { background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim); padding: 5px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; }
+.tfTab { background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim); padding: 5px 10px; border-radius: 6px; font-size: 11px; font-variant-numeric: tabular-nums; cursor: pointer; transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease; }
+.tfTab:hover { color: var(--text); border-color: var(--accent); }
 .tfTabActive { background: var(--accent); color: white; border-color: var(--accent); }
-.indToggle { background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim); padding: 5px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+.tfTabActive:hover { color: white; }
+.indToggle { background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim); padding: 5px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease; }
+.indToggle:hover { color: var(--text); }
+.indDot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
 .indToggleActive { background: var(--amber); color: #241800; border-color: var(--amber); }
-.subChart { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 8px; }
-.subChartLabel { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.6px; }
-.chartHint { margin-top: 8px; font-size: 10px; text-align: center; }
+.fitBtn { margin-left: 6px; padding-left: 12px; border-left: 1px solid var(--border); border-radius: 0 6px 6px 0; }
+.subChart { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 10px; }
+.subChartLabel { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.6px; display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.chartHint { margin-top: 10px; font-size: 10px; text-align: center; }
 .lwWrap { position: relative; }
 .lwChart { width: 100%; }
-.lwLegend { position: absolute; top: 4px; left: 4px; z-index: 5; font-size: 11px; color: var(--text-dim); background: rgba(18,23,34,0.75); padding: 2px 8px; border-radius: 6px; pointer-events: none; }
+.lwLegend { position: absolute; top: 4px; left: 4px; z-index: 5; font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums; letter-spacing: 0.2px; color: var(--text-dim); background: rgba(18,23,34,0.75); padding: 3px 9px; border-radius: 6px; pointer-events: none; }
 
-.orderCard { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px; height: fit-content; }
-.orderCard h3 { margin: 0 0 14px; font-family: 'Space Grotesk'; font-size: 14px; }
+.orderCard { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px; height: fit-content; transition: box-shadow 0.2s ease; }
+.orderCard:hover { box-shadow: 0 10px 30px rgba(0,0,0,0.22); }
+.orderCard h3 { margin: 0; font-family: 'Space Grotesk'; font-size: 14px; }
+.orderCardHead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.orderCardSym { font-size: 11px; color: var(--text-dim); background: var(--surface-2); border: 1px solid var(--border); padding: 3px 9px; border-radius: 20px; }
 .indexNote { font-size: 12px; line-height: 1.6; margin: 0; }
 .orderRow { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .orderRow label { font-size: 12px; color: var(--text-dim); }
-.qtyInput { width: 90px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text); padding: 7px 10px; border-radius: 6px; font-size: 13px; text-align: right; }
-.orderEst { font-size: 12px; color: var(--text-dim); margin-bottom: 14px; }
-.orderEst span { color: var(--text); }
-.orderBtns { display: flex; gap: 8px; margin-bottom: 12px; }
-.btn { flex: 1; padding: 10px; border-radius: 8px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; transition: opacity 0.15s; }
+.qtyInput { width: 90px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text); padding: 7px 10px; border-radius: 6px; font-size: 13px; text-align: right; transition: border-color 0.15s ease; }
+.qtyInput:focus { outline: none; border-color: var(--accent); }
+.orderEst { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--text-dim); padding: 10px 0; margin-bottom: 14px; border-top: 1px dashed var(--border); }
+.orderEst span:last-child { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.orderBtns { display: flex; gap: 8px; margin-bottom: 14px; }
+.btn { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 10px; border-radius: 8px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; transition: opacity 0.15s ease, transform 0.1s ease; }
 .btn:hover { opacity: 0.85; }
+.btn:active { transform: scale(0.98); }
 .btnBull { background: var(--bull); color: #06231A; }
 .btnBear { background: var(--bear); color: #2B0710; }
 .btnGhost { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); }
 .held { font-size: 11px; color: var(--text-dim); }
+.posSummary { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+.posSummaryRow { display: flex; justify-content: space-between; align-items: center; font-size: 11.5px; padding: 3px 0; }
+.posSummaryRow .mono { font-variant-numeric: tabular-nums; }
 
 .chainWrap { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
 .expiryTabs { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
