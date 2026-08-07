@@ -1,14 +1,38 @@
-# Updating package.json on GitHub
-
-1. Go to `github.com/vadlashiva/dry-powder-paper-trading`
-2. Click on `package.json` (at the repo root)
-3. Click the pencil (edit) icon, top right of the file view
-4. Click inside the code area, press `Ctrl+A` (Windows) or `Cmd+A` (Mac) to select everything
-5. Press `Delete`
-6. Open the `package.json` file from my last message, copy its entire contents
-7. Paste into the now-empty editor on GitHub
-8. Scroll down, click **Commit changes**
-
-That updates the `lightweight-charts` version to `^5.0.0` to match the code. Do this along with updating `App.tsx` the same way (select all, delete, paste the latest file, commit) — both files need the update for the fix to work.
-
-Once both are committed, check Vercel's Deployments tab for the new build.
+{
+  "name": "react-typescript",
+  "version": "1.0.0",
+  "description": "React and TypeScript example starter project",
+  "keywords": [
+    "typescript",
+    "react",
+    "starter"
+  ],
+  "main": "src/index.tsx",
+  "dependencies": {
+    "loader-utils": "3.2.1",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "react-scripts": "5.0.1",
+    "recharts": "3.10.1",
+    "lucide-react": "1.28.0",
+    "react-is": "19.2.8",
+    "lightweight-charts": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "18.2.38",
+    "@types/react-dom": "18.2.15",
+    "typescript": "4.4.4"
+  },
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test --env=jsdom",
+    "eject": "react-scripts eject"
+  },
+  "browserslist": [
+    ">0.2%",
+    "not dead",
+    "not ie <= 11",
+    "not op_mini all"
+  ]
+}
