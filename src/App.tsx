@@ -692,7 +692,7 @@ function AuthGate({ themeIdx, cycleTheme }) {
   };
 
   return (
-    <div className="authWrap" style={THEMES[themeIdx].vars}>
+    <div className="authWrap" style={THEMES[themeIdx].vars as React.CSSProperties}>
       <style>{CSS}</style>
       <button type="button" className="themeBtn authThemeBtn" onClick={cycleTheme} title="Change background theme">
         <span className="themeEmoji">🎨</span> {THEMES[themeIdx].name}
@@ -1340,7 +1340,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, onRe
   const T = currentExpiry ? (currentExpiry.getTime() - Date.now()) / (365 * 24 * 3600 * 1000) : 0;
 
   return (
-    <div className="app" style={THEMES[themeIdx].vars}>
+    <div className="app"   style={THEMES[themeIdx].vars as React.CSSProperties}>
       <style>{CSS}</style>
 
       <div className="topbar">
@@ -1994,7 +1994,7 @@ function OptionTicket({ ticket, quotes, instruments, onClose, onSubmit, heldQty 
 ====================================================================== */
 function SplashScreen({ label, themeIdx }) {
   return (
-    <div className="authWrap" style={THEMES[themeIdx].vars}>
+    <div className="authWrap" style={THEMES[themeIdx].vars as React.CSSProperties}>
       <style>{CSS}</style>
       <div className="authCard splashCard">
         <div className="authBrand"><Flame size={22} className="brandIcon" /><span>TRADE FREE</span></div>
