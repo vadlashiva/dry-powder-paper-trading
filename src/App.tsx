@@ -498,7 +498,7 @@ const uid = () => Math.random().toString(36).slice(2, 10);
    Fill in your own project's values from Supabase → Project Settings → API.
    Requires the "portfolios" table + RLS policies from supabase-schema.sql, and
    Authentication → Providers → Email → "Confirm email" turned OFF (see setup guide). */
-const SUPABASE_URL = https://qfzepvorvvajqpnfwceq.supabase.co;
+const SUPABASE_URL = "https://qfzepvorvvajqpnfwceq.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_-pw1tSkYhKymxQZHNqT66w_GOPnWEQN
 ";
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
