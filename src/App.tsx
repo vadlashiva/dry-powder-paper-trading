@@ -3,6 +3,7 @@ import { createChart, CrosshairMode, CandlestickSeries, LineSeries, HistogramSer
 import { createClient } from "@supabase/supabase-js";
 import {TrendingUp, TrendingDown, RotateCcw, X, Flame, Activity, LogOut, Lock, User as UserIcon, Bell, Trash2, Maximize2, Download, Newspaper, Crosshair, Sparkles,
 } from "lucide-react";
+declare global { interface Window { Razorpay: any; } }
 /* ---------------- background themes ---------------- */
 const THEMES = [
   { name: "Midnight", vars: { "--bg": "#0A0D14", "--surface": "#121722", "--surface-2": "#1A2130", "--border": "#232B3D", "--text": "#E7ECF6", "--text-dim": "#8B96AA" } },
