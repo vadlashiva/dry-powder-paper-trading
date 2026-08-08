@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { createChart, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries } from "lightweight-charts";
+import { createClient } from "@supabase/supabase-js";
 import {
-  TrendingUp, TrendingDown, RotateCcw, X, Flame, Activity, LogOut, Lock, User as UserIcon, Bell, Trash2, Maximize2, Download, Newspaper, Crosshair,
+  TrendingUp, TrendingDown, RotateCcw, X, Flame, Activity, LogOut, Lock, User as UserIcon, Bell, Trash2, Maximize2, Download, Newspaper, Crosshair, Sparkles,
 } from "lucide-react";
 
 /* ---------------- background themes ---------------- */
@@ -493,60 +494,105 @@ const fmtPct = (n) => (n >= 0 ? "+" : "") + n.toFixed(2) + "%";
 const fmtDate = (d) => d.toLocaleDateString("en-IN", { month: "short", day: "numeric" });
 const uid = () => Math.random().toString(36).slice(2, 10);
 
-/* ---------------- local persistence (accounts + portfolios stay saved in this browser) ---------------- */
-const LS_USERS = "tf_users";
-const LS_SESSION = "tf_session";
-const portfolioKey = (username) => `tf_portfolio_${username}`;
+/* ---------------- Supabase (real backend — this is what makes accounts cross-device) ----------------
+   Fill in your own project's values from Supabase → Project Settings → API.
+   Requires the "portfolios" table + RLS policies from supabase-schema.sql, and
+   Authentication → Providers → Email → "Confirm email" turned OFF (see setup guide). */
+const SUPABASE_URL = https://qfzepvorvvajqpnfwceq.supabase.co;
+const SUPABASE_ANON_KEY = "sb_publishable_-pw1tSkYhKymxQZHNqT66w_GOPnWEQN
+";
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-function loadUsers() {
-  try { return JSON.parse(localStorage.getItem(LS_USERS)) || []; } catch { return []; }
-}
-function saveUsers(list) {
-  try { localStorage.setItem(LS_USERS, JSON.stringify(list)); } catch { /* storage unavailable */ }
-}
+// Supabase Auth is email-based; usernames are mapped to a synthetic address so the
+// login UI can stay "username + password" without asking anyone for a real email.
+const usernameToEmail = (username) => `${username.trim().toLowerCase()}@tradefree.local`;
 
-/* ---------------- password hashing (client-side; see auth note below) ----------------
-   Accounts are still entirely client-side — there's no server to keep a real secret from
-   someone reading this bundle. Hashing with a per-user salt means a stored account record
-   (or this file's localStorage) no longer contains the plaintext password directly, which
-   is a meaningful improvement over storing it raw — but it is NOT equivalent to real
-   server-side auth. Treat this as "reasonable for a personal/demo app," not production-grade
-   security for accounts other people trust with a real password. */
-function randomSalt() {
-  const arr = new Uint8Array(16);
-  crypto.getRandomValues(arr);
-  return Array.from(arr).map((b) => b.toString(16).padStart(2, "0")).join("");
+async function signUpUser(username, password) {
+  return supabase.auth.signUp({
+    email: usernameToEmail(username),
+    password,
+    options: { data: { username: username.trim() } },
+  });
 }
-async function hashPassword(password, salt) {
-  const data = new TextEncoder().encode(`${salt}:${password}`);
-  const digest = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+async function signInUser(username, password) {
+  return supabase.auth.signInWithPassword({ email: usernameToEmail(username), password });
+}
+async function signOutUser() {
+  await supabase.auth.signOut();
 }
 
-function loadSession() {
-  try { return localStorage.getItem(LS_SESSION) || null; } catch { return null; }
+/* ---------------- portfolio persistence (Postgres, via Supabase) ---------------- */
+function hydratePortfolio(raw) {
+  const base = raw || {};
+  return {
+    cash: base.cash ?? STARTING_CASH,
+    stockPositions: base.stockPositions ?? [],
+    optionPositions: base.optionPositions ?? [],
+    trades: (base.trades || []).map((t) => ({ ...t, time: new Date(t.time) })),
+    alerts: base.alerts ?? [],
+    pendingOrders: (base.pendingOrders || []).map((o) => ({ ...o, createdAt: new Date(o.createdAt) })),
+    customInstruments: base.customInstruments ?? [],
+  };
 }
-function saveSession(username) {
-  try { localStorage.setItem(LS_SESSION, username); } catch { /* storage unavailable */ }
+async function fetchPortfolio(userId) {
+  const { data, error } = await supabase.from("portfolios").select("data").eq("user_id", userId).maybeSingle();
+  if (error) throw error;
+  return hydratePortfolio(data?.data ?? null);
 }
-function clearSession() {
-  try { localStorage.removeItem(LS_SESSION); } catch { /* storage unavailable */ }
+async function upsertPortfolio(userId, payload) {
+  const { error } = await supabase.from("portfolios").upsert({ user_id: userId, data: payload, updated_at: new Date().toISOString() });
+  if (error) console.error("portfolio save failed", error);
 }
-function loadPortfolio(username) {
+
+/* ---------------- subscription (Pro tier, via Razorpay) ---------------- */
+async function fetchSubscription(userId) {
+  const { data, error } = await supabase.from("subscriptions").select("status, current_period_end").eq("user_id", userId).maybeSingle();
+  if (error) { console.error("subscription fetch failed", error); return { status: "free", current_period_end: null }; }
+  return data || { status: "free", current_period_end: null };
+}
+
+/** Loads Razorpay's checkout script once and reuses it on later calls. */
+let razorpayScriptPromise = null;
+function loadRazorpayScript() {
+  if (razorpayScriptPromise) return razorpayScriptPromise;
+  razorpayScriptPromise = new Promise((resolve, reject) => {
+    if (window.Razorpay) return resolve(true);
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.onload = () => resolve(true);
+    script.onerror = () => reject(new Error("Failed to load Razorpay checkout"));
+    document.body.appendChild(script);
+  });
+  return razorpayScriptPromise;
+}
+
+/**
+ * Starts the upgrade flow: asks our Edge Function to create a Razorpay subscription for
+ * this user, then opens Razorpay's checkout. Actual activation only ever happens via the
+ * razorpay-webhook Edge Function once payment is confirmed — this function just gets the
+ * payment UI open and hands control to Razorpay.
+ */
+async function startProCheckout({ userEmail, onSuccess, onError }) {
   try {
-    const raw = localStorage.getItem(portfolioKey(username));
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    return {
-      ...parsed,
-      trades: (parsed.trades || []).map((t) => ({ ...t, time: new Date(t.time) })),
-      pendingOrders: (parsed.pendingOrders || []).map((o) => ({ ...o, createdAt: new Date(o.createdAt) })),
-      customInstruments: parsed.customInstruments || [],
-    };
-  } catch { return null; }
-}
-function savePortfolio(username, data) {
-  try { localStorage.setItem(portfolioKey(username), JSON.stringify(data)); } catch { /* storage unavailable */ }
+    const { data, error } = await supabase.functions.invoke("create-razorpay-subscription");
+    if (error || data?.error) throw new Error(data?.error || error?.message || "Could not start checkout");
+
+    await loadRazorpayScript();
+    const rzp = new window.Razorpay({
+      key: data.keyId,
+      subscription_id: data.subscriptionId,
+      name: "TRADE FREE Pro",
+      description: "Monthly subscription",
+      prefill: { email: userEmail },
+      theme: { color: "#7B61FF" },
+      handler: () => onSuccess(),
+      modal: { ondismiss: () => onError("Checkout closed before completing payment") },
+    });
+    rzp.on("payment.failed", () => onError("Payment failed"));
+    rzp.open();
+  } catch (e) {
+    onError(e.message || "Could not start checkout");
+  }
 }
 
 /* ---------------- data layer ---------------- */
@@ -609,9 +655,8 @@ async function fetchSymbolNews(query) {
 /* ======================================================================
    AUTH GATE (accounts persist in this browser via localStorage)
 ====================================================================== */
-function AuthGate({ onAuth, themeIdx, cycleTheme }) {
+function AuthGate({ themeIdx, cycleTheme }) {
   const [mode, setMode] = useState("login");
-  const [users, setUsers] = useState(() => loadUsers());
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -623,40 +668,29 @@ function AuthGate({ onAuth, themeIdx, cycleTheme }) {
     setError("");
     const uname = username.trim();
     if (!uname || !password) return setError("Enter a username and password.");
+    if (password.length < 6) return setError("Password must be at least 6 characters.");
+    if (!/^[a-zA-Z0-9_]+$/.test(uname)) return setError("Username can only use letters, numbers, and underscores.");
 
     setBusy(true);
     try {
       if (mode === "register") {
         if (password !== confirm) return setError("Passwords don't match.");
-        if (users.some((u) => u.username.toLowerCase() === uname.toLowerCase()))
-          return setError("That username is already taken.");
-        const salt = randomSalt();
-        const passwordHash = await hashPassword(password, salt);
-        const next = [...users, { username: uname, salt, passwordHash }];
-        setUsers(next);
-        saveUsers(next);
-        onAuth(uname);
-      } else {
-        const match = users.find((u) => u.username.toLowerCase() === uname.toLowerCase());
-        if (!match) return setError("Invalid username or password.");
-
-        if (match.passwordHash) {
-          const attempt = await hashPassword(password, match.salt);
-          if (attempt !== match.passwordHash) return setError("Invalid username or password.");
-        } else if (match.password != null) {
-          // legacy plaintext account from before hashing was added — verify, then upgrade in place
-          if (match.password !== password) return setError("Invalid username or password.");
-          const salt = randomSalt();
-          const passwordHash = await hashPassword(password, salt);
-          const upgraded = users.map((u) =>
-            u.username.toLowerCase() === uname.toLowerCase() ? { username: u.username, salt, passwordHash } : u
-          );
-          setUsers(upgraded);
-          saveUsers(upgraded);
-        } else {
-          return setError("Invalid username or password.");
+        const { error: signUpError } = await signUpUser(uname, password);
+        if (signUpError) {
+          if (/registered/i.test(signUpError.message)) setError("That username is already taken.");
+          else setError(signUpError.message);
         }
-        onAuth(uname);
+        // On success, Supabase issues a session (assuming email confirmation is disabled in
+        // the project) and the root App's onAuthStateChange listener picks it up automatically.
+      } else {
+        const { error: signInError } = await signInUser(uname, password);
+        if (signInError) {
+          if (/confirm/i.test(signInError.message)) {
+            setError("Sign-in blocked pending email confirmation — turn off \"Confirm email\" in your Supabase project's Auth settings.");
+          } else {
+            setError("Invalid username or password.");
+          }
+        }
       }
     } finally {
       setBusy(false);
@@ -700,7 +734,7 @@ function AuthGate({ onAuth, themeIdx, cycleTheme }) {
           <button type="submit" className="btn btnBull authSubmit" disabled={busy}>{busy ? "Please wait…" : mode === "register" ? "Create account" : "Log in"}</button>
         </form>
 
-        <div className="authNote">Accounts and portfolios are saved in this browser (localStorage) — refreshing keeps you logged in, and your positions stay put. They won't sync to another device or browser. Passwords are hashed before storage, but this is still a client-only demo, not a real backend — don't reuse a password you use elsewhere.</div>
+        <div className="authNote">Your account and portfolio are saved on the server — log in with the same username and password on any device to pick up right where you left off.</div>
       </div>
     </div>
   );
@@ -709,8 +743,8 @@ function AuthGate({ onAuth, themeIdx, cycleTheme }) {
 /* ======================================================================
    TRADING APP
 ====================================================================== */
-function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
-  const saved = useMemo(() => loadPortfolio(username), [username]);
+function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, onRefreshSubscription, onLogout, themeIdx, cycleTheme }) {
+  const saved = initialPortfolio;
   const syncGroupRef = useRef([]);
 
   const [quotes, setQuotes] = useState(() => {
@@ -762,6 +796,8 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
   const [editQty, setEditQty] = useState(1);
   const [editPrice, setEditPrice] = useState("");
   const [pickingPriceFromChart, setPickingPriceFromChart] = useState(false);
+  const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
+  const [checkoutBusy, setCheckoutBusy] = useState(false);
 
   const expiries = useMemo(() => nextThursdays(4), []);
   const quotesRef = useRef(quotes);
@@ -773,10 +809,16 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
   const pendingOrdersRef = useRef(pendingOrders);
   useEffect(() => { pendingOrdersRef.current = pendingOrders; }, [pendingOrders]);
 
-  /* persist this user's portfolio whenever it changes */
+  /* persist this user's portfolio to the server whenever it changes, debounced since
+     this is now a real network call rather than an instant localStorage write */
+  const saveTimerRef = useRef(null);
   useEffect(() => {
-    savePortfolio(username, { cash, stockPositions, optionPositions, trades, alerts, pendingOrders, customInstruments });
-  }, [username, cash, stockPositions, optionPositions, trades, alerts, pendingOrders, customInstruments]);
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      upsertPortfolio(userId, { cash, stockPositions, optionPositions, trades, alerts, pendingOrders, customInstruments });
+    }, 600);
+    return () => clearTimeout(saveTimerRef.current);
+  }, [userId, cash, stockPositions, optionPositions, trades, alerts, pendingOrders, customInstruments]);
 
   /* watchlist quotes: poll every 20s + realistic jitter every 2.2s */
   useEffect(() => {
@@ -986,6 +1028,7 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
   }, [search, allInstruments]);
 
   const addCustomInstrument = async (result) => {
+    if (!isPro) { setUpgradeModalOpen(true); return; }
     showToast(`Adding ${displayTicker(result.symbol)}…`, "bull");
     let price, prevClose, history, live;
     try {
@@ -1016,9 +1059,9 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
 
   useEffect(() => { setPickingPriceFromChart(false); }, [selected, tab]);
 
-  /* per-symbol news — only fetched while the News tab is actually open */
+  /* per-symbol news — only fetched while the News tab is actually open, and only for Pro */
   useEffect(() => {
-    if (tab !== "news") return;
+    if (tab !== "news" || !isPro) return;
     let cancelled = false;
     setNewsLoading(true);
     fetchSymbolNews(meta.name || displayTicker(selected))
@@ -1026,7 +1069,7 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
       .catch(() => { if (!cancelled) setNewsItems([]); })
       .finally(() => { if (!cancelled) setNewsLoading(false); });
     return () => { cancelled = true; };
-  }, [tab, selected, meta.name]);
+  }, [tab, selected, meta.name, isPro]);
 
   const stockMktValue = stockPositions.reduce((sum, p) => sum + (quotes[p.symbol]?.price ?? 0) * p.qty, 0);
   const optionMktValue = optionPositions.reduce((sum, p) => {
@@ -1071,6 +1114,33 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
   const logTrade = (label, amount) => {
     setTrades((prev) => [{ id: uid(), time: new Date(), label, amount }, ...prev].slice(0, 200));
   };
+
+  /** Opens Razorpay checkout; on payment success, polls for the webhook-confirmed
+      activation rather than trusting the browser-side "it worked" signal directly. */
+  const handleUpgrade = () => {
+    setCheckoutBusy(true);
+    startProCheckout({
+      userEmail,
+      onSuccess: () => {
+        showToast("Payment received — activating Pro…", "bull");
+        setUpgradeModalOpen(false);
+        let attempts = 0;
+        const poll = setInterval(async () => {
+          attempts++;
+          await onRefreshSubscription();
+          if (attempts >= 10) { clearInterval(poll); setCheckoutBusy(false); }
+        }, 2000);
+        // Stop polling early once isPro flips — handled by the effect below via the isPro prop change.
+        setTimeout(() => { clearInterval(poll); setCheckoutBusy(false); }, 20000);
+      },
+      onError: (msg) => {
+        setCheckoutBusy(false);
+        showToast(msg, "bear");
+      },
+    });
+  };
+
+  useEffect(() => { if (isPro) setCheckoutBusy(false); }, [isPro]);
 
   const placeStockOrder = (side) => {
     const price = q.price;
@@ -1161,6 +1231,7 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
   };
 
   const exportTradesCSV = () => {
+    if (!isPro) return setUpgradeModalOpen(true);
     if (trades.length === 0) return showToast("No trades to export", "bear");
     const escapeCell = (v) => `"${String(v).replace(/"/g, '""')}"`;
     const header = "Time,Trade,Cash Impact\n";
@@ -1292,7 +1363,10 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
           <Stat label="Total P&L" value={fmtMoney(dayPnl, 0)} tone={dayPnl >= 0 ? "bull" : "bear"} />
         </div>
         <div className="topbarActions">
-          <div className="userBadge"><UserIcon size={13} />{username}</div>
+          <div className="userBadge"><UserIcon size={13} />{username}{isPro && <span className="proBadge">PRO</span>}</div>
+          {!isPro && (
+            <button className="upgradeBtn" onClick={() => setUpgradeModalOpen(true)}><Sparkles size={13} /> Upgrade to Pro</button>
+          )}
           <button className="themeBtn" onClick={cycleTheme} title="Change background theme"><span className="themeEmoji">🎨</span> {THEMES[themeIdx].name}</button>
           <button className="resetBtn" onClick={() => setConfirmReset(true)}><RotateCcw size={14} /> Reset</button>
           <button className="resetBtn" onClick={onLogout}><LogOut size={14} /> Log out</button>
@@ -1334,14 +1408,14 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
               <div className="wlEmpty dim">Searching NSE &amp; BSE for &ldquo;{search}&rdquo;…</div>
             ) : remoteResults.length > 0 ? (
               <>
-                <div className="wlRemoteLabel dim">Not in your watchlist — add from NSE/BSE:</div>
+                <div className="wlRemoteLabel dim">{isPro ? "Not in your watchlist — add from NSE/BSE:" : "Found on NSE/BSE — adding stocks beyond the starter list is a Pro feature:"}</div>
                 {remoteResults.map((r) => (
                   <button key={r.symbol} className="wlRow wlRowAdd" onClick={() => addCustomInstrument(r)}>
                     <div className="wlSym">
                       <span className="wlTicker">{displayTicker(r.symbol)}<span className={`exBadge exBadge-${r.exchange}`}>{exchangeBadge(r.exchange)}</span></span>
                       <span className="wlName">{r.name}</span>
                     </div>
-                    <span className="addBadge">+ Add</span>
+                    <span className="addBadge">{isPro ? "+ Add" : <><Lock size={10} /> Pro</>}</span>
                   </button>
                 ))}
               </>
@@ -1377,16 +1451,28 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
               <div className="chartCard">
                 <div className="chartHead">
                   <div className="tfTabs">
-                    {Object.keys(TIMEFRAMES).map((tf) => (
-                      <button key={tf} className={`tfTab ${timeframe === tf ? "tfTabActive" : ""}`} onClick={() => setTimeframe(tf)}>{tf}</button>
-                    ))}
+                    {Object.keys(TIMEFRAMES).map((tf) => {
+                      const locked = tf !== "1D" && !isPro;
+                      return (
+                        <button key={tf} className={`tfTab ${timeframe === tf ? "tfTabActive" : ""}`} onClick={() => (locked ? setUpgradeModalOpen(true) : setTimeframe(tf))}>
+                          {locked && <Lock size={9} />} {tf}
+                        </button>
+                      );
+                    })}
                   </div>
                   <div className="indToggles">
-                    {[["ma", "MA(20)", LW_COLORS.amber], ["rsi", "RSI(14)", LW_COLORS.accent], ["macd", "MACD", LW_COLORS.bull]].map(([key, label, dot]) => (
-                      <button key={key} className={`indToggle ${indicators[key] ? "indToggleActive" : ""}`} onClick={() => setIndicators((prev) => ({ ...prev, [key]: !prev[key] }))}>
-                        <span className="indDot" style={{ background: dot }} />{label}
-                      </button>
-                    ))}
+                    {[["ma", "MA(20)", LW_COLORS.amber, false], ["rsi", "RSI(14)", LW_COLORS.accent, true], ["macd", "MACD", LW_COLORS.bull, true]].map(([key, label, dot, proOnly]) => {
+                      const locked = proOnly && !isPro;
+                      return (
+                        <button
+                          key={key}
+                          className={`indToggle ${indicators[key] ? "indToggleActive" : ""}`}
+                          onClick={() => (locked ? setUpgradeModalOpen(true) : setIndicators((prev) => ({ ...prev, [key]: !prev[key] })))}
+                        >
+                          {locked ? <Lock size={10} /> : <span className="indDot" style={{ background: dot }} />}{label}
+                        </button>
+                      );
+                    })}
                     <button className="indToggle fitBtn" title="Reset zoom / fit all candles" onClick={() => fitAllInGroup(syncGroupRef)}>
                       <Maximize2 size={11} /> Fit
                     </button>
@@ -1444,8 +1530,14 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
                   </div>
 
                   <div className="orderTypeTabs">
-                    {[["market", "Market"], ["limit", "Limit"], ["stop", "Stop"]].map(([key, label]) => (
-                      <button key={key} className={`orderTypeTab ${orderType === key ? "orderTypeTabActive" : ""}`} onClick={() => setOrderType(key)}>{label}</button>
+                    {[["market", "Market", false], ["limit", "Limit", true], ["stop", "Stop", true]].map(([key, label, proOnly]) => (
+                      <button
+                        key={key}
+                        className={`orderTypeTab ${orderType === key ? "orderTypeTabActive" : ""}`}
+                        onClick={() => (proOnly && !isPro ? setUpgradeModalOpen(true) : setOrderType(key))}
+                      >
+                        {proOnly && !isPro && <Lock size={10} />} {label}
+                      </button>
                     ))}
                   </div>
 
@@ -1507,6 +1599,9 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
           )}
 
           {tab === "chain" && (
+            !isPro ? (
+              <ProLockPanel title="Options Chain is a Pro feature" description="Live Black-Scholes pricing and Greeks across every strike and expiry." onUpgrade={() => setUpgradeModalOpen(true)} />
+            ) : (
             <div className="chainWrap">
               <div className="expiryTabs">
                 {expiries.map((e, i) => (
@@ -1557,6 +1652,7 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
               </div>
               <div className="chainNote">Premiums &amp; Greeks are modeled live from the underlying price via Black-Scholes — not a live exchange options feed. Quantities are per unit, not exchange lot size.</div>
             </div>
+            )
           )}
 
           {tab === "positions" && (
@@ -1671,6 +1767,9 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
           )}
 
           {tab === "alerts" && (
+            !isPro ? (
+              <ProLockPanel title="Price alerts are a Pro feature" description="Get notified the moment a stock crosses the price you're watching for." onUpgrade={() => setUpgradeModalOpen(true)} />
+            ) : (
             <div className="alertsWrap">
               <div className="alertForm">
                 <div className="alertFormRow">
@@ -1705,9 +1804,13 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
                 </table>
               )}
             </div>
+            )
           )}
 
           {tab === "news" && (
+            !isPro ? (
+              <ProLockPanel title="News is a Pro feature" description="Recent headlines for whatever stock you're currently viewing." onUpgrade={() => setUpgradeModalOpen(true)} />
+            ) : (
             <div className="newsWrap">
               {newsLoading ? (
                 <div className="empty">Loading news for {displayTicker(selected)}…</div>
@@ -1727,13 +1830,14 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
                 </div>
               )}
             </div>
+            )
           )}
 
           {tab === "history" && (
             <div className="histWrap">
               <div className="histHead">
                 <h3>Trade History</h3>
-                <button className="exportBtn" onClick={exportTradesCSV}><Download size={13} /> Export CSV</button>
+                <button className="exportBtn" onClick={exportTradesCSV}>{isPro ? <Download size={13} /> : <Lock size={12} />} Export CSV</button>
               </div>
               {trades.length === 0 ? (
                 <div className="empty">No trades yet. Your fills will show up here.</div>
@@ -1788,6 +1892,29 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
         </div>
       )}
 
+      {upgradeModalOpen && (
+        <div className="modalOverlay" onClick={() => !checkoutBusy && setUpgradeModalOpen(false)}>
+          <div className="modal upgradeModal" onClick={(e) => e.stopPropagation()}>
+            <h3><Sparkles size={17} className="proBadgeIcon" /> Upgrade to Pro</h3>
+            <p>Everything in Free, plus:</p>
+            <ul className="upgradeList">
+              <li>Limit &amp; stop-loss orders</li>
+              <li>RSI, MACD, and every chart timeframe</li>
+              <li>Options chain with live Greeks</li>
+              <li>Search &amp; add any NSE/BSE stock</li>
+              <li>Price alerts</li>
+              <li>News tab</li>
+              <li>Trade history CSV export</li>
+            </ul>
+            <div className="modalBtns">
+              <button className="btn btnGhost" onClick={() => setUpgradeModalOpen(false)} disabled={checkoutBusy}>Not now</button>
+              <button className="btn btnMarigold" onClick={handleUpgrade} disabled={checkoutBusy}>{checkoutBusy ? "Processing…" : "Subscribe — ₹99/mo"}</button>
+            </div>
+            <p className="dim upgradeFinePrint">Billed monthly via Razorpay. Cancel anytime from Razorpay's subscription management.</p>
+          </div>
+        </div>
+      )}
+
       {confirmReset && (
         <div className="modalOverlay" onClick={() => setConfirmReset(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -1811,6 +1938,17 @@ function Stat({ label, value, tone, pulse }) {
     <div className={`stat ${pulse ? `pulse-${pulse}` : ""}`}>
       <span className="statLabel">{label}</span>
       <span className={`statValue mono ${tone ? tone : ""}`}>{value}</span>
+    </div>
+  );
+}
+
+function ProLockPanel({ title, description, onUpgrade }) {
+  return (
+    <div className="lockPanel">
+      <div className="lockPanelIcon"><Lock size={20} /></div>
+      <h3>{title}</h3>
+      <p className="dim">{description}</p>
+      <button className="btn btnMarigold lockPanelBtn" onClick={onUpgrade}><Sparkles size={14} /> Upgrade to Pro</button>
     </div>
   );
 }
@@ -1862,18 +2000,63 @@ function OptionTicket({ ticket, quotes, instruments, onClose, onSubmit, heldQty 
 /* ======================================================================
    ROOT
 ====================================================================== */
+function SplashScreen({ label, themeIdx }) {
+  return (
+    <div className="authWrap" style={THEMES[themeIdx].vars}>
+      <style>{CSS}</style>
+      <div className="authCard splashCard">
+        <div className="authBrand"><Flame size={22} className="brandIcon" /><span>TRADE FREE</span></div>
+        <div className="authSub">{label}</div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
-  const [user, setUser] = useState(() => loadSession());
+  const [session, setSession] = useState(null);
+  const [sessionLoading, setSessionLoading] = useState(true);
+  const [portfolioData, setPortfolioData] = useState(null);
+  const [portfolioLoading, setPortfolioLoading] = useState(false);
+  const [subscription, setSubscription] = useState(null);
   const [themeIdx, setThemeIdx] = useState(() => loadThemeIdx());
 
-  const handleAuth = (uname) => {
-    saveSession(uname);
-    setUser(uname);
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setSessionLoading(false);
+    });
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession);
+    });
+    return () => listener.subscription.unsubscribe();
+  }, []);
+
+  const refreshSubscription = async () => {
+    const userId = session?.user?.id;
+    if (!userId) return;
+    setSubscription(await fetchSubscription(userId));
   };
-  const handleLogout = () => {
-    clearSession();
-    setUser(null);
-  };
+
+  useEffect(() => {
+    const userId = session?.user?.id;
+    if (!userId) { setPortfolioData(null); setSubscription(null); return; }
+    let cancelled = false;
+    setPortfolioLoading(true);
+    Promise.all([fetchPortfolio(userId), fetchSubscription(userId)])
+      .then(([portfolio, sub]) => {
+        if (cancelled) return;
+        setPortfolioData(portfolio);
+        setSubscription(sub);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setPortfolioData(hydratePortfolio(null));
+        setSubscription({ status: "free", current_period_end: null });
+      })
+      .finally(() => { if (!cancelled) setPortfolioLoading(false); });
+    return () => { cancelled = true; };
+  }, [session?.user?.id]);
+
   const cycleTheme = () => {
     setThemeIdx((i) => {
       const next = (i + 1) % THEMES.length;
@@ -1882,8 +2065,27 @@ export default function App() {
     });
   };
 
-  if (!user) return <AuthGate onAuth={handleAuth} themeIdx={themeIdx} cycleTheme={cycleTheme} />;
-  return <TradingApp username={user} onLogout={handleLogout} themeIdx={themeIdx} cycleTheme={cycleTheme} />;
+  if (sessionLoading) return <SplashScreen label="Loading…" themeIdx={themeIdx} />;
+  if (!session) return <AuthGate themeIdx={themeIdx} cycleTheme={cycleTheme} />;
+  if (portfolioLoading || !portfolioData || !subscription) return <SplashScreen label="Loading your portfolio…" themeIdx={themeIdx} />;
+
+  const username = session.user.user_metadata?.username || session.user.email.split("@")[0];
+  const isPro = subscription.status === "active";
+
+  return (
+    <TradingApp
+      key={session.user.id}
+      username={username}
+      userId={session.user.id}
+      userEmail={session.user.email}
+      initialPortfolio={portfolioData}
+      isPro={isPro}
+      onRefreshSubscription={refreshSubscription}
+      onLogout={signOutUser}
+      themeIdx={themeIdx}
+      cycleTheme={cycleTheme}
+    />
+  );
 }
 
 /* ---------------------------------- CSS ---------------------------------- */
@@ -1903,6 +2105,8 @@ const CSS = `
 
 .authWrap { position: relative; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
 .authCard { width: 360px; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 28px; }
+.splashCard { text-align: center; padding: 40px 28px; }
+.splashCard .authSub { margin: 10px 0 0; }
 .authBrand { display: flex; align-items: center; gap: 8px; font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 18px; justify-content: center; }
 .authSub { text-align: center; color: var(--text-dim); font-size: 12px; margin: 6px 0 22px; }
 .authTabs { display: flex; background: var(--surface-2); border-radius: 10px; padding: 4px; margin-bottom: 20px; }
@@ -1929,6 +2133,9 @@ const CSS = `
 @keyframes pulseBear { 0% { background: rgba(255,84,112,0.25); } 100% { background: transparent; } }
 .topbarActions { display: flex; align-items: center; gap: 10px; }
 .userBadge { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); background: var(--surface-2); border: 1px solid var(--border); padding: 7px 12px; border-radius: 20px; }
+.proBadge { background: var(--amber); color: #241800; font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 999px; letter-spacing: 0.4px; }
+.upgradeBtn { display: inline-flex; align-items: center; gap: 6px; background: var(--amber); color: #241800; border: none; padding: 8px 14px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; transition: opacity 0.15s ease; }
+.upgradeBtn:hover { opacity: 0.85; }
 .resetBtn { display: flex; align-items: center; gap: 6px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim); padding: 8px 14px; border-radius: 8px; font-size: 12px; cursor: pointer; transition: all 0.15s; }
 .resetBtn:hover { color: var(--text); border-color: var(--accent); }
 .themeBtn { display: flex; align-items: center; gap: 6px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim); padding: 8px 14px; border-radius: 8px; font-size: 12px; cursor: pointer; transition: all 0.15s; }
@@ -2030,6 +2237,7 @@ const CSS = `
 .btnBull { background: var(--bull); color: #06231A; }
 .btnBear { background: var(--bear); color: #2B0710; }
 .btnGhost { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); }
+.btnMarigold { background: var(--amber); color: #241800; }
 .held { font-size: 11px; color: var(--text-dim); }
 .posSummary { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
 .posSummaryRow { display: flex; justify-content: space-between; align-items: center; font-size: 11.5px; padding: 3px 0; }
@@ -2055,6 +2263,11 @@ const CSS = `
 .itmPut { background: rgba(255,84,112,0.08); }
 .atmRow td { border-top: 1px dashed var(--amber); border-bottom: 1px dashed var(--amber); }
 .chainNote { margin-top: 12px; font-size: 11px; color: var(--text-dim); }
+.lockPanel { background: var(--surface); border: 1px dashed var(--border); border-radius: 12px; padding: 44px 24px; text-align: center; }
+.lockPanelIcon { width: 44px; height: 44px; border-radius: 50%; background: var(--surface-2); color: var(--amber); display: flex; align-items: center; justify-content: center; margin: 0 auto 14px; }
+.lockPanel h3 { margin-bottom: 8px; }
+.lockPanel p { max-width: 34ch; margin: 0 auto 18px; font-size: 13px; line-height: 1.6; }
+.lockPanelBtn { flex: none; display: inline-flex; padding: 9px 18px; }
 
 .posWrap h3, .histWrap h3 { font-family: 'Space Grotesk'; font-size: 14px; margin: 0 0 10px; }
 .histHead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
@@ -2102,6 +2315,12 @@ const CSS = `
 .modal h3 { margin: 0 0 8px; font-family: 'Space Grotesk'; }
 .modal p { color: var(--text-dim); font-size: 13px; margin: 0 0 18px; }
 .modalBtns { display: flex; gap: 8px; }
+.upgradeModal h3 { display: flex; align-items: center; gap: 8px; }
+.proBadgeIcon { color: var(--amber); }
+.upgradeList { list-style: none; padding: 0; margin: 0 0 18px; display: flex; flex-direction: column; gap: 8px; }
+.upgradeList li { font-size: 13px; padding-left: 20px; position: relative; color: var(--text); }
+.upgradeList li::before { content: "✓"; position: absolute; left: 0; color: var(--bull); font-weight: 700; }
+.upgradeFinePrint { margin-top: 14px !important; font-size: 11px !important; text-align: center; }
 .ticketModal { width: 380px; }
 .ticketHead { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
 .ticketHead h3 { margin: 4px 0 2px; font-size: 20px; }
