@@ -294,7 +294,7 @@ function PriceChart({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPr
 
     chart.subscribeCrosshairMove((param) => {
       if (!legendRef.current) return;
-      const point = param.seriesData && param.seriesData.get(candleSeries);
+        const point = param.seriesData && param.seriesData.get(candleSeries) as { open: number; high: number; low: number; close: number } | undefined;
       if (param.time && point) {
         legendRef.current.textContent = `O ${point.open.toFixed(2)}   H ${point.high.toFixed(2)}   L ${point.low.toFixed(2)}   C ${point.close.toFixed(2)}`;
       } else {
