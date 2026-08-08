@@ -675,12 +675,15 @@ function AuthGate({ themeIdx, cycleTheme }) {
           </div>
           <div className="authField">
             <Lock size={14} className="authIcon" />
-            <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={mode === "register" ? "new-password" : "current-password"} />
+            <input type={showPw ? "text" : "password"} placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={mode === "register" ? "new-password" : "current-password"} />
+            <button type="button" onClick={() => setShowPw((v) => !v)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-dim)", padding: 0 }}>
+              {showPw ? <EyeOff size={14} /> : <Eye size={14} />}
+            </button>
           </div>
           {mode === "register" && (
             <div className="authField">
               <Lock size={14} className="authIcon" />
-              <input type="password" placeholder="Confirm password" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" />
+              <input type={showPw ? "text" : "password"} placeholder="Confirm password" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" />
             </div>
           )}
           {error && <div className="authError">{error}</div>}
