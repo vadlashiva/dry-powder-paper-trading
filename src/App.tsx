@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { createChart, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries } from "lightweight-charts";
 import {
-  TrendingUp, TrendingDown, RotateCcw, X, Flame, Activity, LogOut, Lock, User as UserIcon, Bell, Trash2, Maximize2, Download, Newspaper,
+  TrendingUp, TrendingDown, RotateCcw, X, Flame, Activity, LogOut, Lock, User as UserIcon, Bell, Trash2, Maximize2, Download, Newspaper, Crosshair,
 } from "lucide-react";
 
 /* ---------------- background themes ---------------- */
@@ -260,12 +260,18 @@ function fitAllInGroup(syncGroupRef) {
 }
 
 /* ---------------- Price chart (candlesticks + MA + crosshair OHLC legend) ---------------- */
-function PriceChart({ data, showMA, syncGroupRef }) {
+function PriceChart({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPrice, pendingLines }) {
   const containerRef = useRef(null);
   const legendRef = useRef(null);
   const chartRef = useRef(null);
   const candleRef = useRef(null);
   const maRef = useRef(null);
+  const draftLineRef = useRef(null);
+  const pendingLinesRef = useRef(new Map());
+  const pickModeRef = useRef(pickMode);
+  const onPricePickRef = useRef(onPricePick);
+  useEffect(() => { pickModeRef.current = pickMode; }, [pickMode]);
+  useEffect(() => { onPricePickRef.current = onPricePick; }, [onPricePick]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -297,6 +303,13 @@ function PriceChart({ data, showMA, syncGroupRef }) {
       }
     });
 
+    // Click-to-set-price: only acts while pick mode is on (toggled from the order ticket).
+    chart.subscribeClick((param) => {
+      if (!pickModeRef.current || !param.point || !candleRef.current) return;
+      const price = candleRef.current.coordinateToPrice(param.point.y);
+      if (price != null && onPricePickRef.current) onPricePickRef.current(price);
+    });
+
     chartRef.current = chart;
     candleRef.current = candleSeries;
     maRef.current = maSeries;
@@ -322,10 +335,53 @@ function PriceChart({ data, showMA, syncGroupRef }) {
     if (chartRef.current) chartRef.current.timeScale().fitContent();
   }, [data, showMA]);
 
+  // Draft price line — a dashed marker following whatever price is currently in the order ticket.
+  useEffect(() => {
+    if (!candleRef.current) return;
+    if (draftLineRef.current) {
+      candleRef.current.removePriceLine(draftLineRef.current);
+      draftLineRef.current = null;
+    }
+    if (draftPrice != null && !Number.isNaN(draftPrice)) {
+      draftLineRef.current = candleRef.current.createPriceLine({
+        price: draftPrice,
+        color: LW_COLORS.amber,
+        lineWidth: 2,
+        lineStyle: 2,
+        axisLabelVisible: true,
+        title: "your order",
+      });
+    }
+  }, [draftPrice]);
+
+  // Resting pending-order price lines for the symbol currently shown.
+  useEffect(() => {
+    if (!candleRef.current) return;
+    const list = pendingLines || [];
+    const currentIds = new Set(list.map((l) => l.id));
+    pendingLinesRef.current.forEach((line, id) => {
+      if (!currentIds.has(id)) {
+        candleRef.current.removePriceLine(line);
+        pendingLinesRef.current.delete(id);
+      }
+    });
+    list.forEach((l) => {
+      const existing = pendingLinesRef.current.get(l.id);
+      if (existing) {
+        existing.applyOptions({ price: l.price, title: l.title, color: l.color });
+      } else {
+        const line = candleRef.current.createPriceLine({
+          price: l.price, color: l.color, lineWidth: 1, lineStyle: 3, axisLabelVisible: true, title: l.title,
+        });
+        pendingLinesRef.current.set(l.id, line);
+      }
+    });
+  }, [pendingLines]);
+
   return (
     <div className="lwWrap">
       <div ref={legendRef} className="lwLegend mono" />
-      <div ref={containerRef} className="lwChart" />
+      <div ref={containerRef} className={`lwChart ${pickMode ? "lwChartPicking" : ""}`} />
     </div>
   );
 }
@@ -705,6 +761,7 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
   const [editingOrder, setEditingOrder] = useState(null);
   const [editQty, setEditQty] = useState(1);
   const [editPrice, setEditPrice] = useState("");
+  const [pickingPriceFromChart, setPickingPriceFromChart] = useState(false);
 
   const expiries = useMemo(() => nextThursdays(4), []);
   const quotesRef = useRef(quotes);
@@ -957,6 +1014,8 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
   const isIndex = meta.exchange === "INDEX";
   const chartSeries = useMemo(() => buildChartSeries(chartHistory.length ? chartHistory : q.history, indicators), [chartHistory, q.history, indicators]);
 
+  useEffect(() => { setPickingPriceFromChart(false); }, [selected, tab]);
+
   /* per-symbol news — only fetched while the News tab is actually open */
   useEffect(() => {
     if (tab !== "news") return;
@@ -1060,6 +1119,20 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
     setPendingOrders((prev) => [order, ...prev]);
     setOrderPrice("");
     showToast(`${orderType === "limit" ? "Limit" : "Stop"} order placed: ${side} ${qty} ${displayTicker(selected)} @ ${fmtMoney(price)}`, side === "buy" ? "bull" : "bear");
+  };
+
+  const handleChartPricePick = (price) => {
+    setOrderPrice(price.toFixed(2));
+    setPickingPriceFromChart(false);
+    showToast(`Price set from chart: ${fmtMoney(price)}`, "bull");
+  };
+
+  const togglePickFromChart = () => {
+    setPickingPriceFromChart((v) => {
+      const next = !v;
+      if (next && orderType === "market") setOrderType("limit");
+      return next;
+    });
   };
 
   const cancelOrder = (id) => {
@@ -1320,7 +1393,22 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
                   </div>
                 </div>
 
-                <PriceChart data={chartSeries} showMA={indicators.ma} syncGroupRef={syncGroupRef} />
+                <PriceChart
+                  data={chartSeries}
+                  showMA={indicators.ma}
+                  syncGroupRef={syncGroupRef}
+                  pickMode={pickingPriceFromChart}
+                  onPricePick={handleChartPricePick}
+                  draftPrice={orderType !== "market" && orderPrice ? parseFloat(orderPrice) || null : null}
+                  pendingLines={pendingOrders
+                    .filter((o) => o.symbol === selected)
+                    .map((o) => ({
+                      id: o.id,
+                      price: o.price,
+                      color: o.side === "buy" ? LW_COLORS.bull : LW_COLORS.bear,
+                      title: `${o.side === "buy" ? "BUY" : "SELL"} ${o.kind === "limit" ? "LMT" : "STOP"}`,
+                    }))}
+                />
 
                 {indicators.rsi && (
                   <div className="subChart">
@@ -1336,7 +1424,11 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
                   </div>
                 )}
 
-                <div className="chartHint dim">Scroll / pinch to zoom &middot; drag to pan &middot; hover for OHLC &middot; Fit resets zoom</div>
+                {pickingPriceFromChart ? (
+                  <div className="chartHint chartHintActive">Click anywhere on the chart to set your order price</div>
+                ) : (
+                  <div className="chartHint dim">Scroll / pinch to zoom &middot; drag to pan &middot; hover for OHLC &middot; Fit resets zoom</div>
+                )}
               </div>
 
               {isIndex ? (
@@ -1368,6 +1460,10 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
                       <input type="number" min="0" step="0.05" className="qtyInput mono" placeholder={q.price.toFixed(2)} value={orderPrice} onChange={(e) => setOrderPrice(e.target.value)} />
                     </div>
                   )}
+
+                  <button className={`pickPriceBtn ${pickingPriceFromChart ? "pickPriceBtnActive" : ""}`} onClick={togglePickFromChart}>
+                    <Crosshair size={13} /> {pickingPriceFromChart ? "Click the chart to set price…" : "Pick price from chart"}
+                  </button>
 
                   <div className="orderEst mono">
                     <span className="dim">Est. cost</span>
@@ -1900,6 +1996,8 @@ const CSS = `
 .subChart { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 10px; }
 .subChartLabel { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.6px; display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
 .chartHint { margin-top: 10px; font-size: 10px; text-align: center; }
+.chartHintActive { margin-top: 10px; font-size: 11px; text-align: center; color: var(--amber); font-weight: 600; }
+.lwChartPicking { cursor: crosshair; }
 .lwWrap { position: relative; }
 .lwChart { width: 100%; }
 .lwLegend { position: absolute; top: 4px; left: 4px; z-index: 5; font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums; letter-spacing: 0.2px; color: var(--text-dim); background: rgba(18,23,34,0.75); padding: 3px 9px; border-radius: 6px; pointer-events: none; }
@@ -1920,6 +2018,10 @@ const CSS = `
 .qtyInput { width: 90px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text); padding: 7px 10px; border-radius: 6px; font-size: 13px; text-align: right; transition: border-color 0.15s ease; }
 .qtyInput:focus { outline: none; border-color: var(--accent); }
 .orderEst { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--text-dim); padding: 10px 0; margin-bottom: 14px; border-top: 1px dashed var(--border); }
+.pickPriceBtn { width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 6px; background: var(--surface-2); border: 1px dashed var(--border); color: var(--text-dim); padding: 8px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; margin-bottom: 12px; transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease; }
+.pickPriceBtn:hover { color: var(--text); border-color: var(--accent); }
+.pickPriceBtnActive { background: var(--amber); color: #241800; border: 1px solid var(--amber); }
+.pickPriceBtnActive:hover { color: #241800; }
 .orderEst span:last-child { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
 .orderBtns { display: flex; gap: 8px; margin-bottom: 14px; }
 .btn { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 10px; border-radius: 8px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; transition: opacity 0.15s ease, transform 0.1s ease; }
