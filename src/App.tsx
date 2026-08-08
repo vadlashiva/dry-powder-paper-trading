@@ -402,7 +402,7 @@ function RSIChart({ data, syncGroupRef }) {
       handleScroll: { mouseWheel: true, pressedMouseMove: true },
       handleScale: { mouseWheel: true, pinch: true },
     });
-    const series = chart.addSeries(LineSeries, { color: LW_COLORS.accent, lineWidth: 1.5, priceLineVisible: false, lastValueVisible: false });
+    const series = chart.addSeries(LineSeries, { color: LW_COLORS.accent, lineWidth: 2, priceLineVisible: false, lastValueVisible: false });
     series.createPriceLine({ price: 70, color: LW_COLORS.bear, lineWidth: 1, lineStyle: 2, axisLabelVisible: true });
     series.createPriceLine({ price: 30, color: LW_COLORS.bull, lineWidth: 1, lineStyle: 2, axisLabelVisible: true });
 
@@ -450,8 +450,8 @@ function MACDChart({ data, syncGroupRef }) {
       handleScale: { mouseWheel: true, pinch: true },
     });
     const hist = chart.addSeries(HistogramSeries, { priceLineVisible: false, lastValueVisible: false });
-    const macdLine = chart.addSeries(LineSeries, { color: LW_COLORS.bull, lineWidth: 1.5, priceLineVisible: false, lastValueVisible: false });
-    const signalLine = chart.addSeries(LineSeries, { color: LW_COLORS.bear, lineWidth: 1.5, priceLineVisible: false, lastValueVisible: false });
+    const macdLine = chart.addSeries(LineSeries, { color: LW_COLORS.bull, lineWidth: 2, priceLineVisible: false, lastValueVisible: false });
+    const signalLine = chart.addSeries(LineSeries, { color: LW_COLORS.bear, lineWidth: 2, priceLineVisible: false, lastValueVisible: false });
 
     chartRef.current = chart;
     histRef.current = hist;
