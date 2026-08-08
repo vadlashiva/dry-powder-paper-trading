@@ -461,7 +461,11 @@ function loadPortfolio(username) {
     const raw = localStorage.getItem(portfolioKey(username));
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    return { ...parsed, trades: (parsed.trades || []).map((t) => ({ ...t, time: new Date(t.time) })) };
+    return {
+      ...parsed,
+      trades: (parsed.trades || []).map((t) => ({ ...t, time: new Date(t.time) })),
+      pendingOrders: (parsed.pendingOrders || []).map((o) => ({ ...o, createdAt: new Date(o.createdAt) })),
+    };
   } catch { return null; }
 }
 function savePortfolio(username, data) {
@@ -630,14 +634,24 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
   const [alertTarget, setAlertTarget] = useState("");
   const [alertDirection, setAlertDirection] = useState("above");
 
+  const [pendingOrders, setPendingOrders] = useState(() => saved?.pendingOrders ?? []);
+  const [orderType, setOrderType] = useState("market");
+  const [orderPrice, setOrderPrice] = useState("");
+
   const expiries = useMemo(() => nextThursdays(4), []);
   const quotesRef = useRef(quotes);
   useEffect(() => { quotesRef.current = quotes; }, [quotes]);
+  const cashRef = useRef(cash);
+  useEffect(() => { cashRef.current = cash; }, [cash]);
+  const stockPositionsRef = useRef(stockPositions);
+  useEffect(() => { stockPositionsRef.current = stockPositions; }, [stockPositions]);
+  const pendingOrdersRef = useRef(pendingOrders);
+  useEffect(() => { pendingOrdersRef.current = pendingOrders; }, [pendingOrders]);
 
   /* persist this user's portfolio whenever it changes */
   useEffect(() => {
-    savePortfolio(username, { cash, stockPositions, optionPositions, trades, alerts });
-  }, [username, cash, stockPositions, optionPositions, trades, alerts]);
+    savePortfolio(username, { cash, stockPositions, optionPositions, trades, alerts, pendingOrders });
+  }, [username, cash, stockPositions, optionPositions, trades, alerts, pendingOrders]);
 
   /* watchlist quotes: poll every 20s + realistic jitter every 2.2s */
   useEffect(() => {
@@ -725,6 +739,70 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
       return a;
     });
     if (changed) setAlerts(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quotes]);
+
+  /* limit & stop order fills — checked against every price tick, same cadence as alerts.
+     Reads cash/positions/pendingOrders via refs (kept in sync above) so this effect can stay
+     subscribed only to [quotes] without acting on stale state. */
+  useEffect(() => {
+    const orders = pendingOrdersRef.current;
+    if (orders.length === 0) return;
+
+    const remaining = [];
+    const toFill = [];
+    orders.forEach((o) => {
+      const price = quotes[o.symbol]?.price;
+      if (price == null) { remaining.push(o); return; }
+      const triggered = o.kind === "limit"
+        ? (o.side === "buy" ? price <= o.price : price >= o.price)
+        : (o.side === "buy" ? price >= o.price : price <= o.price);
+      if (triggered) toFill.push({ ...o, fillPrice: price });
+      else remaining.push(o);
+    });
+    if (toFill.length === 0) return;
+
+    let workingCash = cashRef.current;
+    let workingPositions = stockPositionsRef.current.map((p) => ({ ...p }));
+    const filled = [];
+    const cancelled = [];
+
+    toFill.forEach((o) => {
+      const total = o.fillPrice * o.qty;
+      const idx = workingPositions.findIndex((p) => p.symbol === o.symbol);
+      if (o.side === "buy") {
+        if (total > workingCash) { cancelled.push(o); return; }
+        workingCash -= total;
+        if (idx >= 0) {
+          const totalQty = workingPositions[idx].qty + o.qty;
+          const avgPrice = (workingPositions[idx].avgPrice * workingPositions[idx].qty + total) / totalQty;
+          workingPositions[idx] = { ...workingPositions[idx], qty: totalQty, avgPrice };
+        } else {
+          workingPositions.push({ id: uid(), symbol: o.symbol, qty: o.qty, avgPrice: o.fillPrice });
+        }
+      } else {
+        const held = idx >= 0 ? workingPositions[idx].qty : 0;
+        if (o.qty > held) { cancelled.push(o); return; }
+        workingCash += total;
+        workingPositions[idx] = { ...workingPositions[idx], qty: workingPositions[idx].qty - o.qty };
+      }
+      filled.push(o);
+    });
+    workingPositions = workingPositions.filter((p) => p.qty > 0);
+
+    setPendingOrders(remaining);
+    if (filled.length || cancelled.length) {
+      setCash(workingCash);
+      setStockPositions(workingPositions);
+    }
+    filled.forEach((o) => {
+      const label = `${o.kind.toUpperCase()} ${o.side.toUpperCase()} ${o.qty} ${displayTicker(o.symbol)} @ ${fmtMoney(o.fillPrice)}`;
+      logTrade(label, o.side === "buy" ? -(o.fillPrice * o.qty) : o.fillPrice * o.qty);
+      showToast(`${o.kind === "limit" ? "Limit" : "Stop"} order filled: ${o.side} ${o.qty} ${displayTicker(o.symbol)}`, o.side === "buy" ? "bull" : "bear");
+    });
+    cancelled.forEach((o) => {
+      showToast(`Order cancelled — ${o.side === "buy" ? "insufficient funds" : "insufficient shares held"} for ${displayTicker(o.symbol)}`, "bear");
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quotes]);
 
@@ -843,6 +921,30 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
     }
   };
 
+  const placeConditionalOrder = (side) => {
+    const price = parseFloat(orderPrice);
+    const qty = orderQty;
+    if (!price || price <= 0) return showToast("Enter a valid price", "bear");
+    if (qty <= 0) return showToast("Enter a valid quantity", "bear");
+
+    if (side === "buy") {
+      if (price * qty > cash) return showToast("Order exceeds available cash", "bear");
+    } else {
+      const held = stockPositions.find((p) => p.symbol === selected)?.qty ?? 0;
+      if (qty > held) return showToast(`Only ${held} shares held`, "bear");
+    }
+
+    const order = { id: uid(), symbol: selected, side, kind: orderType, qty, price, createdAt: new Date() };
+    setPendingOrders((prev) => [order, ...prev]);
+    setOrderPrice("");
+    showToast(`${orderType === "limit" ? "Limit" : "Stop"} order placed: ${side} ${qty} ${displayTicker(selected)} @ ${fmtMoney(price)}`, side === "buy" ? "bull" : "bear");
+  };
+
+  const cancelOrder = (id) => {
+    setPendingOrders((prev) => prev.filter((o) => o.id !== id));
+    showToast("Order cancelled", "bear");
+  };
+
   const openTicket = (type, strike, expiry) => setTicket({ symbol: selected, type, strike, expiry: expiry.getTime() });
 
   const placeOptionOrder = (mode, qty) => {
@@ -911,6 +1013,7 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
     setOptionPositions([]);
     setTrades([]);
     setAlerts([]);
+    setPendingOrders([]);
     setConfirmReset(false);
     showToast("Account reset", "bull");
   };
@@ -1029,7 +1132,7 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
           </div>
 
           <div className="tabs">
-            {[["trade", "Chart & Trade"], ["chain", "Options Chain"], ["positions", "Positions"], ["alerts", `Alerts${activeAlerts ? ` (${activeAlerts})` : ""}`], ["history", "History"]].map(([id, label]) => (
+            {[["trade", "Chart & Trade"], ["chain", "Options Chain"], ["positions", "Positions"], ["orders", `Orders${pendingOrders.length ? ` (${pendingOrders.length})` : ""}`], ["alerts", `Alerts${activeAlerts ? ` (${activeAlerts})` : ""}`], ["history", "History"]].map(([id, label]) => (
               <button key={id} className={`tab ${tab === id ? "tabActive" : ""}`} onClick={() => setTab(id)}>{label}</button>
             ))}
           </div>
@@ -1082,22 +1185,44 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
               ) : (
                 <div className="orderCard">
                   <div className="orderCardHead">
-                    <h3>Market Order</h3>
+                    <h3>{orderType === "market" ? "Market Order" : orderType === "limit" ? "Limit Order" : "Stop Order"}</h3>
                     <span className="orderCardSym mono">{displayTicker(selected)}</span>
+                  </div>
+
+                  <div className="orderTypeTabs">
+                    {[["market", "Market"], ["limit", "Limit"], ["stop", "Stop"]].map(([key, label]) => (
+                      <button key={key} className={`orderTypeTab ${orderType === key ? "orderTypeTabActive" : ""}`} onClick={() => setOrderType(key)}>{label}</button>
+                    ))}
                   </div>
 
                   <div className="orderRow">
                     <label>Quantity</label>
                     <input type="number" min="1" className="qtyInput mono" value={orderQty} onChange={(e) => setOrderQty(Math.max(1, parseInt(e.target.value) || 1))} />
                   </div>
+
+                  {orderType !== "market" && (
+                    <div className="orderRow">
+                      <label>{orderType === "limit" ? "Limit price" : "Stop price"}</label>
+                      <input type="number" min="0" step="0.05" className="qtyInput mono" placeholder={q.price.toFixed(2)} value={orderPrice} onChange={(e) => setOrderPrice(e.target.value)} />
+                    </div>
+                  )}
+
                   <div className="orderEst mono">
                     <span className="dim">Est. cost</span>
-                    <span>{fmtMoney(q.price * orderQty)}</span>
+                    <span>{fmtMoney((orderType === "market" ? q.price : parseFloat(orderPrice) || q.price) * orderQty)}</span>
                   </div>
 
+                  {orderType !== "market" && (
+                    <div className="orderHint dim">
+                      {orderType === "limit"
+                        ? `Fills once ${displayTicker(selected)} trades at your price or better.`
+                        : `Triggers a market order once ${displayTicker(selected)} trades through your stop price.`}
+                    </div>
+                  )}
+
                   <div className="orderBtns">
-                    <button className="btn btnBull" onClick={() => placeStockOrder("buy")}><TrendingUp size={14} /> Buy</button>
-                    <button className="btn btnBear" onClick={() => placeStockOrder("sell")}><TrendingDown size={14} /> Sell</button>
+                    <button className="btn btnBull" onClick={() => (orderType === "market" ? placeStockOrder("buy") : placeConditionalOrder("buy"))}><TrendingUp size={14} /> Buy</button>
+                    <button className="btn btnBear" onClick={() => (orderType === "market" ? placeStockOrder("sell") : placeConditionalOrder("sell"))}><TrendingDown size={14} /> Sell</button>
                   </div>
 
                   {(() => {
@@ -1235,6 +1360,32 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
                   </tbody>
                 </table>
               )}
+            </div>
+          )}
+
+          {tab === "orders" && (
+            <div className="ordersWrap">
+              {pendingOrders.length === 0 ? (
+                <div className="empty">No pending orders. Place a limit or stop order from the Chart &amp; Trade tab.</div>
+              ) : (
+                <table className="posTable">
+                  <thead><tr><th>Symbol</th><th>Side</th><th>Type</th><th>Qty</th><th>Price</th><th>Placed</th><th></th></tr></thead>
+                  <tbody>
+                    {pendingOrders.map((o) => (
+                      <tr key={o.id}>
+                        <td className="mono">{displayTicker(o.symbol)}</td>
+                        <td className={`mono ${o.side === "buy" ? "bull" : "bear"}`}>{o.side.toUpperCase()}</td>
+                        <td className="mono dim">{o.kind === "limit" ? "Limit" : "Stop"}</td>
+                        <td className="mono">{o.qty}</td>
+                        <td className="mono">{fmtMoney(o.price)}</td>
+                        <td className="mono dim">{o.createdAt.toLocaleTimeString()}</td>
+                        <td><button className="closeBtn" onClick={() => cancelOrder(o.id)}><Trash2 size={12} /></button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              <div className="dim ordersHint">Orders are checked against live prices as they update and fill automatically — no need to keep this tab open.</div>
             </div>
           )}
 
@@ -1525,6 +1676,11 @@ const CSS = `
 .orderCard:hover { box-shadow: 0 10px 30px rgba(0,0,0,0.22); }
 .orderCard h3 { margin: 0; font-family: 'Space Grotesk'; font-size: 14px; }
 .orderCardHead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.orderTypeTabs { display: flex; gap: 3px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 3px; margin-bottom: 14px; }
+.orderTypeTab { flex: 1; background: none; color: var(--text-dim); padding: 7px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; transition: background 0.15s ease, color 0.15s ease; }
+.orderTypeTab:hover { color: var(--text); }
+.orderTypeTabActive { background: var(--accent); color: white; }
+.orderHint { font-size: 11px; line-height: 1.5; margin-bottom: 14px; }
 .orderCardSym { font-size: 11px; color: var(--text-dim); background: var(--surface-2); border: 1px solid var(--border); padding: 3px 9px; border-radius: 20px; }
 .indexNote { font-size: 12px; line-height: 1.6; margin: 0; }
 .orderRow { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
@@ -1567,6 +1723,7 @@ const CSS = `
 .chainNote { margin-top: 12px; font-size: 11px; color: var(--text-dim); }
 
 .posWrap h3, .histWrap h3 { font-family: 'Space Grotesk'; font-size: 14px; margin: 0 0 10px; }
+.ordersHint { margin-top: 14px; font-size: 11.5px; line-height: 1.5; }
 .mt { margin-top: 26px; }
 .empty { color: var(--text-dim); font-size: 13px; padding: 20px; background: var(--surface); border: 1px dashed var(--border); border-radius: 10px; text-align: center; }
 .posTable { width: 100%; border-collapse: collapse; font-size: 13px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
