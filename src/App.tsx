@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { createChart, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries } from "lightweight-charts";
 import {
-  TrendingUp, TrendingDown, RotateCcw, X, Flame, Activity, LogOut, Lock, User as UserIcon, Bell, Trash2, Maximize2,
+  TrendingUp, TrendingDown, RotateCcw, X, Flame, Activity, LogOut, Lock, User as UserIcon, Bell, Trash2, Maximize2, Download, Newspaper,
 } from "lucide-react";
 
 /* ---------------- background themes ---------------- */
@@ -239,6 +239,7 @@ function prepLW(data) {
 }
 
 const LW_COLORS = { bull: "#14E8A0", bear: "#FF5470", accent: "#7B61FF", amber: "#FFB020", grid: "#232B3D", text: "#8B96AA" };
+const ALLOC_PALETTE = ["#14E8A0", "#7B61FF", "#FFB020", "#FF5470", "#5EC8D8", "#B98EFF", "#FF8A5B", "#6FCF97"];
 
 function joinSyncGroup(chart, syncGroupRef) {
   syncGroupRef.current.push(chart);
@@ -447,6 +448,25 @@ function loadUsers() {
 function saveUsers(list) {
   try { localStorage.setItem(LS_USERS, JSON.stringify(list)); } catch { /* storage unavailable */ }
 }
+
+/* ---------------- password hashing (client-side; see auth note below) ----------------
+   Accounts are still entirely client-side — there's no server to keep a real secret from
+   someone reading this bundle. Hashing with a per-user salt means a stored account record
+   (or this file's localStorage) no longer contains the plaintext password directly, which
+   is a meaningful improvement over storing it raw — but it is NOT equivalent to real
+   server-side auth. Treat this as "reasonable for a personal/demo app," not production-grade
+   security for accounts other people trust with a real password. */
+function randomSalt() {
+  const arr = new Uint8Array(16);
+  crypto.getRandomValues(arr);
+  return Array.from(arr).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+async function hashPassword(password, salt) {
+  const data = new TextEncoder().encode(`${salt}:${password}`);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 function loadSession() {
   try { return localStorage.getItem(LS_SESSION) || null; } catch { return null; }
 }
@@ -465,6 +485,7 @@ function loadPortfolio(username) {
       ...parsed,
       trades: (parsed.trades || []).map((t) => ({ ...t, time: new Date(t.time) })),
       pendingOrders: (parsed.pendingOrders || []).map((o) => ({ ...o, createdAt: new Date(o.createdAt) })),
+      customInstruments: parsed.customInstruments || [],
     };
   } catch { return null; }
 }
@@ -512,6 +533,23 @@ async function searchYahooSymbols(query) {
     }));
 }
 
+/** Recent headlines for a symbol/company, via the same search endpoint's news results. */
+async function fetchSymbolNews(query) {
+  const res = await fetch(
+    `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=0&newsCount=8`
+  );
+  if (!res.ok) throw new Error("news fetch failed");
+  const json = await res.json();
+  const news = json.news || [];
+  return news.map((n) => ({
+    title: n.title,
+    publisher: n.publisher,
+    link: n.link,
+    time: n.providerPublishTime ? new Date(n.providerPublishTime * 1000) : null,
+    thumbnail: n.thumbnail?.resolutions?.[0]?.url ?? null,
+  }));
+}
+
 /* ======================================================================
    AUTH GATE (accounts persist in this browser via localStorage)
 ====================================================================== */
@@ -522,27 +560,50 @@ function AuthGate({ onAuth, themeIdx, cycleTheme }) {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault();
     setError("");
     const uname = username.trim();
     if (!uname || !password) return setError("Enter a username and password.");
 
-    if (mode === "register") {
-      if (password !== confirm) return setError("Passwords don't match.");
-      if (users.some((u) => u.username.toLowerCase() === uname.toLowerCase()))
-        return setError("That username is already taken.");
-      const next = [...users, { username: uname, password }];
-      setUsers(next);
-      saveUsers(next);
-      onAuth(uname);
-    } else {
-      const match = users.find(
-        (u) => u.username.toLowerCase() === uname.toLowerCase() && u.password === password
-      );
-      if (!match) return setError("Invalid username or password.");
-      onAuth(uname);
+    setBusy(true);
+    try {
+      if (mode === "register") {
+        if (password !== confirm) return setError("Passwords don't match.");
+        if (users.some((u) => u.username.toLowerCase() === uname.toLowerCase()))
+          return setError("That username is already taken.");
+        const salt = randomSalt();
+        const passwordHash = await hashPassword(password, salt);
+        const next = [...users, { username: uname, salt, passwordHash }];
+        setUsers(next);
+        saveUsers(next);
+        onAuth(uname);
+      } else {
+        const match = users.find((u) => u.username.toLowerCase() === uname.toLowerCase());
+        if (!match) return setError("Invalid username or password.");
+
+        if (match.passwordHash) {
+          const attempt = await hashPassword(password, match.salt);
+          if (attempt !== match.passwordHash) return setError("Invalid username or password.");
+        } else if (match.password != null) {
+          // legacy plaintext account from before hashing was added — verify, then upgrade in place
+          if (match.password !== password) return setError("Invalid username or password.");
+          const salt = randomSalt();
+          const passwordHash = await hashPassword(password, salt);
+          const upgraded = users.map((u) =>
+            u.username.toLowerCase() === uname.toLowerCase() ? { username: u.username, salt, passwordHash } : u
+          );
+          setUsers(upgraded);
+          saveUsers(upgraded);
+        } else {
+          return setError("Invalid username or password.");
+        }
+        onAuth(uname);
+      }
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -580,10 +641,10 @@ function AuthGate({ onAuth, themeIdx, cycleTheme }) {
             </div>
           )}
           {error && <div className="authError">{error}</div>}
-          <button type="submit" className="btn btnBull authSubmit">{mode === "register" ? "Create account" : "Log in"}</button>
+          <button type="submit" className="btn btnBull authSubmit" disabled={busy}>{busy ? "Please wait…" : mode === "register" ? "Create account" : "Log in"}</button>
         </form>
 
-        <div className="authNote">Accounts and portfolios are saved in this browser (localStorage) — refreshing keeps you logged in, and your positions stay put. They won't sync to another device or browser.</div>
+        <div className="authNote">Accounts and portfolios are saved in this browser (localStorage) — refreshing keeps you logged in, and your positions stay put. They won't sync to another device or browser. Passwords are hashed before storage, but this is still a client-only demo, not a real backend — don't reuse a password you use elsewhere.</div>
       </div>
     </div>
   );
@@ -598,7 +659,8 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
 
   const [quotes, setQuotes] = useState(() => {
     const q = {};
-    INSTRUMENTS.forEach((s) => {
+    const seedList = [...INSTRUMENTS, ...(saved?.customInstruments ?? [])];
+    seedList.forEach((s) => {
       const hist = genSyntheticHistory(s.fallback, 60, TIMEFRAME_MS["1D"]);
       q[s.symbol] = { price: s.fallback, prevClose: s.fallback, history: hist, live: false };
     });
@@ -618,7 +680,7 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
   const [confirmReset, setConfirmReset] = useState(false);
   const [pulse, setPulse] = useState(null);
   const [search, setSearch] = useState("");
-  const [customInstruments, setCustomInstruments] = useState([]);
+  const [customInstruments, setCustomInstruments] = useState(() => saved?.customInstruments ?? []);
   const [remoteResults, setRemoteResults] = useState([]);
   const [searchingRemote, setSearchingRemote] = useState(false);
 
@@ -634,9 +696,15 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
   const [alertTarget, setAlertTarget] = useState("");
   const [alertDirection, setAlertDirection] = useState("above");
 
+  const [newsItems, setNewsItems] = useState([]);
+  const [newsLoading, setNewsLoading] = useState(false);
+
   const [pendingOrders, setPendingOrders] = useState(() => saved?.pendingOrders ?? []);
   const [orderType, setOrderType] = useState("market");
   const [orderPrice, setOrderPrice] = useState("");
+  const [editingOrder, setEditingOrder] = useState(null);
+  const [editQty, setEditQty] = useState(1);
+  const [editPrice, setEditPrice] = useState("");
 
   const expiries = useMemo(() => nextThursdays(4), []);
   const quotesRef = useRef(quotes);
@@ -650,8 +718,8 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
 
   /* persist this user's portfolio whenever it changes */
   useEffect(() => {
-    savePortfolio(username, { cash, stockPositions, optionPositions, trades, alerts, pendingOrders });
-  }, [username, cash, stockPositions, optionPositions, trades, alerts, pendingOrders]);
+    savePortfolio(username, { cash, stockPositions, optionPositions, trades, alerts, pendingOrders, customInstruments });
+  }, [username, cash, stockPositions, optionPositions, trades, alerts, pendingOrders, customInstruments]);
 
   /* watchlist quotes: poll every 20s + realistic jitter every 2.2s */
   useEffect(() => {
@@ -744,7 +812,9 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
 
   /* limit & stop order fills — checked against every price tick, same cadence as alerts.
      Reads cash/positions/pendingOrders via refs (kept in sync above) so this effect can stay
-     subscribed only to [quotes] without acting on stale state. */
+     subscribed only to [quotes] without acting on stale state. Supports partial fills: a buy
+     fills as much as current cash allows and stays pending for the rest; a sell fills as much
+     as is currently held and cancels the unfillable remainder (no short selling here). */
   useEffect(() => {
     const orders = pendingOrdersRef.current;
     if (orders.length === 0) return;
@@ -764,41 +834,67 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
 
     let workingCash = cashRef.current;
     let workingPositions = stockPositionsRef.current.map((p) => ({ ...p }));
-    const filled = [];
-    const cancelled = [];
+    const filled = [];       // fully filled
+    const partial = [];      // partially filled — remainder re-queued or cancelled, see resolution
+    const cancelled = [];    // fully cancelled, nothing filled
 
     toFill.forEach((o) => {
-      const total = o.fillPrice * o.qty;
+      const { fillPrice, ...orderCore } = o;
       const idx = workingPositions.findIndex((p) => p.symbol === o.symbol);
+
       if (o.side === "buy") {
-        if (total > workingCash) { cancelled.push(o); return; }
+        const affordableQty = Math.max(0, Math.floor(workingCash / fillPrice));
+        const fillQty = Math.min(o.qty, affordableQty);
+        if (fillQty <= 0) { cancelled.push(o); return; }
+        const total = fillPrice * fillQty;
         workingCash -= total;
         if (idx >= 0) {
-          const totalQty = workingPositions[idx].qty + o.qty;
+          const totalQty = workingPositions[idx].qty + fillQty;
           const avgPrice = (workingPositions[idx].avgPrice * workingPositions[idx].qty + total) / totalQty;
           workingPositions[idx] = { ...workingPositions[idx], qty: totalQty, avgPrice };
         } else {
-          workingPositions.push({ id: uid(), symbol: o.symbol, qty: o.qty, avgPrice: o.fillPrice });
+          workingPositions.push({ id: uid(), symbol: o.symbol, qty: fillQty, avgPrice: fillPrice });
+        }
+        if (fillQty < o.qty) {
+          remaining.push({ ...orderCore, qty: o.qty - fillQty });
+          partial.push({ ...o, filledQty: fillQty, remainingQty: o.qty - fillQty, resolution: "requeued" });
+        } else {
+          filled.push({ ...o, filledQty: fillQty });
         }
       } else {
         const held = idx >= 0 ? workingPositions[idx].qty : 0;
-        if (o.qty > held) { cancelled.push(o); return; }
+        const fillQty = Math.min(o.qty, held);
+        if (fillQty <= 0) { cancelled.push(o); return; }
+        const total = fillPrice * fillQty;
         workingCash += total;
-        workingPositions[idx] = { ...workingPositions[idx], qty: workingPositions[idx].qty - o.qty };
+        workingPositions[idx] = { ...workingPositions[idx], qty: workingPositions[idx].qty - fillQty };
+        if (fillQty < o.qty) {
+          partial.push({ ...o, filledQty: fillQty, remainingQty: o.qty - fillQty, resolution: "cancelled" });
+        } else {
+          filled.push({ ...o, filledQty: fillQty });
+        }
       }
-      filled.push(o);
     });
     workingPositions = workingPositions.filter((p) => p.qty > 0);
 
     setPendingOrders(remaining);
-    if (filled.length || cancelled.length) {
+    if (filled.length || partial.length || cancelled.length) {
       setCash(workingCash);
       setStockPositions(workingPositions);
     }
     filled.forEach((o) => {
-      const label = `${o.kind.toUpperCase()} ${o.side.toUpperCase()} ${o.qty} ${displayTicker(o.symbol)} @ ${fmtMoney(o.fillPrice)}`;
-      logTrade(label, o.side === "buy" ? -(o.fillPrice * o.qty) : o.fillPrice * o.qty);
-      showToast(`${o.kind === "limit" ? "Limit" : "Stop"} order filled: ${o.side} ${o.qty} ${displayTicker(o.symbol)}`, o.side === "buy" ? "bull" : "bear");
+      const label = `${o.kind.toUpperCase()} ${o.side.toUpperCase()} ${o.filledQty} ${displayTicker(o.symbol)} @ ${fmtMoney(o.fillPrice)}`;
+      logTrade(label, o.side === "buy" ? -(o.fillPrice * o.filledQty) : o.fillPrice * o.filledQty);
+      showToast(`${o.kind === "limit" ? "Limit" : "Stop"} order filled: ${o.side} ${o.filledQty} ${displayTicker(o.symbol)}`, o.side === "buy" ? "bull" : "bear");
+    });
+    partial.forEach((o) => {
+      const label = `${o.kind.toUpperCase()} ${o.side.toUpperCase()} ${o.filledQty} ${displayTicker(o.symbol)} @ ${fmtMoney(o.fillPrice)} (partial)`;
+      logTrade(label, o.side === "buy" ? -(o.fillPrice * o.filledQty) : o.fillPrice * o.filledQty);
+      if (o.resolution === "requeued") {
+        showToast(`Partial fill: ${o.filledQty}/${o.qty} ${displayTicker(o.symbol)} — ${o.remainingQty} still pending`, "bull");
+      } else {
+        showToast(`Partial fill: ${o.filledQty}/${o.qty} ${displayTicker(o.symbol)} — remaining ${o.remainingQty} cancelled (not enough shares)`, "bear");
+      }
     });
     cancelled.forEach((o) => {
       showToast(`Order cancelled — ${o.side === "buy" ? "insufficient funds" : "insufficient shares held"} for ${displayTicker(o.symbol)}`, "bear");
@@ -861,6 +957,18 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
   const isIndex = meta.exchange === "INDEX";
   const chartSeries = useMemo(() => buildChartSeries(chartHistory.length ? chartHistory : q.history, indicators), [chartHistory, q.history, indicators]);
 
+  /* per-symbol news — only fetched while the News tab is actually open */
+  useEffect(() => {
+    if (tab !== "news") return;
+    let cancelled = false;
+    setNewsLoading(true);
+    fetchSymbolNews(meta.name || displayTicker(selected))
+      .then((items) => { if (!cancelled) setNewsItems(items); })
+      .catch(() => { if (!cancelled) setNewsItems([]); })
+      .finally(() => { if (!cancelled) setNewsLoading(false); });
+    return () => { cancelled = true; };
+  }, [tab, selected, meta.name]);
+
   const stockMktValue = stockPositions.reduce((sum, p) => sum + (quotes[p.symbol]?.price ?? 0) * p.qty, 0);
   const optionMktValue = optionPositions.reduce((sum, p) => {
     const spot = quotes[p.symbol]?.price ?? 0;
@@ -872,6 +980,20 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
   }, 0);
   const equity = cash + stockMktValue + optionMktValue;
   const dayPnl = equity - STARTING_CASH;
+
+  const allocationItems = useMemo(() => {
+    const items = [];
+    stockPositions.forEach((p) => {
+      const mv = (quotes[p.symbol]?.price ?? 0) * p.qty;
+      if (mv > 0) items.push({ label: displayTicker(p.symbol), value: mv });
+    });
+    if (optionMktValue > 0) items.push({ label: "Options", value: optionMktValue });
+    if (cash > 0) items.push({ label: "Cash", value: cash });
+    const total = items.reduce((s, i) => s + i.value, 0) || 1;
+    return items
+      .map((it, i) => ({ ...it, pct: (it.value / total) * 100, color: it.label === "Cash" ? LW_COLORS.text : ALLOC_PALETTE[i % ALLOC_PALETTE.length] }))
+      .sort((a, b) => b.value - a.value);
+  }, [stockPositions, optionMktValue, cash, quotes]);
 
   const prevEquity = useRef(equity);
   useEffect(() => {
@@ -943,6 +1065,46 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
   const cancelOrder = (id) => {
     setPendingOrders((prev) => prev.filter((o) => o.id !== id));
     showToast("Order cancelled", "bear");
+  };
+
+  const openEditOrder = (o) => {
+    setEditingOrder(o);
+    setEditQty(o.qty);
+    setEditPrice(String(o.price));
+  };
+
+  const saveEditOrder = () => {
+    const qty = Math.max(1, parseInt(editQty) || 1);
+    const price = parseFloat(editPrice);
+    if (!price || price <= 0) return showToast("Enter a valid price", "bear");
+    if (editingOrder.side === "buy" && price * qty > cash) return showToast("Order exceeds available cash", "bear");
+    if (editingOrder.side === "sell") {
+      const held = stockPositions.find((p) => p.symbol === editingOrder.symbol)?.qty ?? 0;
+      if (qty > held) return showToast(`Only ${held} shares held`, "bear");
+    }
+    setPendingOrders((prev) => prev.map((o) => (o.id === editingOrder.id ? { ...o, qty, price } : o)));
+    setEditingOrder(null);
+    showToast("Order updated", "bull");
+  };
+
+  const exportTradesCSV = () => {
+    if (trades.length === 0) return showToast("No trades to export", "bear");
+    const escapeCell = (v) => `"${String(v).replace(/"/g, '""')}"`;
+    const header = "Time,Trade,Cash Impact\n";
+    const rows = trades
+      .map((t) => `${t.time.toISOString()},${escapeCell(t.label)},${t.amount.toFixed(2)}`)
+      .join("\n");
+    const csv = header + rows;
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `trade-free-history-${username}-${Date.now()}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast("Trade history exported", "bull");
   };
 
   const openTicket = (type, strike, expiry) => setTicket({ symbol: selected, type, strike, expiry: expiry.getTime() });
@@ -1132,7 +1294,7 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
           </div>
 
           <div className="tabs">
-            {[["trade", "Chart & Trade"], ["chain", "Options Chain"], ["positions", "Positions"], ["orders", `Orders${pendingOrders.length ? ` (${pendingOrders.length})` : ""}`], ["alerts", `Alerts${activeAlerts ? ` (${activeAlerts})` : ""}`], ["history", "History"]].map(([id, label]) => (
+            {[["trade", "Chart & Trade"], ["chain", "Options Chain"], ["positions", "Positions"], ["orders", `Orders${pendingOrders.length ? ` (${pendingOrders.length})` : ""}`], ["alerts", `Alerts${activeAlerts ? ` (${activeAlerts})` : ""}`], ["news", "News"], ["history", "History"]].map(([id, label]) => (
               <button key={id} className={`tab ${tab === id ? "tabActive" : ""}`} onClick={() => setTab(id)}>{label}</button>
             ))}
           </div>
@@ -1303,6 +1465,26 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
 
           {tab === "positions" && (
             <div className="posWrap">
+              {allocationItems.length > 0 && (
+                <div className="allocWrap">
+                  <h3>Allocation</h3>
+                  <div className="allocBar">
+                    {allocationItems.map((it) => (
+                      <div key={it.label} className="allocSeg" style={{ width: `${it.pct}%`, background: it.color }} title={`${it.label}: ${it.pct.toFixed(1)}%`} />
+                    ))}
+                  </div>
+                  <div className="allocLegend">
+                    {allocationItems.map((it) => (
+                      <div key={it.label} className="allocLegendItem">
+                        <span className="allocSwatch" style={{ background: it.color }} />
+                        <span>{it.label}</span>
+                        <span className="dim mono">{fmtMoney(it.value, 0)} &middot; {it.pct.toFixed(1)}%</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <h3>Stock Positions</h3>
               {stockPositions.length === 0 ? (
                 <div className="empty">No open stock positions. Buy something on the Chart &amp; Trade tab.</div>
@@ -1379,7 +1561,10 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
                         <td className="mono">{o.qty}</td>
                         <td className="mono">{fmtMoney(o.price)}</td>
                         <td className="mono dim">{o.createdAt.toLocaleTimeString()}</td>
-                        <td><button className="closeBtn" onClick={() => cancelOrder(o.id)}><Trash2 size={12} /></button></td>
+                        <td className="orderRowActions">
+                          <button className="closeBtn" onClick={() => openEditOrder(o)}>Edit</button>
+                          <button className="closeBtn" onClick={() => cancelOrder(o.id)}><Trash2 size={12} /></button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -1426,8 +1611,34 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
             </div>
           )}
 
+          {tab === "news" && (
+            <div className="newsWrap">
+              {newsLoading ? (
+                <div className="empty">Loading news for {displayTicker(selected)}…</div>
+              ) : newsItems.length === 0 ? (
+                <div className="empty">No recent news found for {displayTicker(selected)}.</div>
+              ) : (
+                <div className="newsList">
+                  {newsItems.map((n, i) => (
+                    <a key={i} href={n.link} target="_blank" rel="noopener noreferrer" className="newsItem">
+                      {n.thumbnail ? <img src={n.thumbnail} alt="" className="newsThumb" /> : <div className="newsThumb newsThumbFallback"><Newspaper size={18} /></div>}
+                      <div className="newsBody">
+                        <div className="newsTitle">{n.title}</div>
+                        <div className="newsMeta dim mono">{n.publisher}{n.time ? ` · ${n.time.toLocaleDateString()}` : ""}</div>
+                      </div>
+                    </a>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {tab === "history" && (
             <div className="histWrap">
+              <div className="histHead">
+                <h3>Trade History</h3>
+                <button className="exportBtn" onClick={exportTradesCSV}><Download size={13} /> Export CSV</button>
+              </div>
               {trades.length === 0 ? (
                 <div className="empty">No trades yet. Your fills will show up here.</div>
               ) : (
@@ -1458,6 +1669,27 @@ function TradingApp({ username, onLogout, themeIdx, cycleTheme }) {
           onSubmit={placeOptionOrder}
           heldQty={optionPositions.find((p) => p.symbol === ticket.symbol && p.type === ticket.type && p.strike === ticket.strike && p.expiry === ticket.expiry)?.qty ?? 0}
         />
+      )}
+
+      {editingOrder && (
+        <div className="modalOverlay" onClick={() => setEditingOrder(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Edit {editingOrder.kind === "limit" ? "Limit" : "Stop"} Order</h3>
+            <p>{editingOrder.side.toUpperCase()} {displayTicker(editingOrder.symbol)}</p>
+            <div className="orderRow">
+              <label>Quantity</label>
+              <input type="number" min="1" className="qtyInput mono" value={editQty} onChange={(e) => setEditQty(e.target.value)} />
+            </div>
+            <div className="orderRow">
+              <label>{editingOrder.kind === "limit" ? "Limit price" : "Stop price"}</label>
+              <input type="number" min="0" step="0.05" className="qtyInput mono" value={editPrice} onChange={(e) => setEditPrice(e.target.value)} />
+            </div>
+            <div className="modalBtns">
+              <button className="btn btnGhost" onClick={() => setEditingOrder(null)}>Cancel</button>
+              <button className="btn btnBull" onClick={saveEditOrder}>Save</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {confirmReset && (
@@ -1723,7 +1955,26 @@ const CSS = `
 .chainNote { margin-top: 12px; font-size: 11px; color: var(--text-dim); }
 
 .posWrap h3, .histWrap h3 { font-family: 'Space Grotesk'; font-size: 14px; margin: 0 0 10px; }
+.histHead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.histHead h3 { margin: 0; }
+.exportBtn { display: inline-flex; align-items: center; gap: 6px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim); padding: 7px 12px; border-radius: 8px; font-size: 12px; cursor: pointer; transition: color 0.15s ease, border-color 0.15s ease; }
+.exportBtn:hover { color: var(--text); border-color: var(--accent); }
+.allocWrap { margin-bottom: 26px; }
+.allocBar { display: flex; height: 14px; border-radius: 8px; overflow: hidden; background: var(--surface-2); margin-bottom: 12px; }
+.allocSeg { height: 100%; transition: opacity 0.15s ease; }
+.allocSeg:hover { opacity: 0.8; }
+.allocLegend { display: flex; flex-wrap: wrap; gap: 8px 18px; }
+.allocLegendItem { display: flex; align-items: center; gap: 7px; font-size: 12px; }
+.allocSwatch { width: 9px; height: 9px; border-radius: 3px; flex-shrink: 0; }
 .ordersHint { margin-top: 14px; font-size: 11.5px; line-height: 1.5; }
+.newsList { display: flex; flex-direction: column; gap: 10px; }
+.newsItem { display: flex; gap: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px; text-decoration: none; color: var(--text); transition: border-color 0.15s ease; }
+.newsItem:hover { border-color: var(--accent); }
+.newsThumb { width: 72px; height: 72px; object-fit: cover; border-radius: 8px; flex-shrink: 0; }
+.newsThumbFallback { display: flex; align-items: center; justify-content: center; background: var(--surface-2); color: var(--text-dim); }
+.newsBody { display: flex; flex-direction: column; gap: 6px; min-width: 0; justify-content: center; }
+.newsTitle { font-size: 13.5px; font-weight: 600; line-height: 1.4; }
+.newsMeta { font-size: 11px; }
 .mt { margin-top: 26px; }
 .empty { color: var(--text-dim); font-size: 13px; padding: 20px; background: var(--surface); border: 1px dashed var(--border); border-radius: 10px; text-align: center; }
 .posTable { width: 100%; border-collapse: collapse; font-size: 13px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
@@ -1731,6 +1982,7 @@ const CSS = `
 .posTable td { padding: 10px 12px; border-bottom: 1px solid var(--border); }
 .posTable tr:last-child td { border-bottom: none; }
 .closeBtn { background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim); padding: 5px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+.orderRowActions { display: flex; gap: 6px; }
 .closeBtn:hover { color: var(--bear); border-color: var(--bear); }
 
 .alertsWrap { display: flex; flex-direction: column; }
