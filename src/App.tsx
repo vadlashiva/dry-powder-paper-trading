@@ -321,9 +321,7 @@ function PriceChart({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPr
       leaveSyncGroup(chart, syncGroupRef);
       chart.remove();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
+     }, []);
   useEffect(() => {
     if (!candleRef.current) return;
     const prepped = prepLW(data);
@@ -419,8 +417,7 @@ function RSIChart({ data, syncGroupRef }) {
       leaveSyncGroup(chart, syncGroupRef);
       chart.remove();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+      }, []);
 
   useEffect(() => {
     if (!seriesRef.current) return;
@@ -469,8 +466,7 @@ function MACDChart({ data, syncGroupRef }) {
       leaveSyncGroup(chart, syncGroupRef);
       chart.remove();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+     }, []);
 
   useEffect(() => {
     if (!histRef.current) return;
@@ -903,8 +899,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, onRe
       return a;
     });
     if (changed) setAlerts(next);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [quotes]);
+      }, [quotes]);
 
   /* limit & stop order fills — checked against every price tick, same cadence as alerts.
      Reads cash/positions/pendingOrders via refs (kept in sync above) so this effect can stay
@@ -995,8 +990,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, onRe
     cancelled.forEach((o) => {
       showToast(`Order cancelled — ${o.side === "buy" ? "insufficient funds" : "insufficient shares held"} for ${displayTicker(o.symbol)}`, "bear");
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [quotes]);
+    }, [quotes]);
 
   /* live NSE/BSE symbol search — only runs when the typed text has no local watchlist match */
   useEffect(() => {
