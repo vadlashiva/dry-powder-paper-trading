@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { createChart, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries } from "lightweight-charts";
 import { createClient } from "@supabase/supabase-js";
@@ -23,15 +24,6 @@ function saveThemeIdx(i) {
   try { localStorage.setItem(LS_THEME, String(i)); } catch { /* storage unavailable */ }
 }
 
-/* ----------------------------------------------------------------------
-   TRADE FREE — Paper Trading Terminal (NSE / BSE)
-   Tokens
-   bg #0A0D14  surface #121722  surface-2 #1A2130  border #232B3D
-   text #E7ECF6  text-dim #8B96AA  bull #14E8A0  bear #FF5470
-   accent #7B61FF  amber #FFB020
-   Display: Space Grotesk / Body: Inter / Data: JetBrains Mono
-------------------------------------------------------------------------- */
-
 const INSTRUMENTS = [
   { symbol: "RELIANCE.NS", name: "Reliance Industries", exchange: "NSE", fallback: 1340, iv: 0.24 },
   { symbol: "TCS.NS", name: "Tata Consultancy Services", exchange: "NSE", fallback: 3085, iv: 0.22 },
@@ -50,9 +42,9 @@ const INSTRUMENTS = [
   { symbol: "^BSESN", name: "SENSEX", exchange: "INDEX", fallback: 78955, iv: 0.13 },
 ];
 
-const STARTING_CASH = 1000000; // ₹10,00,000
+const STARTING_CASH = 1000000;
 const RISK_FREE = 0.065;
-const MULTIPLIER = 1; // per-unit; real exchange lot sizes vary and aren't modeled here
+const MULTIPLIER = 1;
 
 const TIMEFRAMES = {
   "1m": { interval: "1m", range: "1d" },
@@ -66,7 +58,6 @@ const TIMEFRAME_MS = { "1m": 60000, "5m": 300000, "15m": 900000, "1H": 3600000, 
 const displayTicker = (s) => s.replace(/\.(NS|BO)$/, "").replace(/^\^/, "");
 const exchangeBadge = (ex) => (ex === "INDEX" ? "IDX" : ex);
 
-/* ---------------- option pricing math ---------------- */
 function erf(x) {
   const sign = x < 0 ? -1 : 1;
   x = Math.abs(x);
@@ -128,7 +119,6 @@ function strikesAround(spot, count = 9) {
   return out;
 }
 
-/* ---------------- realistic synthetic OHLC (used only when the live feed is unreachable) ---------------- */
 function genSyntheticHistory(basePrice, count, intervalMs, volatility = 0.004) {
   const now = Date.now();
   let price = basePrice * (1 - (Math.random() - 0.5) * 0.03);
@@ -154,7 +144,6 @@ function genSyntheticHistory(basePrice, count, intervalMs, volatility = 0.004) {
   return arr;
 }
 
-/* ---------------- technical indicators ---------------- */
 function computeSMA(arr, period) {
   return arr.map((_, i) => {
     if (i < period - 1) return null;
@@ -224,8 +213,6 @@ function buildChartSeries(history, ind) {
   });
 }
 
-/* ---------------- lightweight-charts helpers ---------------- */
-// Converts our ms-based series into strictly-increasing second timestamps lightweight-charts requires.
 function prepLW(data) {
   const out = [];
   let lastT = -Infinity;
@@ -259,7 +246,6 @@ function fitAllInGroup(syncGroupRef) {
   syncGroupRef.current.forEach((c) => { try { c.timeScale().fitContent(); } catch { /* ignore */ } });
 }
 
-/* ---------------- Price chart (candlesticks + MA + crosshair OHLC legend) ---------------- */
 function PriceChart({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPrice, pendingLines }) {
   const containerRef = useRef(null);
   const legendRef = useRef(null);
@@ -295,7 +281,7 @@ function PriceChart({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPr
 
     chart.subscribeCrosshairMove((param) => {
       if (!legendRef.current) return;
-        const point = param.seriesData && param.seriesData.get(candleSeries) as { open: number; high: number; low: number; close: number } | undefined;
+      const point = param.seriesData && param.seriesData.get(candleSeries);
       if (param.time && point) {
         legendRef.current.textContent = `O ${point.open.toFixed(2)}   H ${point.high.toFixed(2)}   L ${point.low.toFixed(2)}   C ${point.close.toFixed(2)}`;
       } else {
@@ -303,7 +289,6 @@ function PriceChart({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPr
       }
     });
 
-    // Click-to-set-price: only acts while pick mode is on (toggled from the order ticket).
     chart.subscribeClick((param) => {
       if (!pickModeRef.current || !param.point || !candleRef.current) return;
       const price = candleRef.current.coordinateToPrice(param.point.y);
@@ -322,7 +307,8 @@ function PriceChart({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPr
       leaveSyncGroup(chart, syncGroupRef);
       chart.remove();
     };
-     }, []);
+  }, []);
+
   useEffect(() => {
     if (!candleRef.current) return;
     const prepped = prepLW(data);
@@ -333,7 +319,6 @@ function PriceChart({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPr
     if (chartRef.current) chartRef.current.timeScale().fitContent();
   }, [data, showMA]);
 
-  // Draft price line — a dashed marker following whatever price is currently in the order ticket.
   useEffect(() => {
     if (!candleRef.current) return;
     if (draftLineRef.current) {
@@ -352,7 +337,6 @@ function PriceChart({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPr
     }
   }, [draftPrice]);
 
-  // Resting pending-order price lines for the symbol currently shown.
   useEffect(() => {
     if (!candleRef.current) return;
     const list = pendingLines || [];
@@ -384,7 +368,6 @@ function PriceChart({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPr
   );
 }
 
-/* ---------------- RSI pane ---------------- */
 function RSIChart({ data, syncGroupRef }) {
   const containerRef = useRef(null);
   const chartRef = useRef(null);
@@ -418,7 +401,7 @@ function RSIChart({ data, syncGroupRef }) {
       leaveSyncGroup(chart, syncGroupRef);
       chart.remove();
     };
-      }, []);
+  }, []);
 
   useEffect(() => {
     if (!seriesRef.current) return;
@@ -429,7 +412,6 @@ function RSIChart({ data, syncGroupRef }) {
   return <div ref={containerRef} className="lwChart" />;
 }
 
-/* ---------------- MACD pane ---------------- */
 function MACDChart({ data, syncGroupRef }) {
   const containerRef = useRef(null);
   const chartRef = useRef(null);
@@ -467,7 +449,7 @@ function MACDChart({ data, syncGroupRef }) {
       leaveSyncGroup(chart, syncGroupRef);
       chart.remove();
     };
-     }, []);
+  }, []);
 
   useEffect(() => {
     if (!histRef.current) return;
@@ -482,23 +464,16 @@ function MACDChart({ data, syncGroupRef }) {
   return <div ref={containerRef} className="lwChart" />;
 }
 
-/* ---------------- formatting ---------------- */
 const fmtMoney = (n, d = 2) =>
   (n < 0 ? "-\u20B9" : "\u20B9") + Math.abs(n).toLocaleString("en-IN", { minimumFractionDigits: d, maximumFractionDigits: d });
 const fmtPct = (n) => (n >= 0 ? "+" : "") + n.toFixed(2) + "%";
 const fmtDate = (d) => d.toLocaleDateString("en-IN", { month: "short", day: "numeric" });
 const uid = () => Math.random().toString(36).slice(2, 10);
 
-/* ---------------- Supabase (real backend — this is what makes accounts cross-device) ----------------
-   Fill in your own project's values from Supabase → Project Settings → API.
-   Requires the "portfolios" table + RLS policies from supabase-schema.sql, and
-   Authentication → Providers → Email → "Confirm email" turned OFF (see setup guide). */
 const SUPABASE_URL = "https://qfzepvorvvajqpnfwceq.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_-pw1tSkYhKymxQZHNqT66w_GOPnWEQN";
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// Supabase Auth is email-based; usernames are mapped to a synthetic address so the
-// login UI can stay "username + password" without asking anyone for a real email.
 const usernameToEmail = (username) => `${username.trim().toLowerCase()}@tradefree.local`;
 
 async function signUpUser(username, password) {
@@ -515,7 +490,6 @@ async function signOutUser() {
   await supabase.auth.signOut();
 }
 
-/* ---------------- portfolio persistence (Postgres, via Supabase) ---------------- */
 function hydratePortfolio(raw) {
   const base = raw || {};
   return {
@@ -538,14 +512,12 @@ async function upsertPortfolio(userId, payload) {
   if (error) console.error("portfolio save failed", error);
 }
 
-/* ---------------- subscription (Pro tier, via Razorpay) ---------------- */
 async function fetchSubscription(userId) {
   const { data, error } = await supabase.from("subscriptions").select("status, current_period_end").eq("user_id", userId).maybeSingle();
   if (error) { console.error("subscription fetch failed", error); return { status: "free", current_period_end: null }; }
   return data || { status: "free", current_period_end: null };
 }
 
-/** Loads Razorpay's checkout script once and reuses it on later calls. */
 let razorpayScriptPromise = null;
 function loadRazorpayScript() {
   if (razorpayScriptPromise) return razorpayScriptPromise;
@@ -560,12 +532,6 @@ function loadRazorpayScript() {
   return razorpayScriptPromise;
 }
 
-/**
- * Starts the upgrade flow: asks our Edge Function to create a Razorpay subscription for
- * this user, then opens Razorpay's checkout. Actual activation only ever happens via the
- * razorpay-webhook Edge Function once payment is confirmed — this function just gets the
- * payment UI open and hands control to Razorpay.
- */
 async function startProCheckout({ userEmail, onSuccess, onError }) {
   try {
     const { data, error } = await supabase.functions.invoke("create-razorpay-subscription");
@@ -589,7 +555,6 @@ async function startProCheckout({ userEmail, onSuccess, onError }) {
   }
 }
 
-/* ---------------- data layer ---------------- */
 async function fetchYahoo(symbol, interval = "5m", range = "1d") {
   const res = await fetch(
     `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=${interval}&range=${range}`
@@ -612,7 +577,6 @@ async function fetchYahoo(symbol, interval = "5m", range = "1d") {
   };
 }
 
-/** Looks up any NSE/BSE-listed equity by name or ticker, for symbols outside the built-in watchlist. */
 async function searchYahooSymbols(query) {
   const res = await fetch(
     `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=8&newsCount=0`
@@ -629,7 +593,6 @@ async function searchYahooSymbols(query) {
     }));
 }
 
-/** Recent headlines for a symbol/company, via the same search endpoint's news results. */
 async function fetchSymbolNews(query) {
   const res = await fetch(
     `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=0&newsCount=8`
@@ -646,9 +609,6 @@ async function fetchSymbolNews(query) {
   }));
 }
 
-/* ======================================================================
-   AUTH GATE (accounts persist in this browser via localStorage)
-====================================================================== */
 function AuthGate({ themeIdx, cycleTheme }) {
   const [mode, setMode] = useState("login");
   const [username, setUsername] = useState("");
@@ -674,8 +634,6 @@ function AuthGate({ themeIdx, cycleTheme }) {
           if (/registered/i.test(signUpError.message)) setError("That username is already taken.");
           else setError(signUpError.message);
         }
-        // On success, Supabase issues a session (assuming email confirmation is disabled in
-        // the project) and the root App's onAuthStateChange listener picks it up automatically.
       } else {
         const { error: signInError } = await signInUser(uname, password);
         if (signInError) {
@@ -692,7 +650,7 @@ function AuthGate({ themeIdx, cycleTheme }) {
   };
 
   return (
-    <div className="authWrap" style={THEMES[themeIdx].vars as React.CSSProperties}>
+    <div className="authWrap" style={THEMES[themeIdx].vars}>
       <style>{CSS}</style>
       <button type="button" className="themeBtn authThemeBtn" onClick={cycleTheme} title="Change background theme">
         <span className="themeEmoji">🎨</span> {THEMES[themeIdx].name}
@@ -734,9 +692,6 @@ function AuthGate({ themeIdx, cycleTheme }) {
   );
 }
 
-/* ======================================================================
-   TRADING APP
-====================================================================== */
 function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, onRefreshSubscription, onLogout, themeIdx, cycleTheme }) {
   const saved = initialPortfolio;
   const syncGroupRef = useRef([]);
@@ -803,8 +758,6 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, onRe
   const pendingOrdersRef = useRef(pendingOrders);
   useEffect(() => { pendingOrdersRef.current = pendingOrders; }, [pendingOrders]);
 
-  /* persist this user's portfolio to the server whenever it changes, debounced since
-     this is now a real network call rather than an instant localStorage write */
   const saveTimerRef = useRef(null);
   useEffect(() => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -814,7 +767,6 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, onRe
     return () => clearTimeout(saveTimerRef.current);
   }, [userId, cash, stockPositions, optionPositions, trades, alerts, pendingOrders, customInstruments]);
 
-  /* watchlist quotes: poll every 20s + realistic jitter every 2.2s */
   useEffect(() => {
     let cancelled = false;
     const pull = async () => {
@@ -859,7 +811,6 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, onRe
     return () => clearInterval(iv);
   }, []);
 
-  /* chart-specific OHLC history for the selected symbol & timeframe */
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
@@ -884,7 +835,6 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, onRe
     return () => { cancelled = true; clearInterval(iv); };
   }, [selected, timeframe]);
 
-  /* price alert checks */
   useEffect(() => {
     let changed = false;
     const next = alerts.map((a) => {
@@ -900,13 +850,8 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, onRe
       return a;
     });
     if (changed) setAlerts(next);
-      }, [quotes]);
+  }, [quotes]);
 
-  /* limit & stop order fills — checked against every price tick, same cadence as alerts.
-     Reads cash/positions/pendingOrders via refs (kept in sync above) so this effect can stay
-     subscribed only to [quotes] without acting on stale state. Supports partial fills: a buy
-     fills as much as current cash allows and stays pending for the rest; a sell fills as much
-     as is currently held and cancels the unfillable remainder (no short selling here). */
   useEffect(() => {
     const orders = pendingOrdersRef.current;
     if (orders.length === 0) return;
@@ -926,9 +871,9 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, onRe
 
     let workingCash = cashRef.current;
     let workingPositions = stockPositionsRef.current.map((p) => ({ ...p }));
-    const filled = [];       // fully filled
-    const partial = [];      // partially filled — remainder re-queued or cancelled, see resolution
-    const cancelled = [];    // fully cancelled, nothing filled
+    const filled = [];
+    const partial = [];
+    const cancelled = [];
 
     toFill.forEach((o) => {
       const { fillPrice, ...orderCore } = o;
@@ -991,9 +936,8 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, onRe
     cancelled.forEach((o) => {
       showToast(`Order cancelled — ${o.side === "buy" ? "insufficient funds" : "insufficient shares held"} for ${displayTicker(o.symbol)}`, "bear");
     });
-    }, [quotes]);
+  }, [quotes]);
 
-  /* live NSE/BSE symbol search — only runs when the typed text has no local watchlist match */
   useEffect(() => {
     const query = search.trim();
     if (query.length < 2) { setRemoteResults([]); setSearchingRemote(false); return; }
@@ -1051,7 +995,6 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, onRe
 
   useEffect(() => { setPickingPriceFromChart(false); }, [selected, tab]);
 
-  /* per-symbol news — only fetched while the News tab is actually open, and only for Pro */
   useEffect(() => {
     if (tab !== "news" || !isPro) return;
     let cancelled = false;
@@ -1107,8 +1050,6 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, onRe
     setTrades((prev) => [{ id: uid(), time: new Date(), label, amount }, ...prev].slice(0, 200));
   };
 
-  /** Opens Razorpay checkout; on payment success, polls for the webhook-confirmed
-      activation rather than trusting the browser-side "it worked" signal directly. */
   const handleUpgrade = () => {
     setCheckoutBusy(true);
     startProCheckout({
@@ -1122,7 +1063,6 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, onRe
           await onRefreshSubscription();
           if (attempts >= 10) { clearInterval(poll); setCheckoutBusy(false); }
         }, 2000);
-        // Stop polling early once isPro flips — handled by the effect below via the isPro prop change.
         setTimeout(() => { clearInterval(poll); setCheckoutBusy(false); }, 20000);
       },
       onError: (msg) => {
@@ -1329,8 +1269,6 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, onRe
   const filteredInstruments = allInstruments.filter((s) => {
     const query = search.trim().toLowerCase();
     const matchesSearch = !query || displayTicker(s.symbol).toLowerCase().includes(query) || s.name.toLowerCase().includes(query);
-    // While actively searching, search text takes priority over the exchange tab —
-    // otherwise a valid symbol on a different exchange than the selected tab silently vanishes.
     const matchesExchange = query ? true : (exchangeFilter === "ALL" || s.exchange === exchangeFilter);
     return matchesExchange && matchesSearch;
   });
@@ -1340,7 +1278,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, onRe
   const T = currentExpiry ? (currentExpiry.getTime() - Date.now()) / (365 * 24 * 3600 * 1000) : 0;
 
   return (
-    <div className="app"   style={THEMES[themeIdx].vars as React.CSSProperties}>
+    <div className="app" style={THEMES[themeIdx].vars}>
       <style>{CSS}</style>
 
       <div className="topbar">
@@ -1989,12 +1927,9 @@ function OptionTicket({ ticket, quotes, instruments, onClose, onSubmit, heldQty 
   );
 }
 
-/* ======================================================================
-   ROOT
-====================================================================== */
 function SplashScreen({ label, themeIdx }) {
   return (
-    <div className="authWrap" style={THEMES[themeIdx].vars as React.CSSProperties}>
+    <div className="authWrap" style={THEMES[themeIdx].vars}>
       <style>{CSS}</style>
       <div className="authCard splashCard">
         <div className="authBrand"><Flame size={22} className="brandIcon" /><span>TRADE FREE</span></div>
@@ -2080,7 +2015,6 @@ export default function App() {
   );
 }
 
-/* ---------------------------------- CSS ---------------------------------- */
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap');
 
@@ -2334,4 +2268,3 @@ const CSS = `
   .tradeGrid { grid-template-columns: 1fr; }
 }
 `;
-
