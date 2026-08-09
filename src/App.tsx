@@ -2197,6 +2197,7 @@ const CSS = `
 .lwWrap { position: relative; }
 .lwChart { width: 100%; }
 .lwLegend { position: absolute; top: 4px; left: 4px; z-index: 5; font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums; letter-spacing: 0.2px; color: var(--text-dim); background: rgba(18,23,34,0.75); padding: 3px 9px; border-radius: 6px; pointer-events: none; }
+.lwChart a[href*="tradingview.com"] { display: none !important; }
 
 .orderCard { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px; height: fit-content; transition: box-shadow 0.2s ease; }
 .orderCard:hover { box-shadow: 0 10px 30px rgba(0,0,0,0.22); }
