@@ -55,6 +55,18 @@ const TIMEFRAMES = {
 };
 const TIMEFRAME_MS = { "1m": 60000, "5m": 300000, "15m": 900000, "1H": 3600000, "1D": 86400000 };
 
+function getMarketStatus() {
+  const now = new Date();
+  const ist = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+  const day = ist.getDay(); // 0 = Sun, 6 = Sat
+  const totalMinutes = ist.getHours() * 60 + ist.getMinutes();
+  const marketOpen = 9 * 60 + 15;   // 9:15 AM
+  const marketClose = 15 * 60 + 30; // 3:30 PM
+  const isWeekday = day >= 1 && day <= 5;
+  const isOpen = isWeekday && totalMinutes >= marketOpen && totalMinutes <= marketClose;
+  return { isOpen, label: isOpen ? "Market Open" : "Market Closed · Opens 9:15 AM Mon–Fri" };
+}
+
 const displayTicker = (s) => s.replace(/\.(NS|BO)$/, "").replace(/^\^/, "");
 const exchangeBadge = (ex) => (ex === "INDEX" ? "IDX" : ex);
 
@@ -465,7 +477,7 @@ function MACDChart({ data, syncGroupRef }) {
 }
 
 const fmtMoney = (n, d = 2) =>
-  (n < 0 ? "-\u20B9" : "\u20B9") + Math.abs(n).toLocaleString("en-IN", { minimumFractionDigits: d, maximumFractionDigits: d });
+  (n < 0 ? "-₹" : "₹") + Math.abs(n).toLocaleString("en-IN", { minimumFractionDigits: d, maximumFractionDigits: d });
 const fmtPct = (n) => (n >= 0 ? "+" : "") + n.toFixed(2) + "%";
 const fmtDate = (d) => d.toLocaleDateString("en-IN", { month: "short", day: "numeric" });
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -709,6 +721,13 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, onRe
     });
     return q;
   });
+  const [marketStatus, setMarketStatus] = useState(() => getMarketStatus());
+  const marketStatusRef = useRef(marketStatus);
+  useEffect(() => { marketStatusRef.current = marketStatus; }, [marketStatus]);
+  useEffect(() => {
+    const iv = setInterval(() => setMarketStatus(getMarketStatus()), 30000);
+    return () => clearInterval(iv);
+  }, []);
   const [exchangeFilter, setExchangeFilter] = useState("ALL");
   const [selected, setSelected] = useState("RELIANCE.NS");
   const [tab, setTab] = useState("trade");
@@ -796,6 +815,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, onRe
 
   useEffect(() => {
     const iv = setInterval(() => {
+      if (!marketStatusRef.current.isOpen) return;
       setQuotes((prev) => {
         const next = { ...prev };
         allInstrumentsRef.current.forEach((s) => {
@@ -1371,6 +1391,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, onRe
             <div className="mainHeadPrice">
               <span className="mono bigPrice">{fmtMoney(q.price)}</span>
               <span className={`mono ${q.price >= q.prevClose ? "bull" : "bear"}`}>{fmtPct(((q.price - q.prevClose) / q.prevClose) * 100)}</span>
+              <span className={`marketStatusBadge ${marketStatus.isOpen ? "marketOpen" : "marketClosed"}`}>{marketStatus.label}</span>
             </div>
           </div>
 
@@ -2110,6 +2131,9 @@ const CSS = `
 .mainHeadName { color: var(--text-dim); font-size: 13px; }
 .mainHeadPrice { display: flex; flex-direction: column; align-items: flex-end; }
 .bigPrice { font-size: 22px; font-weight: 700; }
+.marketStatusBadge { font-size: 10px; padding: 3px 9px; border-radius: 20px; margin-top: 4px; font-weight: 600; }
+.marketOpen { background: rgba(20,232,160,0.15); color: var(--bull); }
+.marketClosed { background: rgba(255,84,112,0.15); color: var(--bear); }
 
 .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 20px; flex-wrap: wrap; }
 .tab { background: none; border: none; color: var(--text-dim); padding: 10px 16px; font-size: 13px; cursor: pointer; border-bottom: 2px solid transparent; }
