@@ -474,7 +474,7 @@ const SUPABASE_URL = "https://qfzepvorvvajqpnfwceq.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_-pw1tSkYhKymxQZHNqT66w_GOPnWEQN";
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const usernameToEmail = (username) => `${username.trim().toLowerCase()}@tradefree.local`;
+const usernameToEmail = (username) => `${username.trim().toLowerCase()}@tradefree.app`;
 
 async function signUpUser(username, password) {
   return supabase.auth.signUp({
