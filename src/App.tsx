@@ -1099,6 +1099,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, onRe
   useEffect(() => { if (isPro) setCheckoutBusy(false); }, [isPro]);
 
   const placeStockOrder = (side) => {
+    if (!marketStatus.isOpen) return showToast("Market is closed — orders can only be placed 9:15 AM–3:30 PM, Mon–Fri", "bear");
     const price = q.price;
     const qty = orderQty;
     if (qty <= 0) return;
@@ -1129,6 +1130,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, onRe
   };
 
   const placeConditionalOrder = (side) => {
+    if (!marketStatus.isOpen) return showToast("Market is closed — orders can only be placed 9:15 AM–3:30 PM, Mon–Fri", "bear");
     const price = parseFloat(orderPrice);
     const qty = orderQty;
     if (!price || price <= 0) return showToast("Enter a valid price", "bear");
@@ -1526,9 +1528,12 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, onRe
                   )}
 
                   <div className="orderBtns">
-                    <button className="btn btnBull" onClick={() => (orderType === "market" ? placeStockOrder("buy") : placeConditionalOrder("buy"))}><TrendingUp size={14} /> Buy</button>
-                    <button className="btn btnBear" onClick={() => (orderType === "market" ? placeStockOrder("sell") : placeConditionalOrder("sell"))}><TrendingDown size={14} /> Sell</button>
+                    <button className="btn btnBull" disabled={!marketStatus.isOpen} onClick={() => (orderType === "market" ? placeStockOrder("buy") : placeConditionalOrder("buy"))}><TrendingUp size={14} /> Buy</button>
+                    <button className="btn btnBear" disabled={!marketStatus.isOpen} onClick={() => (orderType === "market" ? placeStockOrder("sell") : placeConditionalOrder("sell"))}><TrendingDown size={14} /> Sell</button>
                   </div>
+                  {!marketStatus.isOpen && (
+                    <div className="orderHint dim" style={{ textAlign: "center", marginTop: "-6px" }}>Trading resumes when the market opens</div>
+                  )}
 
                   {(() => {
                     const pos = stockPositions.find((p) => p.symbol === selected);
@@ -2188,6 +2193,7 @@ const CSS = `
 .btn { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 10px; border-radius: 8px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; transition: opacity 0.15s ease, transform 0.1s ease; }
 .btn:hover { opacity: 0.85; }
 .btn:active { transform: scale(0.98); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .btnBull { background: var(--bull); color: #06231A; }
 .btnBear { background: var(--bear); color: #2B0710; }
 .btnGhost { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); }
