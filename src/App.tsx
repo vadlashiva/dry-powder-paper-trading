@@ -258,11 +258,12 @@ function fitAllInGroup(syncGroupRef) {
   syncGroupRef.current.forEach((c) => { try { c.timeScale().fitContent(); } catch { /* ignore */ } });
 }
 
-function PriceChart({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPrice, pendingLines }) {
+function PriceChart({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPrice, pendingLines, chartType }) {
   const containerRef = useRef(null);
   const legendRef = useRef(null);
   const chartRef = useRef(null);
   const candleRef = useRef(null);
+  const lineRef = useRef(null);
   const maRef = useRef(null);
   const draftLineRef = useRef(null);
   const pendingLinesRef = useRef(new Map());
@@ -276,7 +277,7 @@ function PriceChart({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPr
     const chart = createChart(containerRef.current, {
       width: containerRef.current.clientWidth,
       height: 340,
-      layout: { background: { color: "transparent" }, textColor: LW_COLORS.text, fontFamily: "JetBrains Mono, monospace", fontSize: 11 },
+      layout: { background: { color: "transparent" }, textColor: LW_COLORS.text, fontFamily: "JetBrains Mono, monospace", fontSize: 11, attributionLogo: false },
       grid: { vertLines: { color: LW_COLORS.grid }, horzLines: { color: LW_COLORS.grid } },
       crosshair: { mode: CrosshairMode.Normal },
       rightPriceScale: { borderColor: LW_COLORS.grid },
@@ -289,26 +290,35 @@ function PriceChart({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPr
       upColor: LW_COLORS.bull, downColor: LW_COLORS.bear, borderVisible: false,
       wickUpColor: LW_COLORS.bull, wickDownColor: LW_COLORS.bear,
     });
+    const lineSeries = chart.addSeries(LineSeries, {
+      color: LW_COLORS.accent, lineWidth: 2, priceLineVisible: true, lastValueVisible: true, visible: false,
+    });
     const maSeries = chart.addSeries(LineSeries, { color: LW_COLORS.amber, lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
 
     chart.subscribeCrosshairMove((param) => {
       if (!legendRef.current) return;
-      const point = param.seriesData && param.seriesData.get(candleSeries);
-      if (param.time && point) {
+      const activeSeries = candleRef.current?.options().visible ? candleRef.current : lineRef.current;
+      const point = param.seriesData && activeSeries && param.seriesData.get(activeSeries);
+      if (param.time && point && point.open != null) {
         legendRef.current.textContent = `O ${point.open.toFixed(2)}   H ${point.high.toFixed(2)}   L ${point.low.toFixed(2)}   C ${point.close.toFixed(2)}`;
+      } else if (param.time && point && point.value != null) {
+        legendRef.current.textContent = `${point.value.toFixed(2)}`;
       } else {
         legendRef.current.textContent = "";
       }
     });
 
     chart.subscribeClick((param) => {
-      if (!pickModeRef.current || !param.point || !candleRef.current) return;
-      const price = candleRef.current.coordinateToPrice(param.point.y);
+      if (!pickModeRef.current || !param.point) return;
+      const activeSeries = candleRef.current?.options().visible ? candleRef.current : lineRef.current;
+      if (!activeSeries) return;
+      const price = activeSeries.coordinateToPrice(param.point.y);
       if (price != null && onPricePickRef.current) onPricePickRef.current(price);
     });
 
     chartRef.current = chart;
     candleRef.current = candleSeries;
+    lineRef.current = lineSeries;
     maRef.current = maSeries;
     joinSyncGroup(chart, syncGroupRef);
 
@@ -322,9 +332,17 @@ function PriceChart({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPr
   }, []);
 
   useEffect(() => {
-    if (!candleRef.current) return;
+    if (!candleRef.current || !lineRef.current) return;
+    const isCandle = chartType !== "line";
+    candleRef.current.applyOptions({ visible: isCandle });
+    lineRef.current.applyOptions({ visible: !isCandle });
+  }, [chartType]);
+
+  useEffect(() => {
+    if (!candleRef.current || !lineRef.current) return;
     const prepped = prepLW(data);
     candleRef.current.setData(prepped.map(({ t, d }) => ({ time: t, open: d.open, high: d.high, low: d.low, close: d.close })));
+    lineRef.current.setData(prepped.map(({ t, d }) => ({ time: t, value: d.close })));
     if (maRef.current) {
       maRef.current.setData(showMA ? prepped.filter(({ d }) => d.ma != null).map(({ t, d }) => ({ time: t, value: d.ma })) : []);
     }
@@ -332,13 +350,14 @@ function PriceChart({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPr
   }, [data, showMA]);
 
   useEffect(() => {
-    if (!candleRef.current) return;
+    const activeSeries = chartType === "line" ? lineRef.current : candleRef.current;
+    if (!activeSeries) return;
     if (draftLineRef.current) {
-      candleRef.current.removePriceLine(draftLineRef.current);
+      activeSeries.removePriceLine(draftLineRef.current);
       draftLineRef.current = null;
     }
     if (draftPrice != null && !Number.isNaN(draftPrice)) {
-      draftLineRef.current = candleRef.current.createPriceLine({
+      draftLineRef.current = activeSeries.createPriceLine({
         price: draftPrice,
         color: LW_COLORS.amber,
         lineWidth: 2,
@@ -347,15 +366,16 @@ function PriceChart({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPr
         title: "your order",
       });
     }
-  }, [draftPrice]);
+  }, [draftPrice, chartType]);
 
   useEffect(() => {
-    if (!candleRef.current) return;
+    const activeSeries = chartType === "line" ? lineRef.current : candleRef.current;
+    if (!activeSeries) return;
     const list = pendingLines || [];
     const currentIds = new Set(list.map((l) => l.id));
     pendingLinesRef.current.forEach((line, id) => {
       if (!currentIds.has(id)) {
-        candleRef.current.removePriceLine(line);
+        activeSeries.removePriceLine(line);
         pendingLinesRef.current.delete(id);
       }
     });
@@ -364,13 +384,13 @@ function PriceChart({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPr
       if (existing) {
         existing.applyOptions({ price: l.price, title: l.title, color: l.color });
       } else {
-        const line = candleRef.current.createPriceLine({
+        const line = activeSeries.createPriceLine({
           price: l.price, color: l.color, lineWidth: 1, lineStyle: 3, axisLabelVisible: true, title: l.title,
         });
         pendingLinesRef.current.set(l.id, line);
       }
     });
-  }, [pendingLines]);
+  }, [pendingLines, chartType]);
 
   return (
     <div className="lwWrap">
@@ -390,7 +410,7 @@ function RSIChart({ data, syncGroupRef }) {
     const chart = createChart(containerRef.current, {
       width: containerRef.current.clientWidth,
       height: 110,
-      layout: { background: { color: "transparent" }, textColor: LW_COLORS.text, fontFamily: "JetBrains Mono, monospace", fontSize: 10 },
+      layout: { background: { color: "transparent" }, textColor: LW_COLORS.text, fontFamily: "JetBrains Mono, monospace", fontSize: 10, attributionLogo: false },
       grid: { vertLines: { color: LW_COLORS.grid }, horzLines: { color: LW_COLORS.grid } },
       crosshair: { mode: CrosshairMode.Normal },
       rightPriceScale: { borderColor: LW_COLORS.grid },
@@ -436,7 +456,7 @@ function MACDChart({ data, syncGroupRef }) {
     const chart = createChart(containerRef.current, {
       width: containerRef.current.clientWidth,
       height: 110,
-      layout: { background: { color: "transparent" }, textColor: LW_COLORS.text, fontFamily: "JetBrains Mono, monospace", fontSize: 10 },
+      layout: { background: { color: "transparent" }, textColor: LW_COLORS.text, fontFamily: "JetBrains Mono, monospace", fontSize: 10, attributionLogo: false },
       grid: { vertLines: { color: LW_COLORS.grid }, horzLines: { color: LW_COLORS.grid } },
       crosshair: { mode: CrosshairMode.Normal },
       rightPriceScale: { borderColor: LW_COLORS.grid },
@@ -753,6 +773,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, onRe
   const [timeframe, setTimeframe] = useState("1D");
   const [chartHistory, setChartHistory] = useState([]);
   const [indicators, setIndicators] = useState({ ma: true, rsi: false, macd: false });
+  const [chartType, setChartType] = useState("candle");
 
   const [alerts, setAlerts] = useState(() => saved?.alerts ?? []);
   const [alertTarget, setAlertTarget] = useState("");
@@ -1433,6 +1454,13 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, onRe
                     <button className="indToggle fitBtn" title="Reset zoom / fit all candles" onClick={() => fitAllInGroup(syncGroupRef)}>
                       <Maximize2 size={11} /> Fit
                     </button>
+                    <button
+                      className="indToggle chartTypeBtn"
+                      title={chartType === "candle" ? "Switch to line chart" : "Switch to candlestick chart"}
+                      onClick={() => setChartType((t) => (t === "candle" ? "line" : "candle"))}
+                    >
+                      {chartType === "candle" ? "Candles" : "Line"}
+                    </button>
                   </div>
                 </div>
 
@@ -1442,6 +1470,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, onRe
                   syncGroupRef={syncGroupRef}
                   pickMode={pickingPriceFromChart}
                   onPricePick={handleChartPricePick}
+                  chartType={chartType}
                   draftPrice={orderType !== "market" && orderPrice ? parseFloat(orderPrice) || null : null}
                   pendingLines={pendingOrders
                     .filter((o) => o.symbol === selected)
@@ -2159,6 +2188,7 @@ const CSS = `
 .indDot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
 .indToggleActive { background: var(--amber); color: #241800; border-color: var(--amber); }
 .fitBtn { margin-left: 6px; padding-left: 12px; border-left: 1px solid var(--border); border-radius: 0 6px 6px 0; }
+.chartTypeBtn { margin-left: 6px; }
 .subChart { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 10px; }
 .subChartLabel { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.6px; display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
 .chartHint { margin-top: 10px; font-size: 10px; text-align: center; }
