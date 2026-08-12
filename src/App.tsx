@@ -514,7 +514,6 @@ function PriceChart({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPr
       }
     });
     return out;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [drawings, overlayTick, chartType]);
 
   return (
