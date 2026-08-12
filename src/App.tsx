@@ -37,7 +37,7 @@ const INSTRUMENTS = [
   { symbol: "TCS.BO", name: "Tata Consultancy Services", exchange: "BSE", fallback: 3085, iv: 0.22 },
   { symbol: "HDFCBANK.BO", name: "HDFC Bank", exchange: "BSE", fallback: 952, iv: 0.23 },
   { symbol: "INFY.BO", name: "Infosys", exchange: "BSE", fallback: 1470, iv: 0.26 },
-  { symbol: "^NIFTY", name: "NIFTY 50", exchange: "INDEX", fallback: 24636, iv: 0.13 },
+  { symbol: "^NSEI", name: "NIFTY 50", exchange: "INDEX", fallback: 24636, iv: 0.13 },
   { symbol: "^NSEBANK", name: "NIFTY BANK", exchange: "INDEX", fallback: 58064, iv: 0.16 },
   { symbol: "^BSESN", name: "SENSEX", exchange: "INDEX", fallback: 78955, iv: 0.13 },
 ];
@@ -1233,6 +1233,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, onRe
   const openTicket = (type, strike, expiry) => setTicket({ symbol: selected, type, strike, expiry: expiry.getTime() });
 
   const placeOptionOrder = (mode, qty) => {
+    if (!marketStatus.isOpen) { showToast("Market is closed — orders can only be placed 9:15 AM–3:30 PM, Mon–Fri", "bear"); setTicket(null); return; }
     if (!ticket || qty <= 0) return;
     const spot = quotes[ticket.symbol]?.price ?? 0;
     const symMeta = allInstruments.find((s) => s.symbol === ticket.symbol);
@@ -1640,6 +1641,9 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, onRe
                 </table>
               </div>
               <div className="chainNote">Premiums &amp; Greeks are modeled live from the underlying price via Black-Scholes — not a live exchange options feed. Quantities are per unit, not exchange lot size.</div>
+              {!marketStatus.isOpen && (
+                <div className="chainNote" style={{ color: "var(--bear)", fontWeight: 600 }}>Market Closed — you can browse the chain, but new orders are disabled until 9:15 AM Mon–Fri.</div>
+              )}
             </div>
             )
           )}
@@ -1856,6 +1860,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, onRe
           instruments={allInstruments}
           onClose={() => setTicket(null)}
           onSubmit={placeOptionOrder}
+          marketOpen={marketStatus.isOpen}
           heldQty={optionPositions.find((p) => p.symbol === ticket.symbol && p.type === ticket.type && p.strike === ticket.strike && p.expiry === ticket.expiry)?.qty ?? 0}
         />
       )}
@@ -1942,7 +1947,7 @@ function ProLockPanel({ title, description, onUpgrade }) {
   );
 }
 
-function OptionTicket({ ticket, quotes, instruments, onClose, onSubmit, heldQty }) {
+function OptionTicket({ ticket, quotes, instruments, onClose, onSubmit, heldQty, marketOpen }) {
   const [qty, setQty] = useState(1);
   const spot = quotes[ticket.symbol]?.price ?? 0;
   const symMeta = instruments.find((s) => s.symbol === ticket.symbol);
@@ -1978,9 +1983,12 @@ function OptionTicket({ ticket, quotes, instruments, onClose, onSubmit, heldQty 
         <div className="orderEst mono">Est. total: <span>{fmtMoney(greeks.price * MULTIPLIER * qty)}</span> · Held: {heldQty}</div>
 
         <div className="orderBtns">
-          <button className="btn btnBull" onClick={() => onSubmit("buy", qty)}>Buy to Open</button>
-          <button className="btn btnBear" onClick={() => onSubmit("sell", qty)}>Sell to Close</button>
+          <button className="btn btnBull" disabled={!marketOpen} onClick={() => onSubmit("buy", qty)}>Buy to Open</button>
+          <button className="btn btnBear" disabled={!marketOpen} onClick={() => onSubmit("sell", qty)}>Sell to Close</button>
         </div>
+        {!marketOpen && (
+          <div className="orderHint dim" style={{ textAlign: "center", marginTop: "10px" }}>Market is closed — trading resumes 9:15 AM Mon–Fri</div>
+        )}
       </div>
     </div>
   );
