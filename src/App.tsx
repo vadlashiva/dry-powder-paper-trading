@@ -504,6 +504,7 @@ const uid = () => Math.random().toString(36).slice(2, 10);
 
 const SUPABASE_URL = "https://qfzepvorvvajqpnfwceq.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_-pw1tSkYhKymxQZHNqT66w_GOPnWEQN";
+const YAHOO_PROXY_URL = `${SUPABASE_URL}/functions/v1/yahoo-proxy`;
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const usernameToEmail = (username) => `${username.trim().toLowerCase()}@gmail.com`;
@@ -589,7 +590,7 @@ async function startProCheckout({ userEmail, onSuccess, onError }) {
 
 async function fetchYahoo(symbol, interval = "5m", range = "1d") {
   const res = await fetch(
-    `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=${interval}&range=${range}`
+    `${YAHOO_PROXY_URL}?type=chart&symbol=${encodeURIComponent(symbol)}&interval=${interval}&range=${range}`
   );
   if (!res.ok) throw new Error("bad response");
   const json = await res.json();
@@ -611,7 +612,7 @@ async function fetchYahoo(symbol, interval = "5m", range = "1d") {
 
 async function searchYahooSymbols(query) {
   const res = await fetch(
-    `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=8&newsCount=0`
+    `${YAHOO_PROXY_URL}?type=search&q=${encodeURIComponent(query)}&quotesCount=8&newsCount=0`
   );
   if (!res.ok) throw new Error("search failed");
   const json = await res.json();
@@ -627,7 +628,7 @@ async function searchYahooSymbols(query) {
 
 async function fetchSymbolNews(query) {
   const res = await fetch(
-    `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=0&newsCount=8`
+    `${YAHOO_PROXY_URL}?type=search&q=${encodeURIComponent(query)}&quotesCount=0&newsCount=8`
   );
   if (!res.ok) throw new Error("news fetch failed");
   const json = await res.json();
