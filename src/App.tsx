@@ -258,7 +258,25 @@ function fitAllInGroup(syncGroupRef) {
   syncGroupRef.current.forEach((c) => { try { c.timeScale().fitContent(); } catch { /* ignore */ } });
 }
 
-function PriceChart({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPrice, pendingLines, chartType }) {
+function pointToSegmentDistance(px, py, x1, y1, x2, y2) {
+  const dx = x2 - x1, dy = y2 - y1;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return Math.hypot(px - x1, py - y1);
+  let t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  const cx = x1 + t * dx, cy = y1 + t * dy;
+  return Math.hypot(px - cx, py - cy);
+}
+
+const DRAW_TOOLS = [
+  { id: "cursor", label: "Cursor" },
+  { id: "hline", label: "H-Line" },
+  { id: "vline", label: "V-Line" },
+  { id: "trend", label: "Trend" },
+  { id: "erase", label: "Erase" },
+];
+
+function PriceChart({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPrice, pendingLines, chartType, resetKey }) {
   const containerRef = useRef(null);
   const legendRef = useRef(null);
   const chartRef = useRef(null);
@@ -267,10 +285,20 @@ function PriceChart({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPr
   const maRef = useRef(null);
   const draftLineRef = useRef(null);
   const pendingLinesRef = useRef(new Map());
+  const userHLineRefsMap = useRef(new Map());
   const pickModeRef = useRef(pickMode);
   const onPricePickRef = useRef(onPricePick);
+  const drawModeRef = useRef("cursor");
+  const drawingsRef = useRef([]);
+  const pendingTrendRef = useRef(null);
+  const [drawMode, setDrawMode] = useState("cursor");
+  const [drawings, setDrawings] = useState([]);
+  const [overlayTick, setOverlayTick] = useState(0);
   useEffect(() => { pickModeRef.current = pickMode; }, [pickMode]);
   useEffect(() => { onPricePickRef.current = onPricePick; }, [onPricePick]);
+  useEffect(() => { drawModeRef.current = drawMode; }, [drawMode]);
+  useEffect(() => { drawingsRef.current = drawings; setOverlayTick((t) => t + 1); }, [drawings]);
+  useEffect(() => { setDrawings([]); pendingTrendRef.current = null; setDrawMode("cursor"); }, [resetKey]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -309,6 +337,57 @@ function PriceChart({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPr
     });
 
     chart.subscribeClick((param) => {
+      if (drawModeRef.current !== "cursor" && param.point) {
+        const activeSeries = candleRef.current?.options().visible ? candleRef.current : lineRef.current;
+        const mode = drawModeRef.current;
+        if (mode === "hline") {
+          const price = activeSeries.coordinateToPrice(param.point.y);
+          if (price != null) setDrawings((prev) => [...prev, { id: uid(), type: "hline", price }]);
+          return;
+        }
+        if (mode === "vline") {
+          const time = chart.timeScale().coordinateToTime(param.point.x);
+          if (time != null) setDrawings((prev) => [...prev, { id: uid(), type: "vline", time }]);
+          return;
+        }
+        if (mode === "trend") {
+          const price = activeSeries.coordinateToPrice(param.point.y);
+          const time = chart.timeScale().coordinateToTime(param.point.x);
+          if (price != null && time != null) {
+            if (!pendingTrendRef.current) {
+              pendingTrendRef.current = { time, price };
+            } else {
+              const p1 = pendingTrendRef.current;
+              setDrawings((prev) => [...prev, { id: uid(), type: "trend", t1: p1.time, p1: p1.price, t2: time, p2: price }]);
+              pendingTrendRef.current = null;
+            }
+          }
+          return;
+        }
+        if (mode === "erase") {
+          const ts = chart.timeScale();
+          const activeSeries2 = candleRef.current?.options().visible ? candleRef.current : lineRef.current;
+          let best = null, bestDist = 10;
+          drawingsRef.current.forEach((d) => {
+            if (d.type === "hline") {
+              const py = activeSeries2.priceToCoordinate(d.price);
+              if (py != null) { const dist = Math.abs(param.point.y - py); if (dist < bestDist) { bestDist = dist; best = d; } }
+            } else if (d.type === "vline") {
+              const px = ts.timeToCoordinate(d.time);
+              if (px != null) { const dist = Math.abs(param.point.x - px); if (dist < bestDist) { bestDist = dist; best = d; } }
+            } else if (d.type === "trend") {
+              const x1 = ts.timeToCoordinate(d.t1), y1 = activeSeries2.priceToCoordinate(d.p1);
+              const x2 = ts.timeToCoordinate(d.t2), y2 = activeSeries2.priceToCoordinate(d.p2);
+              if (x1 != null && y1 != null && x2 != null && y2 != null) {
+                const dist = pointToSegmentDistance(param.point.x, param.point.y, x1, y1, x2, y2);
+                if (dist < bestDist) { bestDist = dist; best = d; }
+              }
+            }
+          });
+          if (best) setDrawings((prev) => prev.filter((d) => d.id !== best.id));
+          return;
+        }
+      }
       if (!pickModeRef.current || !param.point) return;
       const activeSeries = candleRef.current?.options().visible ? candleRef.current : lineRef.current;
       if (!activeSeries) return;
@@ -316,13 +395,15 @@ function PriceChart({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPr
       if (price != null && onPricePickRef.current) onPricePickRef.current(price);
     });
 
+    chart.timeScale().subscribeVisibleLogicalRangeChange(() => setOverlayTick((t) => t + 1));
+
     chartRef.current = chart;
     candleRef.current = candleSeries;
     lineRef.current = lineSeries;
     maRef.current = maSeries;
     joinSyncGroup(chart, syncGroupRef);
 
-    const onResize = () => { if (containerRef.current) chart.applyOptions({ width: containerRef.current.clientWidth }); };
+    const onResize = () => { if (containerRef.current) chart.applyOptions({ width: containerRef.current.clientWidth }); setOverlayTick((t) => t + 1); };
     window.addEventListener("resize", onResize);
     return () => {
       window.removeEventListener("resize", onResize);
@@ -392,10 +473,78 @@ function PriceChart({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPr
     });
   }, [pendingLines, chartType]);
 
+  useEffect(() => {
+    const activeSeries = chartType === "line" ? lineRef.current : candleRef.current;
+    if (!activeSeries) return;
+    const hlines = drawings.filter((d) => d.type === "hline");
+    const currentIds = new Set(hlines.map((d) => d.id));
+    userHLineRefsMap.current.forEach((line, id) => {
+      if (!currentIds.has(id)) {
+        try { activeSeries.removePriceLine(line); } catch { /* series swapped */ }
+        userHLineRefsMap.current.delete(id);
+      }
+    });
+    hlines.forEach((d) => {
+      if (!userHLineRefsMap.current.has(d.id)) {
+        const line = activeSeries.createPriceLine({
+          price: d.price, color: LW_COLORS.accent, lineWidth: 1, lineStyle: 0, axisLabelVisible: true, title: "H",
+        });
+        userHLineRefsMap.current.set(d.id, line);
+      }
+    });
+  }, [drawings, chartType]);
+
+  useEffect(() => { setOverlayTick((t) => t + 1); }, [data, chartType]);
+
+  const overlayLines = useMemo(() => {
+    if (!chartRef.current || !containerRef.current) return [];
+    const activeSeries = candleRef.current?.options().visible ? candleRef.current : lineRef.current;
+    if (!activeSeries) return [];
+    const ts = chartRef.current.timeScale();
+    const height = containerRef.current.clientHeight || 340;
+    const out = [];
+    drawings.forEach((d) => {
+      if (d.type === "vline") {
+        const x = ts.timeToCoordinate(d.time);
+        if (x != null) out.push({ id: d.id, x1: x, y1: 0, x2: x, y2: height });
+      } else if (d.type === "trend") {
+        const x1 = ts.timeToCoordinate(d.t1), y1 = activeSeries.priceToCoordinate(d.p1);
+        const x2 = ts.timeToCoordinate(d.t2), y2 = activeSeries.priceToCoordinate(d.p2);
+        if (x1 != null && y1 != null && x2 != null && y2 != null) out.push({ id: d.id, x1, y1, x2, y2 });
+      }
+    });
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drawings, overlayTick, chartType]);
+
   return (
     <div className="lwWrap">
+      <div className="drawToolbar">
+        {DRAW_TOOLS.map((t) => (
+          <button
+            key={t.id}
+            className={`drawToolBtn ${drawMode === t.id ? "drawToolBtnActive" : ""}`}
+            onClick={() => { pendingTrendRef.current = null; setDrawMode(t.id); }}
+          >
+            {t.label}
+          </button>
+        ))}
+        {drawings.length > 0 && (
+          <button className="drawToolBtn" onClick={() => { setDrawings([]); pendingTrendRef.current = null; }}>Clear</button>
+        )}
+        {drawMode === "trend" && (
+          <span className="dim drawToolHint">{pendingTrendRef.current ? "Click the second point…" : "Click the first point…"}</span>
+        )}
+      </div>
       <div ref={legendRef} className="lwLegend mono" />
-      <div ref={containerRef} className={`lwChart ${pickMode ? "lwChartPicking" : ""}`} />
+      <div className="lwChartOuter" style={{ position: "relative" }}>
+        <div ref={containerRef} className={`lwChart ${pickMode || drawMode !== "cursor" ? "lwChartPicking" : ""}`} />
+        <svg className="lwDrawOverlay" width="100%" height="100%">
+          {overlayLines.map((l) => (
+            <line key={l.id} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} stroke={LW_COLORS.accent} strokeWidth="1.5" />
+          ))}
+        </svg>
+      </div>
     </div>
   );
 }
@@ -504,6 +653,7 @@ const uid = () => Math.random().toString(36).slice(2, 10);
 
 const SUPABASE_URL = "https://qfzepvorvvajqpnfwceq.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_-pw1tSkYhKymxQZHNqT66w_GOPnWEQN";
+const YAHOO_PROXY_URL = `${SUPABASE_URL}/functions/v1/yahoo-proxy`;
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const usernameToEmail = (username) => `${username.trim().toLowerCase()}@gmail.com`;
@@ -587,9 +737,25 @@ async function startProCheckout({ userEmail, onSuccess, onError }) {
   }
 }
 
+async function fetchYahooRange(symbol, interval, period1, period2) {
+  const res = await fetch(
+    `${YAHOO_PROXY_URL}?type=chart&symbol=${encodeURIComponent(symbol)}&interval=${interval}&period1=${period1}&period2=${period2}`
+  );
+  if (!res.ok) throw new Error("bad response");
+  const json = await res.json();
+  const result = json.chart?.result?.[0];
+  if (!result) throw new Error("no data for this date");
+  const ts = result.timestamp || [];
+  const q0 = result.indicators.quote[0];
+  const opens = q0.open || [], highs = q0.high || [], lows = q0.low || [], closes = q0.close || [];
+  return ts
+    .map((t, i) => ({ time: t * 1000, price: closes[i], open: opens[i], high: highs[i], low: lows[i], close: closes[i] }))
+    .filter((p) => typeof p.price === "number" && typeof p.open === "number" && typeof p.high === "number" && typeof p.low === "number");
+}
+
 async function fetchYahoo(symbol, interval = "5m", range = "1d") {
   const res = await fetch(
-    `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=${interval}&range=${range}`
+    `${YAHOO_PROXY_URL}?type=chart&symbol=${encodeURIComponent(symbol)}&interval=${interval}&range=${range}`
   );
   if (!res.ok) throw new Error("bad response");
   const json = await res.json();
@@ -611,7 +777,7 @@ async function fetchYahoo(symbol, interval = "5m", range = "1d") {
 
 async function searchYahooSymbols(query) {
   const res = await fetch(
-    `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=8&newsCount=0`
+    `${YAHOO_PROXY_URL}?type=search&q=${encodeURIComponent(query)}&quotesCount=8&newsCount=0`
   );
   if (!res.ok) throw new Error("search failed");
   const json = await res.json();
@@ -627,7 +793,7 @@ async function searchYahooSymbols(query) {
 
 async function fetchSymbolNews(query) {
   const res = await fetch(
-    `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=0&newsCount=8`
+    `${YAHOO_PROXY_URL}?type=search&q=${encodeURIComponent(query)}&quotesCount=0&newsCount=8`
   );
   if (!res.ok) throw new Error("news fetch failed");
   const json = await res.json();
@@ -791,6 +957,113 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, onRe
   const [pickingPriceFromChart, setPickingPriceFromChart] = useState(false);
   const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
+
+  // ---- Replay Mode ----
+  const REPLAY_CASH = 1000000;
+  const [replaySymbol, setReplaySymbol] = useState("RELIANCE.NS");
+  const [replayDate, setReplayDate] = useState("");
+  const [replayLoading, setReplayLoading] = useState(false);
+  const [replayError, setReplayError] = useState("");
+  const [replayFullHistory, setReplayFullHistory] = useState([]);
+  const [replayVisibleCount, setReplayVisibleCount] = useState(0);
+  const [replayPlaying, setReplayPlaying] = useState(false);
+  const [replaySpeed, setReplaySpeed] = useState("normal"); // slow | normal | fast
+  const [replayCash, setReplayCash] = useState(REPLAY_CASH);
+  const [replayPositions, setReplayPositions] = useState([]);
+  const [replayTrades, setReplayTrades] = useState([]);
+  const [replayQty, setReplayQty] = useState(10);
+  const replaySyncGroupRef = useRef([]);
+
+  const REPLAY_SPEED_MS = { slow: 800, normal: 400, fast: 150 };
+
+  useEffect(() => {
+    if (!replayPlaying) return;
+    if (replayVisibleCount >= replayFullHistory.length) { setReplayPlaying(false); return; }
+    const t = setTimeout(() => setReplayVisibleCount((c) => Math.min(c + 1, replayFullHistory.length)), REPLAY_SPEED_MS[replaySpeed]);
+    return () => clearTimeout(t);
+  }, [replayPlaying, replayVisibleCount, replayFullHistory.length, replaySpeed]);
+
+  const loadReplayDay = async () => {
+    if (!replayDate) return showToast("Pick a date first", "bear");
+    setReplayError("");
+    setReplayLoading(true);
+    setReplayPlaying(false);
+    try {
+      const day = new Date(replayDate + "T00:00:00+05:30");
+      const period1 = Math.floor(day.getTime() / 1000);
+      const period2 = period1 + 24 * 3600;
+      const hist = await fetchYahooRange(replaySymbol, "5m", period1, period2);
+      if (hist.length < 3) {
+        setReplayError("No trading data for this date (weekend, holiday, or too far back).");
+        setReplayFullHistory([]);
+        setReplayVisibleCount(0);
+      } else {
+        setReplayFullHistory(hist);
+        setReplayVisibleCount(Math.min(5, hist.length));
+        setReplayCash(REPLAY_CASH);
+        setReplayPositions([]);
+        setReplayTrades([]);
+      }
+    } catch (e) {
+      setReplayError("Couldn't load data for that date. Try a different (recent, weekday) date.");
+      setReplayFullHistory([]);
+      setReplayVisibleCount(0);
+    } finally {
+      setReplayLoading(false);
+    }
+  };
+
+  const [replayShowMA, setReplayShowMA] = useState(false);
+  const replayVisibleData = useMemo(() => replayFullHistory.slice(0, replayVisibleCount), [replayFullHistory, replayVisibleCount]);
+  const replayChartSeries = useMemo(() => buildChartSeries(replayVisibleData, { ma: replayShowMA }), [replayVisibleData, replayShowMA]);
+  const replayCurrentPrice = replayVisibleData.length ? replayVisibleData[replayVisibleData.length - 1].close : null;
+  const replayMeta = allInstruments.find((s) => s.symbol === replaySymbol);
+  const replayPos = replayPositions.find((p) => p.symbol === replaySymbol);
+  const replayMktValue = replayPositions.reduce((sum, p) => sum + (p.symbol === replaySymbol && replayCurrentPrice != null ? replayCurrentPrice : p.lastPrice) * p.qty, 0);
+  const replayEquity = replayCash + replayMktValue;
+  const replayDone = replayFullHistory.length > 0 && replayVisibleCount >= replayFullHistory.length;
+
+  const resetReplaySession = () => {
+    setReplayCash(REPLAY_CASH);
+    setReplayPositions([]);
+    setReplayTrades([]);
+    setReplayVisibleCount(replayFullHistory.length ? Math.min(5, replayFullHistory.length) : 0);
+    setReplayPlaying(false);
+    showToast("Replay session reset", "bull");
+  };
+
+  const placeReplayOrder = (side) => {
+    if (replayCurrentPrice == null) return;
+    const price = replayCurrentPrice;
+    const qty = replayQty;
+    if (qty <= 0) return;
+    const cost = price * qty;
+    if (side === "buy") {
+      if (cost > replayCash) return showToast("Insufficient replay buying power", "bear");
+      setReplayCash((c) => c - cost);
+      setReplayPositions((prev) => {
+        const existing = prev.find((p) => p.symbol === replaySymbol);
+        if (existing) {
+          const totalQty = existing.qty + qty;
+          const avgPrice = (existing.avgPrice * existing.qty + cost) / totalQty;
+          return prev.map((p) => (p.symbol === replaySymbol ? { ...p, qty: totalQty, avgPrice, lastPrice: price } : p));
+        }
+        return [...prev, { id: uid(), symbol: replaySymbol, qty, avgPrice: price, lastPrice: price }];
+      });
+      setReplayTrades((prev) => [{ id: uid(), label: `BUY ${qty} ${displayTicker(replaySymbol)} @ ${fmtMoney(price)}`, amount: -cost }, ...prev].slice(0, 200));
+      showToast(`Replay: bought ${qty} ${displayTicker(replaySymbol)}`, "bull");
+    } else {
+      const held = replayPos?.qty ?? 0;
+      if (qty > held) return showToast(`Only ${held} shares held in this replay`, "bear");
+      setReplayCash((c) => c + cost);
+      setReplayPositions((prev) => prev.map((p) => (p.symbol === replaySymbol ? { ...p, qty: p.qty - qty, lastPrice: price } : p)).filter((p) => p.qty > 0));
+      setReplayTrades((prev) => [{ id: uid(), label: `SELL ${qty} ${displayTicker(replaySymbol)} @ ${fmtMoney(price)}`, amount: cost }, ...prev].slice(0, 200));
+      showToast(`Replay: sold ${qty} ${displayTicker(replaySymbol)}`, "bear");
+    }
+  };
+
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const thirtyDaysAgoISO = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString().slice(0, 10);
 
   const expiries = useMemo(() => nextThursdays(4), []);
   const quotesRef = useRef(quotes);
@@ -1420,7 +1693,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, onRe
           </div>
 
           <div className="tabs">
-            {[["trade", "Chart & Trade"], ["chain", "Options Chain"], ["positions", "Positions"], ["orders", `Orders${pendingOrders.length ? ` (${pendingOrders.length})` : ""}`], ["alerts", `Alerts${activeAlerts ? ` (${activeAlerts})` : ""}`], ["news", "News"], ["history", "History"]].map(([id, label]) => (
+            {[["trade", "Chart & Trade"], ["chain", "Options Chain"], ["positions", "Positions"], ["orders", `Orders${pendingOrders.length ? ` (${pendingOrders.length})` : ""}`], ["alerts", `Alerts${activeAlerts ? ` (${activeAlerts})` : ""}`], ["news", "News"], ["history", "History"], ["replay", "Replay"]].map(([id, label]) => (
               <button key={id} className={`tab ${tab === id ? "tabActive" : ""}`} onClick={() => setTab(id)}>{label}</button>
             ))}
           </div>
@@ -1472,6 +1745,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, onRe
                   pickMode={pickingPriceFromChart}
                   onPricePick={handleChartPricePick}
                   chartType={chartType}
+                  resetKey={`${selected}-${timeframe}`}
                   draftPrice={orderType !== "market" && orderPrice ? parseFloat(orderPrice) || null : null}
                   pendingLines={pendingOrders
                     .filter((o) => o.symbol === selected)
@@ -1850,6 +2124,150 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, onRe
               )}
             </div>
           )}
+
+          {tab === "replay" && (
+            <div className="replayWrap">
+              <div className="replayControls">
+                <div className="replayControlsRow">
+                  <div className="replayField">
+                    <label>Symbol</label>
+                    <select className="alertSelect" value={replaySymbol} onChange={(e) => setReplaySymbol(e.target.value)}>
+                      {allInstruments.map((s) => (
+                        <option key={s.symbol} value={s.symbol}>{displayTicker(s.symbol)} ({s.exchange})</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="replayField">
+                    <label>Date</label>
+                    <input
+                      type="date"
+                      className="qtyInput mono"
+                      value={replayDate}
+                      min={thirtyDaysAgoISO}
+                      max={todayISO}
+                      onChange={(e) => setReplayDate(e.target.value)}
+                    />
+                  </div>
+                  <button className="btn btnBull replayLoadBtn" onClick={loadReplayDay} disabled={replayLoading}>
+                    {replayLoading ? "Loading…" : "Load Day"}
+                  </button>
+                  <button className="btn btnGhost replayLoadBtn" onClick={() => setTab("trade")}>
+                    ← Back to Live
+                  </button>
+                </div>
+                <div className="dim replayHint">
+                  Pick any weekday in the last 30 days. The chart replays that day's real price action candle by candle — practice trading as if it were happening live, with a separate {fmtMoney(REPLAY_CASH, 0)} practice balance that never touches your real portfolio.
+                </div>
+                {replayError && <div className="authError" style={{ marginTop: "8px" }}>{replayError}</div>}
+              </div>
+
+              {replayFullHistory.length > 0 && (
+                <>
+                  <div className="replayStats">
+                    <Stat label="Replay Cash" value={fmtMoney(replayCash, 0)} />
+                    <Stat label="Replay Equity" value={fmtMoney(replayEquity, 0)} />
+                    <Stat label="Replay P&L" value={fmtMoney(replayEquity - REPLAY_CASH, 0)} tone={replayEquity - REPLAY_CASH >= 0 ? "bull" : "bear"} />
+                    <button className="resetBtn replayResetBtn" onClick={resetReplaySession}><RotateCcw size={13} /> Reset Session</button>
+                  </div>
+
+                  <div className="tradeGrid">
+                    <div className="chartCard">
+                      <div className="chartHead">
+                        <div className="tfTabs">
+                          <button className={`tfTab ${replayPlaying ? "" : "tfTabActive"}`} onClick={() => setReplayPlaying(false)} disabled={!replayPlaying}>
+                            <Lock size={0} />Pause
+                          </button>
+                          <button className={`tfTab ${replayPlaying ? "tfTabActive" : ""}`} onClick={() => setReplayPlaying(true)} disabled={replayDone}>
+                            Play
+                          </button>
+                          <button className="tfTab" onClick={() => setReplayVisibleCount(replayFullHistory.length)} disabled={replayDone}>
+                            Skip to End
+                          </button>
+                        </div>
+                        <div className="indToggles">
+                          <button className={`indToggle ${replayShowMA ? "indToggleActive" : ""}`} onClick={() => setReplayShowMA((v) => !v)}>
+                            <span className="indDot" style={{ background: LW_COLORS.amber }} />MA(20)
+                          </button>
+                          <span style={{ width: "10px" }} />
+                          {[["slow", "0.5x"], ["normal", "1x"], ["fast", "2x"]].map(([key, label]) => (
+                            <button key={key} className={`indToggle ${replaySpeed === key ? "indToggleActive" : ""}`} onClick={() => setReplaySpeed(key)}>{label}</button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <PriceChart
+                        data={replayChartSeries}
+                        showMA={replayShowMA}
+                        syncGroupRef={replaySyncGroupRef}
+                        pickMode={false}
+                        onPricePick={() => {}}
+                        chartType="candle"
+                        resetKey={`${replaySymbol}-${replayDate}`}
+                        draftPrice={null}
+                        pendingLines={[]}
+                      />
+
+                      <div className="chartHint dim">
+                        Candle {replayVisibleCount} of {replayFullHistory.length}{replayDone ? " — day complete" : ""}
+                      </div>
+                    </div>
+
+                    <div className="orderCard">
+                      <div className="orderCardHead">
+                        <h3>Replay Order</h3>
+                        <span className="orderCardSym mono">{displayTicker(replaySymbol)}</span>
+                      </div>
+                      <div className="orderRow">
+                        <label>Quantity</label>
+                        <input type="number" min="1" className="qtyInput mono" value={replayQty} onChange={(e) => setReplayQty(Math.max(1, parseInt(e.target.value) || 1))} />
+                      </div>
+                      <div className="orderEst mono">
+                        <span className="dim">Current price</span>
+                        <span>{replayCurrentPrice != null ? fmtMoney(replayCurrentPrice) : "—"}</span>
+                      </div>
+                      <div className="orderBtns">
+                        <button className="btn btnBull" onClick={() => placeReplayOrder("buy")}><TrendingUp size={14} /> Buy</button>
+                        <button className="btn btnBear" onClick={() => placeReplayOrder("sell")}><TrendingDown size={14} /> Sell</button>
+                      </div>
+                      {replayPos ? (
+                        <div className="posSummary">
+                          <div className="posSummaryRow">
+                            <span className="dim">Held</span>
+                            <span className="mono">{replayPos.qty} sh · avg {fmtMoney(replayPos.avgPrice)}</span>
+                          </div>
+                          <div className="posSummaryRow">
+                            <span className="dim">Unrealized P&amp;L</span>
+                            <span className={`mono ${replayCurrentPrice != null && (replayCurrentPrice - replayPos.avgPrice) >= 0 ? "bull" : "bear"}`}>
+                              {replayCurrentPrice != null ? fmtMoney((replayCurrentPrice - replayPos.avgPrice) * replayPos.qty) : "—"}
+                            </span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="held mono">Held: 0 shares</div>
+                      )}
+                    </div>
+                  </div>
+
+                  {replayTrades.length > 0 && (
+                    <div className="mt">
+                      <h3>Replay Trade Log</h3>
+                      <table className="posTable">
+                        <thead><tr><th>Trade</th><th>Cash Impact</th></tr></thead>
+                        <tbody>
+                          {replayTrades.map((t) => (
+                            <tr key={t.id}>
+                              <td className="mono">{t.label}</td>
+                              <td className={`mono ${t.amount >= 0 ? "bull" : "bear"}`}>{fmtMoney(t.amount)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -2205,6 +2623,13 @@ const CSS = `
 .lwWrap { position: relative; }
 .lwChart { width: 100%; }
 .lwLegend { position: absolute; top: 4px; left: 4px; z-index: 5; font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums; letter-spacing: 0.2px; color: var(--text-dim); background: rgba(18,23,34,0.75); padding: 3px 9px; border-radius: 6px; pointer-events: none; }
+.drawToolbar { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+.drawToolBtn { background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim); padding: 5px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease; }
+.drawToolBtn:hover { color: var(--text); border-color: var(--accent); }
+.drawToolBtnActive { background: var(--accent); color: white; border-color: var(--accent); }
+.drawToolHint { font-size: 11px; margin-left: 4px; }
+.lwChartOuter { position: relative; }
+.lwDrawOverlay { position: absolute; top: 0; left: 0; pointer-events: none; }
 .lwChart a[href*="tradingview.com"] { display: none !important; }
 
 .orderCard { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px; height: fit-content; transition: box-shadow 0.2s ease; }
@@ -2305,6 +2730,15 @@ const CSS = `
 .alertSelect { background: var(--surface-2); border: 1px solid var(--border); color: var(--text); padding: 7px 10px; border-radius: 6px; font-size: 12px; }
 .alertAddBtn { flex: none; display: flex; align-items: center; gap: 6px; padding: 8px 14px; }
 .alertHint { margin-top: 10px; font-size: 11px; line-height: 1.5; }
+.replayWrap { display: flex; flex-direction: column; gap: 20px; }
+.replayControls { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+.replayControlsRow { display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap; }
+.replayField { display: flex; flex-direction: column; gap: 6px; }
+.replayField label { font-size: 11px; color: var(--text-dim); }
+.replayLoadBtn { flex: none; padding: 9px 20px; }
+.replayHint { margin-top: 12px; font-size: 11.5px; line-height: 1.6; max-width: 70ch; }
+.replayStats { display: flex; align-items: center; gap: 28px; flex-wrap: wrap; }
+.replayResetBtn { margin-left: auto; }
 .alertStatus { font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
 .alertActive { background: rgba(255,176,32,0.15); color: var(--amber); }
 .alertTriggered { background: rgba(20,232,160,0.15); color: var(--bull); }
