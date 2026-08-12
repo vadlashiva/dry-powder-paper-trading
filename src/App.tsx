@@ -726,7 +726,7 @@ async function startProCheckout({ userEmail, onSuccess, onError }) {
     const rzp = new window.Razorpay({
       key: data.keyId,
       subscription_id: data.subscriptionId,
-      name: "TRADE FREE Pro",
+      name: "VINVIN Pro",
       description: "Monthly subscription",
       prefill: { email: userEmail },
       theme: { color: "#7B61FF" },
@@ -860,7 +860,7 @@ function AuthGate({ themeIdx, cycleTheme }) {
       <div className="authCard">
         <div className="authBrand">
           <Flame size={22} className="brandIcon" />
-          <span>TRADE FREE</span>
+          <span>VINVIN</span>
         </div>
         <div className="authSub">Paper trading terminal &middot; NSE &amp; BSE</div>
 
@@ -1498,7 +1498,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, onRe
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `trade-free-history-${username}-${Date.now()}.csv`;
+    a.download = `vinvin-history-${username}-${Date.now()}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -1608,7 +1608,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, onRe
       <div className="topbar">
         <div className="brand">
           <Flame size={20} className="brandIcon" />
-          <span>TRADE FREE</span>
+          <span>VINVIN</span>
           <span className="brandSub">paper terminal</span>
         </div>
         <div className="stats">
@@ -2420,7 +2420,7 @@ function SplashScreen({ label, themeIdx }) {
     <div className="authWrap" style={THEMES[themeIdx].vars}>
       <style>{CSS}</style>
       <div className="authCard splashCard">
-        <div className="authBrand"><Flame size={22} className="brandIcon" /><span>TRADE FREE</span></div>
+        <div className="authBrand"><Flame size={22} className="brandIcon" /><span>VINVIN</span></div>
         <div className="authSub">{label}</div>
       </div>
     </div>
