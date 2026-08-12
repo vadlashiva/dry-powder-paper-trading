@@ -258,7 +258,25 @@ function fitAllInGroup(syncGroupRef) {
   syncGroupRef.current.forEach((c) => { try { c.timeScale().fitContent(); } catch { /* ignore */ } });
 }
 
-function PriceChart({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPrice, pendingLines, chartType }) {
+function pointToSegmentDistance(px, py, x1, y1, x2, y2) {
+  const dx = x2 - x1, dy = y2 - y1;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return Math.hypot(px - x1, py - y1);
+  let t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  const cx = x1 + t * dx, cy = y1 + t * dy;
+  return Math.hypot(px - cx, py - cy);
+}
+
+const DRAW_TOOLS = [
+  { id: "cursor", label: "Cursor" },
+  { id: "hline", label: "H-Line" },
+  { id: "vline", label: "V-Line" },
+  { id: "trend", label: "Trend" },
+  { id: "erase", label: "Erase" },
+];
+
+function PriceChart({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPrice, pendingLines, chartType, resetKey }) {
   const containerRef = useRef(null);
   const legendRef = useRef(null);
   const chartRef = useRef(null);
@@ -267,10 +285,20 @@ function PriceChart({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPr
   const maRef = useRef(null);
   const draftLineRef = useRef(null);
   const pendingLinesRef = useRef(new Map());
+  const userHLineRefsMap = useRef(new Map());
   const pickModeRef = useRef(pickMode);
   const onPricePickRef = useRef(onPricePick);
+  const drawModeRef = useRef("cursor");
+  const drawingsRef = useRef([]);
+  const pendingTrendRef = useRef(null);
+  const [drawMode, setDrawMode] = useState("cursor");
+  const [drawings, setDrawings] = useState([]);
+  const [overlayTick, setOverlayTick] = useState(0);
   useEffect(() => { pickModeRef.current = pickMode; }, [pickMode]);
   useEffect(() => { onPricePickRef.current = onPricePick; }, [onPricePick]);
+  useEffect(() => { drawModeRef.current = drawMode; }, [drawMode]);
+  useEffect(() => { drawingsRef.current = drawings; setOverlayTick((t) => t + 1); }, [drawings]);
+  useEffect(() => { setDrawings([]); pendingTrendRef.current = null; setDrawMode("cursor"); }, [resetKey]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -309,6 +337,57 @@ function PriceChart({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPr
     });
 
     chart.subscribeClick((param) => {
+      if (drawModeRef.current !== "cursor" && param.point) {
+        const activeSeries = candleRef.current?.options().visible ? candleRef.current : lineRef.current;
+        const mode = drawModeRef.current;
+        if (mode === "hline") {
+          const price = activeSeries.coordinateToPrice(param.point.y);
+          if (price != null) setDrawings((prev) => [...prev, { id: uid(), type: "hline", price }]);
+          return;
+        }
+        if (mode === "vline") {
+          const time = chart.timeScale().coordinateToTime(param.point.x);
+          if (time != null) setDrawings((prev) => [...prev, { id: uid(), type: "vline", time }]);
+          return;
+        }
+        if (mode === "trend") {
+          const price = activeSeries.coordinateToPrice(param.point.y);
+          const time = chart.timeScale().coordinateToTime(param.point.x);
+          if (price != null && time != null) {
+            if (!pendingTrendRef.current) {
+              pendingTrendRef.current = { time, price };
+            } else {
+              const p1 = pendingTrendRef.current;
+              setDrawings((prev) => [...prev, { id: uid(), type: "trend", t1: p1.time, p1: p1.price, t2: time, p2: price }]);
+              pendingTrendRef.current = null;
+            }
+          }
+          return;
+        }
+        if (mode === "erase") {
+          const ts = chart.timeScale();
+          const activeSeries2 = candleRef.current?.options().visible ? candleRef.current : lineRef.current;
+          let best = null, bestDist = 10;
+          drawingsRef.current.forEach((d) => {
+            if (d.type === "hline") {
+              const py = activeSeries2.priceToCoordinate(d.price);
+              if (py != null) { const dist = Math.abs(param.point.y - py); if (dist < bestDist) { bestDist = dist; best = d; } }
+            } else if (d.type === "vline") {
+              const px = ts.timeToCoordinate(d.time);
+              if (px != null) { const dist = Math.abs(param.point.x - px); if (dist < bestDist) { bestDist = dist; best = d; } }
+            } else if (d.type === "trend") {
+              const x1 = ts.timeToCoordinate(d.t1), y1 = activeSeries2.priceToCoordinate(d.p1);
+              const x2 = ts.timeToCoordinate(d.t2), y2 = activeSeries2.priceToCoordinate(d.p2);
+              if (x1 != null && y1 != null && x2 != null && y2 != null) {
+                const dist = pointToSegmentDistance(param.point.x, param.point.y, x1, y1, x2, y2);
+                if (dist < bestDist) { bestDist = dist; best = d; }
+              }
+            }
+          });
+          if (best) setDrawings((prev) => prev.filter((d) => d.id !== best.id));
+          return;
+        }
+      }
       if (!pickModeRef.current || !param.point) return;
       const activeSeries = candleRef.current?.options().visible ? candleRef.current : lineRef.current;
       if (!activeSeries) return;
@@ -316,13 +395,15 @@ function PriceChart({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPr
       if (price != null && onPricePickRef.current) onPricePickRef.current(price);
     });
 
+    chart.timeScale().subscribeVisibleLogicalRangeChange(() => setOverlayTick((t) => t + 1));
+
     chartRef.current = chart;
     candleRef.current = candleSeries;
     lineRef.current = lineSeries;
     maRef.current = maSeries;
     joinSyncGroup(chart, syncGroupRef);
 
-    const onResize = () => { if (containerRef.current) chart.applyOptions({ width: containerRef.current.clientWidth }); };
+    const onResize = () => { if (containerRef.current) chart.applyOptions({ width: containerRef.current.clientWidth }); setOverlayTick((t) => t + 1); };
     window.addEventListener("resize", onResize);
     return () => {
       window.removeEventListener("resize", onResize);
@@ -392,10 +473,78 @@ function PriceChart({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPr
     });
   }, [pendingLines, chartType]);
 
+  useEffect(() => {
+    const activeSeries = chartType === "line" ? lineRef.current : candleRef.current;
+    if (!activeSeries) return;
+    const hlines = drawings.filter((d) => d.type === "hline");
+    const currentIds = new Set(hlines.map((d) => d.id));
+    userHLineRefsMap.current.forEach((line, id) => {
+      if (!currentIds.has(id)) {
+        try { activeSeries.removePriceLine(line); } catch { /* series swapped */ }
+        userHLineRefsMap.current.delete(id);
+      }
+    });
+    hlines.forEach((d) => {
+      if (!userHLineRefsMap.current.has(d.id)) {
+        const line = activeSeries.createPriceLine({
+          price: d.price, color: LW_COLORS.accent, lineWidth: 1, lineStyle: 0, axisLabelVisible: true, title: "H",
+        });
+        userHLineRefsMap.current.set(d.id, line);
+      }
+    });
+  }, [drawings, chartType]);
+
+  useEffect(() => { setOverlayTick((t) => t + 1); }, [data, chartType]);
+
+  const overlayLines = useMemo(() => {
+    if (!chartRef.current || !containerRef.current) return [];
+    const activeSeries = candleRef.current?.options().visible ? candleRef.current : lineRef.current;
+    if (!activeSeries) return [];
+    const ts = chartRef.current.timeScale();
+    const height = containerRef.current.clientHeight || 340;
+    const out = [];
+    drawings.forEach((d) => {
+      if (d.type === "vline") {
+        const x = ts.timeToCoordinate(d.time);
+        if (x != null) out.push({ id: d.id, x1: x, y1: 0, x2: x, y2: height });
+      } else if (d.type === "trend") {
+        const x1 = ts.timeToCoordinate(d.t1), y1 = activeSeries.priceToCoordinate(d.p1);
+        const x2 = ts.timeToCoordinate(d.t2), y2 = activeSeries.priceToCoordinate(d.p2);
+        if (x1 != null && y1 != null && x2 != null && y2 != null) out.push({ id: d.id, x1, y1, x2, y2 });
+      }
+    });
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drawings, overlayTick, chartType]);
+
   return (
     <div className="lwWrap">
+      <div className="drawToolbar">
+        {DRAW_TOOLS.map((t) => (
+          <button
+            key={t.id}
+            className={`drawToolBtn ${drawMode === t.id ? "drawToolBtnActive" : ""}`}
+            onClick={() => { pendingTrendRef.current = null; setDrawMode(t.id); }}
+          >
+            {t.label}
+          </button>
+        ))}
+        {drawings.length > 0 && (
+          <button className="drawToolBtn" onClick={() => { setDrawings([]); pendingTrendRef.current = null; }}>Clear</button>
+        )}
+        {drawMode === "trend" && (
+          <span className="dim drawToolHint">{pendingTrendRef.current ? "Click the second point…" : "Click the first point…"}</span>
+        )}
+      </div>
       <div ref={legendRef} className="lwLegend mono" />
-      <div ref={containerRef} className={`lwChart ${pickMode ? "lwChartPicking" : ""}`} />
+      <div className="lwChartOuter" style={{ position: "relative" }}>
+        <div ref={containerRef} className={`lwChart ${pickMode || drawMode !== "cursor" ? "lwChartPicking" : ""}`} />
+        <svg className="lwDrawOverlay" width="100%" height="100%">
+          {overlayLines.map((l) => (
+            <line key={l.id} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} stroke={LW_COLORS.accent} strokeWidth="1.5" />
+          ))}
+        </svg>
+      </div>
     </div>
   );
 }
@@ -864,7 +1013,9 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, onRe
     }
   };
 
+  const [replayShowMA, setReplayShowMA] = useState(false);
   const replayVisibleData = useMemo(() => replayFullHistory.slice(0, replayVisibleCount), [replayFullHistory, replayVisibleCount]);
+  const replayChartSeries = useMemo(() => buildChartSeries(replayVisibleData, { ma: replayShowMA }), [replayVisibleData, replayShowMA]);
   const replayCurrentPrice = replayVisibleData.length ? replayVisibleData[replayVisibleData.length - 1].close : null;
   const replayMeta = allInstruments.find((s) => s.symbol === replaySymbol);
   const replayPos = replayPositions.find((p) => p.symbol === replaySymbol);
@@ -1594,6 +1745,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, onRe
                   pickMode={pickingPriceFromChart}
                   onPricePick={handleChartPricePick}
                   chartType={chartType}
+                  resetKey={`${selected}-${timeframe}`}
                   draftPrice={orderType !== "market" && orderPrice ? parseFloat(orderPrice) || null : null}
                   pendingLines={pendingOrders
                     .filter((o) => o.symbol === selected)
@@ -2033,6 +2185,10 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, onRe
                           </button>
                         </div>
                         <div className="indToggles">
+                          <button className={`indToggle ${replayShowMA ? "indToggleActive" : ""}`} onClick={() => setReplayShowMA((v) => !v)}>
+                            <span className="indDot" style={{ background: LW_COLORS.amber }} />MA(20)
+                          </button>
+                          <span style={{ width: "10px" }} />
                           {[["slow", "0.5x"], ["normal", "1x"], ["fast", "2x"]].map(([key, label]) => (
                             <button key={key} className={`indToggle ${replaySpeed === key ? "indToggleActive" : ""}`} onClick={() => setReplaySpeed(key)}>{label}</button>
                           ))}
@@ -2040,12 +2196,13 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, onRe
                       </div>
 
                       <PriceChart
-                        data={replayVisibleData}
-                        showMA={false}
+                        data={replayChartSeries}
+                        showMA={replayShowMA}
                         syncGroupRef={replaySyncGroupRef}
                         pickMode={false}
                         onPricePick={() => {}}
                         chartType="candle"
+                        resetKey={`${replaySymbol}-${replayDate}`}
                         draftPrice={null}
                         pendingLines={[]}
                       />
@@ -2466,6 +2623,13 @@ const CSS = `
 .lwWrap { position: relative; }
 .lwChart { width: 100%; }
 .lwLegend { position: absolute; top: 4px; left: 4px; z-index: 5; font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums; letter-spacing: 0.2px; color: var(--text-dim); background: rgba(18,23,34,0.75); padding: 3px 9px; border-radius: 6px; pointer-events: none; }
+.drawToolbar { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+.drawToolBtn { background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim); padding: 5px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease; }
+.drawToolBtn:hover { color: var(--text); border-color: var(--accent); }
+.drawToolBtnActive { background: var(--accent); color: white; border-color: var(--accent); }
+.drawToolHint { font-size: 11px; margin-left: 4px; }
+.lwChartOuter { position: relative; }
+.lwDrawOverlay { position: absolute; top: 0; left: 0; pointer-events: none; }
 .lwChart a[href*="tradingview.com"] { display: none !important; }
 
 .orderCard { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px; height: fit-content; transition: box-shadow 0.2s ease; }
