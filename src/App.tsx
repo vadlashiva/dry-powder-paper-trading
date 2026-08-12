@@ -1980,7 +1980,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, onRe
                   <div className="replayField">
                     <label>Symbol</label>
                     <select className="alertSelect" value={replaySymbol} onChange={(e) => setReplaySymbol(e.target.value)}>
-                      {allInstruments.filter((s) => s.exchange !== "INDEX").map((s) => (
+                      {allInstruments.map((s) => (
                         <option key={s.symbol} value={s.symbol}>{displayTicker(s.symbol)} ({s.exchange})</option>
                       ))}
                     </select>
@@ -1998,6 +1998,9 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, onRe
                   </div>
                   <button className="btn btnBull replayLoadBtn" onClick={loadReplayDay} disabled={replayLoading}>
                     {replayLoading ? "Loading…" : "Load Day"}
+                  </button>
+                  <button className="btn btnGhost replayLoadBtn" onClick={() => setTab("trade")}>
+                    ← Back to Live
                   </button>
                 </div>
                 <div className="dim replayHint">
