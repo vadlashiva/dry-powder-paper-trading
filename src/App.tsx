@@ -726,7 +726,7 @@ async function startProCheckout({ userEmail, onSuccess, onError }) {
     const rzp = new window.Razorpay({
       key: data.keyId,
       subscription_id: data.subscriptionId,
-      name: "VINVIN Pro",
+      name: "WINBANNU Pro",
       description: "Monthly subscription",
       prefill: { email: userEmail },
       theme: { color: "#7B61FF" },
