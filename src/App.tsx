@@ -2981,15 +2981,14 @@ const CSS = `
 
 .landingWrap {
   min-height: 100vh; color: var(--text); font-family: 'Inter', sans-serif;
-  background-color: var(--bg);
+  background: linear-gradient(160deg, #071A40 0%, #0E3A8F 45%, #2E7CF6 100%);
   background-image:
-    radial-gradient(900px 560px at 8% -8%, color-mix(in srgb, var(--accent) 40%, transparent), transparent 60%),
-    radial-gradient(760px 520px at 95% 10%, color-mix(in srgb, var(--bull) 34%, transparent), transparent 60%),
-    radial-gradient(720px 480px at 78% 62%, color-mix(in srgb, var(--amber) 30%, transparent), transparent 60%),
-    radial-gradient(680px 460px at 6% 78%, color-mix(in srgb, var(--bear) 24%, transparent), transparent 60%);
+    radial-gradient(900px 560px at 10% -8%, rgba(255,255,255,0.10), transparent 60%),
+    radial-gradient(700px 460px at 92% 8%, color-mix(in srgb, var(--bull) 22%, transparent), transparent 60%),
+    linear-gradient(160deg, #071A40 0%, #0E3A8F 45%, #2E7CF6 100%);
   background-repeat: no-repeat;
 }
-.landingNav { display: flex; align-items: center; justify-content: space-between; padding: 20px 40px; border-bottom: 1px solid var(--border); flex-wrap: wrap; gap: 12px; position: relative; z-index: 1; }
+.landingNav { display: flex; align-items: center; justify-content: space-between; padding: 20px 40px; border-bottom: 1px solid rgba(255,255,255,0.14); flex-wrap: wrap; gap: 12px; position: relative; z-index: 1; }
 .landingNavActions { display: flex; align-items: center; gap: 10px; }
 .landingNavBtn { flex: none; padding: 9px 16px; }
 
@@ -3031,7 +3030,7 @@ const CSS = `
 .landingTrial .proBadgeIcon { display: block; margin: 0 auto 14px; }
 .landingTrialSub { font-size: 14.5px; line-height: 1.6; margin: 0 auto 26px; max-width: 46ch; }
 
-.landingFooter { border-top: 1px solid var(--border); padding: 28px 40px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; }
+.landingFooter { border-top: 1px solid rgba(255,255,255,0.14); padding: 28px 40px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; }
 .landingFooterLinks { display: flex; gap: 20px; }
 .landingFooterLinks a { color: var(--text-dim); font-size: 12.5px; text-decoration: none; }
 .landingFooterLinks a:hover { color: var(--text); }
