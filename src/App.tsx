@@ -45,6 +45,38 @@ const INSTRUMENTS = [
 const STARTING_CASH = 1000000;
 const RISK_FREE = 0.065;
 const MULTIPLIER = 1;
+const TRIAL_DAYS = 7;
+function trialDaysRemaining(createdAtIso) {
+  if (!createdAtIso) return 0;
+  const start = new Date(createdAtIso).getTime();
+  const elapsedDays = (Date.now() - start) / 86400000;
+  return Math.max(0, Math.ceil(TRIAL_DAYS - elapsedDays));
+}
+// The trial clock is anchored to whichever came first: this account's real
+// signup date, or the first time this browser was ever seen. That second
+// anchor persists across logout/re-register on the same browser, so simply
+// creating a new username doesn't grant a fresh 7 days — it inherits the
+// earlier (already-ticking) clock instead. This is a browser-level deterrent,
+// not a hard guarantee: clearing site data, incognito, or a different device
+// still resets it, since there's no backend to track this server-side.
+const LS_TRIAL_ANCHOR = "wb_trial_anchor";
+function getDeviceTrialAnchor() {
+  try {
+    let anchor = localStorage.getItem(LS_TRIAL_ANCHOR);
+    if (!anchor) {
+      anchor = new Date().toISOString();
+      localStorage.setItem(LS_TRIAL_ANCHOR, anchor);
+    }
+    return anchor;
+  } catch {
+    return new Date().toISOString(); // storage unavailable — fall back to "now", no persistence
+  }
+}
+function effectiveTrialStart(accountCreatedAtIso) {
+  const deviceAnchor = getDeviceTrialAnchor();
+  if (!accountCreatedAtIso) return deviceAnchor;
+  return new Date(accountCreatedAtIso).getTime() < new Date(deviceAnchor).getTime() ? accountCreatedAtIso : deviceAnchor;
+}
 
 const TIMEFRAMES = {
   "1m": { interval: "1m", range: "1d" },
@@ -890,7 +922,7 @@ function AuthGate({ themeIdx, cycleTheme }) {
   );
 }
 
-function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, onRefreshSubscription, onLogout, themeIdx, cycleTheme }) {
+function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPaidPro, inTrial, trialDaysLeft, onRefreshSubscription, onLogout, themeIdx, cycleTheme }) {
   const saved = initialPortfolio;
   const syncGroupRef = useRef([]);
 
@@ -1391,6 +1423,20 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, onRe
 
   useEffect(() => { if (isPro) setCheckoutBusy(false); }, [isPro]);
 
+  // One-time nudge when the free trial has just run out (per-browser, since there's
+  // no backend to track this server-side). Never fires for paid Pro users.
+  useEffect(() => {
+    if (isPaidPro || inTrial) return;
+    const key = `wb_trial_ended_seen_${userId}`;
+    try {
+      if (!localStorage.getItem(key)) {
+        localStorage.setItem(key, "1");
+        showToast("Your 7-day free trial has ended — upgrade to keep Pro features", "bear");
+        setUpgradeModalOpen(true);
+      }
+    } catch { /* localStorage unavailable */ }
+  }, [isPaidPro, inTrial, userId]);
+
   const placeStockOrder = (side) => {
     if (!marketStatus.isOpen) return showToast("Market is closed — orders can only be placed 9:15 AM–3:30 PM, Mon–Fri", "bear");
     const price = q.price;
@@ -1613,9 +1659,13 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, onRe
           <Stat label="Total P&L" value={fmtMoney(dayPnl, 0)} tone={dayPnl >= 0 ? "bull" : "bear"} />
         </div>
         <div className="topbarActions">
-          <div className="userBadge"><UserIcon size={13} />{username}{isPro && <span className="proBadge">PRO</span>}</div>
-          {!isPro && (
-            <button className="upgradeBtn" onClick={() => setUpgradeModalOpen(true)}><Sparkles size={13} /> Upgrade to Pro</button>
+          <div className="userBadge">
+            <UserIcon size={13} />{username}
+            {isPaidPro && <span className="proBadge">PRO</span>}
+            {inTrial && <span className="proBadge proBadgeTrial">TRIAL · {trialDaysLeft}D LEFT</span>}
+          </div>
+          {!isPaidPro && (
+            <button className="upgradeBtn" onClick={() => setUpgradeModalOpen(true)}><Sparkles size={13} /> {inTrial ? "Upgrade Early" : "Upgrade to Pro"}</button>
           )}
           <button className="themeBtn" onClick={cycleTheme} title="Change background theme"><span className="themeEmoji">🎨</span> {THEMES[themeIdx].name}</button>
           <button className="resetBtn" onClick={() => setConfirmReset(true)}><RotateCcw size={14} /> Reset</button>
@@ -2481,7 +2531,10 @@ export default function App() {
   if (portfolioLoading || !portfolioData || !subscription) return <SplashScreen label="Loading your portfolio…" themeIdx={themeIdx} />;
 
   const username = session.user.user_metadata?.username || session.user.email.split("@")[0];
-  const isPro = subscription.status === "active";
+  const isPaidPro = subscription.status === "active";
+  const daysLeftInTrial = trialDaysRemaining(effectiveTrialStart(session.user.created_at));
+  const inTrial = !isPaidPro && daysLeftInTrial > 0;
+  const isPro = isPaidPro || inTrial;
 
   return (
     <TradingApp
@@ -2491,6 +2544,9 @@ export default function App() {
       userEmail={session.user.email}
       initialPortfolio={portfolioData}
       isPro={isPro}
+      isPaidPro={isPaidPro}
+      inTrial={inTrial}
+      trialDaysLeft={daysLeftInTrial}
       onRefreshSubscription={refreshSubscription}
       onLogout={signOutUser}
       themeIdx={themeIdx}
@@ -2544,6 +2600,7 @@ const CSS = `
 .topbarActions { display: flex; align-items: center; gap: 10px; }
 .userBadge { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); background: var(--surface-2); border: 1px solid var(--border); padding: 7px 12px; border-radius: 20px; }
 .proBadge { background: var(--amber); color: #241800; font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 999px; letter-spacing: 0.4px; }
+.proBadgeTrial { background: var(--accent); color: white; margin-left: 5px; }
 .upgradeBtn { display: inline-flex; align-items: center; gap: 6px; background: var(--amber); color: #241800; border: none; padding: 8px 14px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; transition: opacity 0.15s ease; }
 .upgradeBtn:hover { opacity: 0.85; }
 .resetBtn { display: flex; align-items: center; gap: 6px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim); padding: 8px 14px; border-radius: 8px; font-size: 12px; cursor: pointer; transition: all 0.15s; }
