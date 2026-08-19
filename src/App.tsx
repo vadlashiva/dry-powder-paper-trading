@@ -865,7 +865,7 @@ function LandingPage({ themeIdx, onEnter }) {
       <section className="landingHero">
         <div className="landingHeroCopy">
           <div className="landingEyebrow">Free forever · 7-day Pro trial included</div>
-          <h1 className="landingH1">Practice trading NSE &amp; BSE with real prices. Zero risk.</h1>
+          <h1 className="landingH1">Practice trading NSE &amp; BSE with <span className="landingGradientText">real prices</span>. Zero risk.</h1>
           <p className="landingSub">
             WINBANNU is a paper trading terminal for Indian stocks, options, and indices. Trade with
             ₹10,00,000 in virtual cash against live market data — build real skill before you risk real money.
@@ -894,13 +894,16 @@ function LandingPage({ themeIdx, onEnter }) {
       <section className="landingFeatures">
         <h2 className="landingH2">Everything you need to learn the market</h2>
         <div className="landingFeatureGrid">
-          {LANDING_FEATURES.map((f) => (
-            <div key={f.title} className="landingFeatureCard">
-              <div className="landingFeatureIcon"><f.icon size={18} /></div>
-              <h3>{f.title}</h3>
-              <p className="dim">{f.desc}</p>
-            </div>
-          ))}
+          {LANDING_FEATURES.map((f, i) => {
+            const color = ALLOC_PALETTE[i % ALLOC_PALETTE.length];
+            return (
+              <div key={f.title} className="landingFeatureCard" style={{ borderTopColor: color }}>
+                <div className="landingFeatureIcon" style={{ background: `color-mix(in srgb, ${color} 18%, transparent)`, color }}><f.icon size={18} /></div>
+                <h3>{f.title}</h3>
+                <p className="dim">{f.desc}</p>
+              </div>
+            );
+          })}
         </div>
       </section>
 
@@ -2979,14 +2982,22 @@ const CSS = `
 .landingWrap {
   min-height: 100vh; background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif;
 }
-.landingNav { display: flex; align-items: center; justify-content: space-between; padding: 20px 40px; border-bottom: 1px solid var(--border); flex-wrap: wrap; gap: 12px; }
+.landingNav { display: flex; align-items: center; justify-content: space-between; padding: 20px 40px; border-bottom: 1px solid var(--border); flex-wrap: wrap; gap: 12px; position: relative; z-index: 1; }
 .landingNavActions { display: flex; align-items: center; gap: 10px; }
 .landingNavBtn { flex: none; padding: 9px 16px; }
 
-.landingHero { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 48px; align-items: center; padding: 64px 40px; max-width: 1180px; margin: 0 auto; }
-.landingHeroCopy { display: flex; flex-direction: column; align-items: flex-start; }
+.landingHero {
+  display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 48px; align-items: center;
+  padding: 64px 40px; max-width: 1180px; margin: 0 auto; position: relative;
+  background:
+    radial-gradient(680px 420px at 12% -10%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 65%),
+    radial-gradient(560px 360px at 92% 15%, color-mix(in srgb, var(--bull) 16%, transparent), transparent 65%),
+    radial-gradient(500px 320px at 70% 90%, color-mix(in srgb, var(--amber) 14%, transparent), transparent 65%);
+}
+.landingHeroCopy { display: flex; flex-direction: column; align-items: flex-start; position: relative; z-index: 1; }
 .landingEyebrow { font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.6px; color: var(--amber); text-transform: uppercase; background: rgba(255,176,32,0.1); border: 1px solid rgba(255,176,32,0.25); padding: 5px 12px; border-radius: 20px; margin-bottom: 20px; }
 .landingH1 { font-family: 'Instrument Sans', sans-serif; font-weight: 700; font-size: 44px; line-height: 1.12; letter-spacing: -0.6px; margin: 0 0 18px; }
+.landingGradientText { background: linear-gradient(100deg, var(--bull), var(--accent) 55%, var(--amber)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
 .landingSub { color: var(--text-dim); font-size: 16px; line-height: 1.6; max-width: 52ch; margin: 0 0 26px; }
 .landingHeroBtns { display: flex; gap: 10px; margin-bottom: 34px; }
 .landingCta { flex: none; padding: 12px 22px; font-size: 14px; }
@@ -2994,20 +3005,26 @@ const CSS = `
 @keyframes candleIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 @media (prefers-reduced-motion: reduce) { .heroCandles g { animation: none !important; } }
 
-.landingHeroCard { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 28px; }
+.landingHeroCard { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 28px; position: relative; z-index: 1; box-shadow: 0 20px 60px rgba(0,0,0,0.28); }
 .landingHeroCard .authSub { margin: 6px 0 0; text-align: left; }
 .landingHeroCard .authSubmit { margin-top: 18px; }
 
 .landingH2 { font-family: 'Instrument Sans', sans-serif; font-weight: 700; font-size: 26px; letter-spacing: -0.3px; text-align: center; margin: 0 0 36px; }
 .landingFeatures { padding: 70px 40px; max-width: 1180px; margin: 0 auto; }
 .landingFeatureGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
-.landingFeatureCard { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 22px; transition: border-color 0.15s ease, transform 0.15s ease; }
-.landingFeatureCard:hover { border-color: var(--accent); transform: translateY(-2px); }
-.landingFeatureIcon { width: 36px; height: 36px; border-radius: 9px; background: rgba(123,97,255,0.15); color: var(--accent); display: flex; align-items: center; justify-content: center; margin-bottom: 14px; }
+.landingFeatureCard { background: var(--surface); border: 1px solid var(--border); border-top: 3px solid var(--accent); border-radius: 12px; padding: 22px; transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease; }
+.landingFeatureCard:hover { transform: translateY(-3px); box-shadow: 0 14px 34px rgba(0,0,0,0.22); }
+.landingFeatureIcon { width: 36px; height: 36px; border-radius: 9px; display: flex; align-items: center; justify-content: center; margin-bottom: 14px; }
 .landingFeatureCard h3 { font-family: 'Instrument Sans', sans-serif; font-size: 15px; margin: 0 0 8px; }
 .landingFeatureCard p { font-size: 13px; line-height: 1.55; margin: 0; }
 
-.landingTrial { text-align: center; padding: 60px 40px 76px; max-width: 640px; margin: 0 auto; }
+.landingTrial {
+  text-align: center; padding: 64px 40px 80px; max-width: 640px; margin: 0 auto; position: relative;
+}
+.landingTrial::before {
+  content: ""; position: absolute; inset: 0; z-index: -1;
+  background: radial-gradient(480px 280px at 50% 20%, color-mix(in srgb, var(--amber) 16%, transparent), transparent 70%);
+}
 .landingTrial .proBadgeIcon { display: block; margin: 0 auto 14px; }
 .landingTrialSub { font-size: 14.5px; line-height: 1.6; margin: 0 auto 26px; max-width: 46ch; }
 
