@@ -2980,7 +2980,14 @@ const CSS = `
 .toast-bear { background: var(--bear); color: #2B0710; }
 
 .landingWrap {
-  min-height: 100vh; background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif;
+  min-height: 100vh; color: var(--text); font-family: 'Inter', sans-serif;
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(900px 560px at 8% -8%, color-mix(in srgb, var(--accent) 40%, transparent), transparent 60%),
+    radial-gradient(760px 520px at 95% 10%, color-mix(in srgb, var(--bull) 34%, transparent), transparent 60%),
+    radial-gradient(720px 480px at 78% 62%, color-mix(in srgb, var(--amber) 30%, transparent), transparent 60%),
+    radial-gradient(680px 460px at 6% 78%, color-mix(in srgb, var(--bear) 24%, transparent), transparent 60%);
+  background-repeat: no-repeat;
 }
 .landingNav { display: flex; align-items: center; justify-content: space-between; padding: 20px 40px; border-bottom: 1px solid var(--border); flex-wrap: wrap; gap: 12px; position: relative; z-index: 1; }
 .landingNavActions { display: flex; align-items: center; gap: 10px; }
@@ -2989,10 +2996,6 @@ const CSS = `
 .landingHero {
   display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 48px; align-items: center;
   padding: 64px 40px; max-width: 1180px; margin: 0 auto; position: relative;
-  background:
-    radial-gradient(680px 420px at 12% -10%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 65%),
-    radial-gradient(560px 360px at 92% 15%, color-mix(in srgb, var(--bull) 16%, transparent), transparent 65%),
-    radial-gradient(500px 320px at 70% 90%, color-mix(in srgb, var(--amber) 14%, transparent), transparent 65%);
 }
 .landingHeroCopy { display: flex; flex-direction: column; align-items: flex-start; position: relative; z-index: 1; }
 .landingEyebrow { font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.6px; color: var(--amber); text-transform: uppercase; background: rgba(255,176,32,0.1); border: 1px solid rgba(255,176,32,0.25); padding: 5px 12px; border-radius: 20px; margin-bottom: 20px; }
