@@ -710,8 +710,7 @@ async function fetchSubscription(userId) {
 // once in the Razorpay Dashboard (Payment Links > + New Payment Link).
 //
 // IMPORTANT — REPLACE THIS with your real Payment Link URL before shipping:
-const RAZORPAY_PAYMENT_LINK_URL = "https://rzp.io/l/REPLACE_ME";
-
+const RAZORPAY_PAYMENT_LINK_URL = "https://rzp.io/rzp/PPCNezNF";
 // Because there's no backend/webhook here, Pro access cannot be unlocked
 // automatically the instant payment succeeds. After a user pays, check the
 // transaction in the Razorpay Dashboard, then manually set that user's row in
