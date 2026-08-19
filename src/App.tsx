@@ -2712,7 +2712,7 @@ export default function App() {
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap');
 
-.app, .authWrap {
+.app, .authWrap, .landingWrap {
   --bg: #0A0D14; --surface: #121722; --surface-2: #1A2130; --border: #232B3D;
   --text: #E7ECF6; --text-dim: #8B96AA; --bull: #14E8A0; --bear: #FF5470;
   --accent: #7B61FF; --amber: #FFB020;
