@@ -846,7 +846,7 @@ function HeroCandles() {
   );
 }
 
-function LandingPage({ themeIdx, cycleTheme, onEnter }) {
+function LandingPage({ themeIdx, onEnter }) {
   return (
     <div className="landingWrap" style={THEMES[themeIdx].vars}>
       <style>{CSS}</style>
@@ -857,9 +857,6 @@ function LandingPage({ themeIdx, cycleTheme, onEnter }) {
           <span>WINBANNU</span>
         </div>
         <div className="landingNavActions">
-          <button type="button" className="themeBtn" onClick={cycleTheme} title="Change background theme">
-            <span className="themeEmoji">🎨</span> {THEMES[themeIdx].name}
-          </button>
           <button className="btn btnGhost landingNavBtn" onClick={() => onEnter("login")}>Log In</button>
           <button className="btn btnBull landingNavBtn" onClick={() => onEnter("register")}>Get Started Free</button>
         </div>
@@ -2678,7 +2675,6 @@ export default function App() {
     ) : (
       <LandingPage
         themeIdx={themeIdx}
-        cycleTheme={cycleTheme}
         onEnter={(mode) => { setAuthInitialMode(mode); setShowAuthForm(true); }}
       />
     );
