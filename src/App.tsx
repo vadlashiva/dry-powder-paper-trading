@@ -711,6 +711,7 @@ async function fetchSubscription(userId) {
 //
 // IMPORTANT — REPLACE THIS with your real Payment Link URL before shipping:
 const RAZORPAY_PAYMENT_LINK_URL = "https://rzp.io/rzp/PPCNezNF";
+
 // Because there's no backend/webhook here, Pro access cannot be unlocked
 // automatically the instant payment succeeds. After a user pays, check the
 // transaction in the Razorpay Dashboard, then manually set that user's row in
@@ -2499,7 +2500,7 @@ export default function App() {
 }
 
 const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap');
 
 .app, .authWrap {
   --bg: #0A0D14; --surface: #121722; --surface-2: #1A2130; --border: #232B3D;
@@ -2516,7 +2517,7 @@ const CSS = `
 .authCard { width: 360px; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 28px; }
 .splashCard { text-align: center; padding: 40px 28px; }
 .splashCard .authSub { margin: 10px 0 0; }
-.authBrand { display: flex; align-items: center; gap: 8px; font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 18px; justify-content: center; }
+.authBrand { display: flex; align-items: center; gap: 8px; font-family: 'Instrument Sans', sans-serif; font-weight: 700; font-size: 18px; justify-content: center; }
 .authSub { text-align: center; color: var(--text-dim); font-size: 12px; margin: 6px 0 22px; }
 .authTabs { display: flex; background: var(--surface-2); border-radius: 10px; padding: 4px; margin-bottom: 20px; }
 .authTab { flex: 1; background: none; border: none; color: var(--text-dim); padding: 9px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; }
@@ -2529,7 +2530,7 @@ const CSS = `
 .authNote { color: var(--text-dim); font-size: 11px; margin-top: 18px; text-align: center; line-height: 1.5; }
 
 .topbar { display: flex; align-items: center; justify-content: space-between; padding: 14px 24px; border-bottom: 1px solid var(--border); background: var(--surface); flex-wrap: wrap; gap: 12px; }
-.brand { display: flex; align-items: center; gap: 8px; font-family: 'Space Grotesk', sans-serif; font-weight: 700; letter-spacing: 0.5px; font-size: 16px; }
+.brand { display: flex; align-items: center; gap: 8px; font-family: 'Instrument Sans', sans-serif; font-weight: 700; letter-spacing: -0.2px; font-size: 16px; }
 .brandIcon { color: var(--amber); }
 .brandSub { font-family: 'Inter'; font-weight: 400; font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; margin-left: 4px; }
 .stats { display: flex; gap: 28px; flex-wrap: wrap; }
@@ -2585,7 +2586,7 @@ const CSS = `
 .main { flex: 1; padding: 20px 28px; overflow-y: auto; min-width: 0; }
 .mainHead { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
 .mainHeadLeft { display: flex; align-items: baseline; gap: 10px; }
-.mainHead h1 { font-family: 'Space Grotesk', sans-serif; font-size: 26px; margin: 0; }
+.mainHead h1 { font-family: 'Instrument Sans', sans-serif; font-weight: 700; font-size: 27px; letter-spacing: -0.3px; margin: 0; }
 .mainHeadName { color: var(--text-dim); font-size: 13px; }
 .mainHeadPrice { display: flex; flex-direction: column; align-items: flex-end; }
 .bigPrice { font-size: 22px; font-weight: 700; }
@@ -2632,7 +2633,7 @@ const CSS = `
 
 .orderCard { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px; height: fit-content; transition: box-shadow 0.2s ease; }
 .orderCard:hover { box-shadow: 0 10px 30px rgba(0,0,0,0.22); }
-.orderCard h3 { margin: 0; font-family: 'Space Grotesk'; font-size: 14px; }
+.orderCard h3 { margin: 0; font-family: 'Instrument Sans'; font-size: 14px; }
 .orderCardHead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
 .orderTypeTabs { display: flex; gap: 3px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 3px; margin-bottom: 14px; }
 .orderTypeTab { flex: 1; background: none; color: var(--text-dim); padding: 7px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; transition: background 0.15s ease, color 0.15s ease; }
@@ -2691,7 +2692,7 @@ const CSS = `
 .lockPanel p { max-width: 34ch; margin: 0 auto 18px; font-size: 13px; line-height: 1.6; }
 .lockPanelBtn { flex: none; display: inline-flex; padding: 9px 18px; }
 
-.posWrap h3, .histWrap h3 { font-family: 'Space Grotesk'; font-size: 14px; margin: 0 0 10px; }
+.posWrap h3, .histWrap h3 { font-family: 'Instrument Sans'; font-size: 14px; margin: 0 0 10px; }
 .histHead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .histHead h3 { margin: 0; }
 .exportBtn { display: inline-flex; align-items: center; gap: 6px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim); padding: 7px 12px; border-radius: 8px; font-size: 12px; cursor: pointer; transition: color 0.15s ease, border-color 0.15s ease; }
@@ -2743,7 +2744,7 @@ const CSS = `
 
 .modalOverlay { position: fixed; inset: 0; background: rgba(5,6,10,0.7); display: flex; align-items: center; justify-content: center; z-index: 50; backdrop-filter: blur(2px); }
 .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 22px; width: 340px; }
-.modal h3 { margin: 0 0 8px; font-family: 'Space Grotesk'; }
+.modal h3 { margin: 0 0 8px; font-family: 'Instrument Sans'; }
 .modal p { color: var(--text-dim); font-size: 13px; margin: 0 0 18px; }
 .modalBtns { display: flex; gap: 8px; }
 .upgradeModal h3 { display: flex; align-items: center; gap: 8px; }
