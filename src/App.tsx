@@ -52,31 +52,6 @@ function trialDaysRemaining(createdAtIso) {
   const elapsedDays = (Date.now() - start) / 86400000;
   return Math.max(0, Math.ceil(TRIAL_DAYS - elapsedDays));
 }
-// The trial clock is anchored to whichever came first: this account's real
-// signup date, or the first time this browser was ever seen. That second
-// anchor persists across logout/re-register on the same browser, so simply
-// creating a new username doesn't grant a fresh 7 days — it inherits the
-// earlier (already-ticking) clock instead. This is a browser-level deterrent,
-// not a hard guarantee: clearing site data, incognito, or a different device
-// still resets it, since there's no backend to track this server-side.
-const LS_TRIAL_ANCHOR = "wb_trial_anchor";
-function getDeviceTrialAnchor() {
-  try {
-    let anchor = localStorage.getItem(LS_TRIAL_ANCHOR);
-    if (!anchor) {
-      anchor = new Date().toISOString();
-      localStorage.setItem(LS_TRIAL_ANCHOR, anchor);
-    }
-    return anchor;
-  } catch {
-    return new Date().toISOString(); // storage unavailable — fall back to "now", no persistence
-  }
-}
-function effectiveTrialStart(accountCreatedAtIso) {
-  const deviceAnchor = getDeviceTrialAnchor();
-  if (!accountCreatedAtIso) return deviceAnchor;
-  return new Date(accountCreatedAtIso).getTime() < new Date(deviceAnchor).getTime() ? accountCreatedAtIso : deviceAnchor;
-}
 
 const TIMEFRAMES = {
   "1m": { interval: "1m", range: "1d" },
@@ -840,9 +815,17 @@ function AuthGate({ themeIdx, cycleTheme }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [phone, setPhone] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [showPw, setShowPw] = useState(false);
+
+  const normalizedPhone = () => {
+    const digits = phone.trim();
+    if (digits.startsWith("+")) return digits;
+    // Assume a bare 10-digit Indian mobile number if no country code given
+    return `+91${digits.replace(/\D/g, "")}`;
+  };
 
   const submit = async (e) => {
     e.preventDefault();
@@ -852,15 +835,37 @@ function AuthGate({ themeIdx, cycleTheme }) {
     if (password.length < 6) return setError("Password must be at least 6 characters.");
     if (!/^[a-zA-Z0-9_]+$/.test(uname)) return setError("Username can only use letters, numbers, and underscores.");
 
+    if (mode === "register") {
+      const p = normalizedPhone();
+      if (!/^\+\d{8,15}$/.test(p)) return setError("Enter a valid mobile number.");
+      if (password !== confirm) return setError("Passwords don't match.");
+    }
+
     setBusy(true);
     try {
       if (mode === "register") {
-        if (password !== confirm) return setError("Passwords don't match.");
-        const { error: signUpError } = await signUpUser(uname, password);
+        const { data: signUpData, error: signUpError } = await signUpUser(uname, password);
         if (signUpError) {
           if (/registered/i.test(signUpError.message)) setError("That username is already taken.");
           else setError(signUpError.message);
+          return;
         }
+        const newUserId = signUpData?.user?.id;
+        if (newUserId) {
+          const { error: phoneErr } = await supabase
+            .from("phone_registry")
+            .insert({ phone: normalizedPhone(), user_id: newUserId });
+          if (phoneErr) {
+            if (phoneErr.code === "23505") {
+              setError("This phone number is already linked to a Winbannu account. Please log in with your original account instead.");
+            } else {
+              setError("Could not complete registration. Try again.");
+            }
+            await signOutUser();
+            return;
+          }
+        }
+        // Success — session is already active, App() will pick it up.
       } else {
         const { error: signInError } = await signInUser(uname, password);
         if (signInError) {
@@ -899,6 +904,12 @@ function AuthGate({ themeIdx, cycleTheme }) {
             <UserIcon size={14} className="authIcon" />
             <input placeholder="Username" value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" />
           </div>
+          {mode === "register" && (
+            <div className="authField">
+              <UserIcon size={14} className="authIcon" />
+              <input placeholder="Mobile number (e.g. 9876543210)" value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" autoComplete="tel" />
+            </div>
+          )}
           <div className="authField">
             <Lock size={14} className="authIcon" />
             <input type={showPw ? "text" : "password"} placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={mode === "register" ? "new-password" : "current-password"} />
@@ -916,7 +927,11 @@ function AuthGate({ themeIdx, cycleTheme }) {
           <button type="submit" className="btn btnBull authSubmit" disabled={busy}>{busy ? "Please wait…" : mode === "register" ? "Create account" : "Log in"}</button>
         </form>
 
-        <div className="authNote">Your account and portfolio are saved on the server — log in with the same username and password on any device to pick up right where you left off.</div>
+        <div className="authNote">
+          {mode === "register"
+            ? "One Winbannu account per mobile number."
+            : "Your account and portfolio are saved on the server — log in with the same username and password on any device to pick up right where you left off."}
+        </div>
       </div>
     </div>
   );
@@ -2532,7 +2547,7 @@ export default function App() {
 
   const username = session.user.user_metadata?.username || session.user.email.split("@")[0];
   const isPaidPro = subscription.status === "active";
-  const daysLeftInTrial = trialDaysRemaining(effectiveTrialStart(session.user.created_at));
+  const daysLeftInTrial = trialDaysRemaining(session.user.created_at);
   const inTrial = !isPaidPro && daysLeftInTrial > 0;
   const isPro = isPaidPro || inTrial;
 
