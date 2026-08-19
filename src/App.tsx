@@ -703,40 +703,33 @@ async function fetchSubscription(userId) {
   return data || { status: "free", current_period_end: null };
 }
 
-let razorpayScriptPromise = null;
-function loadRazorpayScript() {
-  if (razorpayScriptPromise) return razorpayScriptPromise;
-  razorpayScriptPromise = new Promise((resolve, reject) => {
-    if (window.Razorpay) return resolve(true);
-    const script = document.createElement("script");
-    script.src = "https://checkout.razorpay.com/v1/checkout.js";
-    script.onload = () => resolve(true);
-    script.onerror = () => reject(new Error("Failed to load Razorpay checkout"));
-    document.body.appendChild(script);
-  });
-  return razorpayScriptPromise;
-}
+// ---- Razorpay Payment Link checkout (no backend required) --------------------
+// This app has no server, so it cannot securely create orders/subscriptions or
+// verify payment signatures (that requires RAZORPAY_KEY_SECRET, which must never
+// ship to the browser). Instead we send the user to a Payment Link you create
+// once in the Razorpay Dashboard (Payment Links > + New Payment Link).
+//
+// IMPORTANT — REPLACE THIS with your real Payment Link URL before shipping:
+const RAZORPAY_PAYMENT_LINK_URL = "https://rzp.io/l/REPLACE_ME";
 
+// Because there's no backend/webhook here, Pro access cannot be unlocked
+// automatically the instant payment succeeds. After a user pays, check the
+// transaction in the Razorpay Dashboard, then manually set that user's row in
+// the Supabase `subscriptions` table (status = "active", current_period_end =
+// one month out). fetchSubscription() above will then pick it up on next poll.
 async function startProCheckout({ userEmail, onSuccess, onError }) {
   try {
-    const { data, error } = await supabase.functions.invoke("create-razorpay-subscription");
-    if (error || data?.error) throw new Error(data?.error || error?.message || "Could not start checkout");
-
-    await loadRazorpayScript();
-    const rzp = new window.Razorpay({
-      key: data.keyId,
-      subscription_id: data.subscriptionId,
-      name: "WINBANNU Pro",
-      description: "Monthly subscription",
-      prefill: { email: userEmail },
-      theme: { color: "#7B61FF" },
-      handler: () => onSuccess(),
-      modal: { ondismiss: () => onError("Checkout closed before completing payment") },
-    });
-    rzp.on("payment.failed", () => onError("Payment failed"));
-    rzp.open();
+    if (RAZORPAY_PAYMENT_LINK_URL.includes("REPLACE_ME")) {
+      throw new Error("Payment link not configured yet — set RAZORPAY_PAYMENT_LINK_URL");
+    }
+    const url = new URL(RAZORPAY_PAYMENT_LINK_URL);
+    // Razorpay Payment Links will prefill these query params if the link was
+    // created with "Collect additional information" > email enabled.
+    if (userEmail) url.searchParams.set("prefill[email]", userEmail);
+    window.open(url.toString(), "_blank", "noopener,noreferrer");
+    onSuccess(); // opened the link; see poller below for actual Pro activation
   } catch (e) {
-    onError(e.message || "Could not start checkout");
+    onError(e.message || "Could not open payment link");
   }
 }
 
@@ -1376,15 +1369,18 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, onRe
     startProCheckout({
       userEmail,
       onSuccess: () => {
-        showToast("Payment received — activating Pro…", "bull");
+        showToast("Complete the payment in the new tab — Pro unlocks once it's confirmed (usually within a few hours).", "bull");
         setUpgradeModalOpen(false);
+        // No webhook/backend here, so we just poll Supabase in case Pro was
+        // activated manually (or by a webhook you add later). This is best-effort,
+        // not instant — refresh the page after paying if it doesn't pick up.
         let attempts = 0;
         const poll = setInterval(async () => {
           attempts++;
           await onRefreshSubscription();
           if (attempts >= 10) { clearInterval(poll); setCheckoutBusy(false); }
-        }, 2000);
-        setTimeout(() => { clearInterval(poll); setCheckoutBusy(false); }, 20000);
+        }, 3000);
+        setTimeout(() => { clearInterval(poll); setCheckoutBusy(false); }, 30000);
       },
       onError: (msg) => {
         setCheckoutBusy(false);
@@ -2323,9 +2319,9 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, onRe
             </ul>
             <div className="modalBtns">
               <button className="btn btnGhost" onClick={() => setUpgradeModalOpen(false)} disabled={checkoutBusy}>Not now</button>
-              <button className="btn btnMarigold" onClick={handleUpgrade} disabled={checkoutBusy}>{checkoutBusy ? "Processing…" : "Subscribe — ₹99/mo"}</button>
+              <button className="btn btnMarigold" onClick={handleUpgrade} disabled={checkoutBusy}>{checkoutBusy ? "Opening…" : "Pay ₹99 via Razorpay"}</button>
             </div>
-            <p className="dim upgradeFinePrint">Billed monthly via Razorpay. Cancel anytime from Razorpay's subscription management.</p>
+            <p className="dim upgradeFinePrint">Opens Razorpay in a new tab. Pro unlocks after payment is confirmed — this may take a little while, not instant. You'll need to pay again each month to keep Pro active.</p>
           </div>
         </div>
       )}
