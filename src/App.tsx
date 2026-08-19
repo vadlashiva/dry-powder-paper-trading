@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { createChart, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries } from "lightweight-charts";
 import { createClient } from "@supabase/supabase-js";
-import {TrendingUp, TrendingDown, RotateCcw, X, Flame, Activity, LogOut, Lock, User as UserIcon, Bell, Trash2, Maximize2, Download, Newspaper, Crosshair, Sparkles,Eye, EyeOff,
+import {TrendingUp, TrendingDown, RotateCcw, X, Flame, Activity, LogOut, Lock, User as UserIcon, Bell, Trash2, Maximize2, Download, Newspaper, Crosshair, Sparkles,Eye, EyeOff, LineChart, Layers,
 } from "lucide-react";
 declare global { interface Window { Razorpay: any; } }
 /* ---------------- background themes ---------------- */
@@ -810,8 +810,128 @@ async function fetchSymbolNews(query) {
   }));
 }
 
-function AuthGate({ themeIdx, cycleTheme }) {
-  const [mode, setMode] = useState("login");
+const LANDING_FEATURES = [
+  { icon: Activity, title: "Live Market Data", desc: "Real NSE & BSE prices, updated continuously during market hours — not simulated ticks." },
+  { icon: Layers, title: "Options Chain & Greeks", desc: "Live Black-Scholes pricing with Delta, Gamma, Theta, and Vega across every strike and expiry." },
+  { icon: LineChart, title: "Charts & Indicators", desc: "Candlestick and line charts with MA, RSI, and MACD, across five timeframes." },
+  { icon: RotateCcw, title: "Replay Mode", desc: "Rewind to any recent trading day and practice against real historical price action, candle by candle." },
+  { icon: Bell, title: "Price Alerts", desc: "Get notified the moment a stock crosses the price you're watching for." },
+  { icon: Download, title: "Trade History Export", desc: "Download your full trade log as a CSV whenever you want to review your performance." },
+];
+
+// A small decorative candlestick strip — static, on-brand, ties directly to
+// the product itself rather than generic hero art.
+function HeroCandles() {
+  const candles = [
+    { h: 38, o: 60, bull: true }, { h: 55, o: 30, bull: false }, { h: 25, o: 48, bull: true },
+    { h: 62, o: 40, bull: true }, { h: 34, o: 58, bull: false }, { h: 48, o: 20, bull: true },
+    { h: 20, o: 44, bull: false }, { h: 56, o: 36, bull: true }, { h: 30, o: 52, bull: false },
+    { h: 44, o: 24, bull: true },
+  ];
+  return (
+    <svg viewBox="0 0 300 90" className="heroCandles" aria-hidden="true">
+      {candles.map((c, i) => {
+        const x = i * 30 + 8;
+        const top = Math.min(c.h, c.o);
+        const height = Math.abs(c.h - c.o) || 2;
+        const color = c.bull ? "var(--bull)" : "var(--bear)";
+        return (
+          <g key={i} style={{ animation: `candleIn 0.5s ease ${i * 0.05}s both` }}>
+            <line x1={x + 7} y1={top - 8} x2={x + 7} y2={top + height + 8} stroke={color} strokeWidth="1.5" opacity="0.55" />
+            <rect x={x} y={top} width="14" height={height} rx="2" fill={color} opacity="0.9" />
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+function LandingPage({ themeIdx, cycleTheme, onEnter }) {
+  return (
+    <div className="landingWrap" style={THEMES[themeIdx].vars}>
+      <style>{CSS}</style>
+
+      <header className="landingNav">
+        <div className="authBrand" style={{ justifyContent: "flex-start" }}>
+          <Flame size={22} className="brandIcon" />
+          <span>WINBANNU</span>
+        </div>
+        <div className="landingNavActions">
+          <button type="button" className="themeBtn" onClick={cycleTheme} title="Change background theme">
+            <span className="themeEmoji">🎨</span> {THEMES[themeIdx].name}
+          </button>
+          <button className="btn btnGhost landingNavBtn" onClick={() => onEnter("login")}>Log In</button>
+          <button className="btn btnBull landingNavBtn" onClick={() => onEnter("register")}>Get Started Free</button>
+        </div>
+      </header>
+
+      <section className="landingHero">
+        <div className="landingHeroCopy">
+          <div className="landingEyebrow">Free forever · 7-day Pro trial included</div>
+          <h1 className="landingH1">Practice trading NSE &amp; BSE with real prices. Zero risk.</h1>
+          <p className="landingSub">
+            WINBANNU is a paper trading terminal for Indian stocks, options, and indices. Trade with
+            ₹10,00,000 in virtual cash against live market data — build real skill before you risk real money.
+          </p>
+          <div className="landingHeroBtns">
+            <button className="btn btnBull landingCta" onClick={() => onEnter("register")}><Sparkles size={15} /> Get Started Free</button>
+            <button className="btn btnGhost landingCta" onClick={() => onEnter("login")}>Log In</button>
+          </div>
+          <HeroCandles />
+        </div>
+        <div className="landingHeroCard">
+          <div className="authBrand">
+            <Flame size={20} className="brandIcon" />
+            <span>WINBANNU</span>
+          </div>
+          <div className="authSub">Start trading in under a minute</div>
+          <ul className="upgradeList" style={{ marginTop: "18px" }}>
+            <li>₹10,00,000 virtual starting balance</li>
+            <li>Live NSE &amp; BSE market data</li>
+            <li>No card required to sign up</li>
+          </ul>
+          <button className="btn btnBull authSubmit" onClick={() => onEnter("register")}>Create free account</button>
+        </div>
+      </section>
+
+      <section className="landingFeatures">
+        <h2 className="landingH2">Everything you need to learn the market</h2>
+        <div className="landingFeatureGrid">
+          {LANDING_FEATURES.map((f) => (
+            <div key={f.title} className="landingFeatureCard">
+              <div className="landingFeatureIcon"><f.icon size={18} /></div>
+              <h3>{f.title}</h3>
+              <p className="dim">{f.desc}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="landingTrial">
+        <Sparkles size={22} className="proBadgeIcon" />
+        <h2 className="landingH2">Try every Pro feature free for 7 days</h2>
+        <p className="dim landingTrialSub">Options chain, RSI &amp; MACD, price alerts, every chart timeframe, and more — no card required.</p>
+        <button className="btn btnMarigold landingCta" onClick={() => onEnter("register")}>Start your free trial</button>
+      </section>
+
+      <footer className="landingFooter">
+        <div className="authBrand" style={{ justifyContent: "flex-start", fontSize: "13px" }}>
+          <Flame size={16} className="brandIcon" />
+          <span>WINBANNU</span>
+        </div>
+        <div className="landingFooterLinks">
+          <a href="/contact.html">Contact</a>
+          <a href="/privacy.html">Privacy</a>
+          <a href="/terms.html">Terms</a>
+        </div>
+        <div className="dim landingFooterNote">Paper trading only — no real money or securities are ever traded.</div>
+      </footer>
+    </div>
+  );
+}
+
+function AuthGate({ themeIdx, cycleTheme, initialMode, onBack }) {
+  const [mode, setMode] = useState(initialMode || "login");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -887,6 +1007,9 @@ function AuthGate({ themeIdx, cycleTheme }) {
       <button type="button" className="themeBtn authThemeBtn" onClick={cycleTheme} title="Change background theme">
         <span className="themeEmoji">🎨</span> {THEMES[themeIdx].name}
       </button>
+      {onBack && (
+        <button type="button" className="authBackBtn" onClick={onBack}>← Back to home</button>
+      )}
       <div className="authCard">
         <div className="authBrand">
           <Flame size={22} className="brandIcon" />
@@ -2495,6 +2618,8 @@ export default function App() {
   const [portfolioLoading, setPortfolioLoading] = useState(false);
   const [subscription, setSubscription] = useState(null);
   const [themeIdx, setThemeIdx] = useState(() => loadThemeIdx());
+  const [showAuthForm, setShowAuthForm] = useState(false);
+  const [authInitialMode, setAuthInitialMode] = useState("login");
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -2542,7 +2667,22 @@ export default function App() {
   };
 
   if (sessionLoading) return <SplashScreen label="Loading…" themeIdx={themeIdx} />;
-  if (!session) return <AuthGate themeIdx={themeIdx} cycleTheme={cycleTheme} />;
+  if (!session) {
+    return showAuthForm ? (
+      <AuthGate
+        themeIdx={themeIdx}
+        cycleTheme={cycleTheme}
+        initialMode={authInitialMode}
+        onBack={() => setShowAuthForm(false)}
+      />
+    ) : (
+      <LandingPage
+        themeIdx={themeIdx}
+        cycleTheme={cycleTheme}
+        onEnter={(mode) => { setAuthInitialMode(mode); setShowAuthForm(true); }}
+      />
+    );
+  }
   if (portfolioLoading || !portfolioData || !subscription) return <SplashScreen label="Loading your portfolio…" themeIdx={themeIdx} />;
 
   const username = session.user.user_metadata?.username || session.user.email.split("@")[0];
@@ -2839,6 +2979,58 @@ const CSS = `
 .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); padding: 12px 20px; border-radius: 10px; font-size: 13px; font-weight: 500; z-index: 60; box-shadow: 0 8px 24px rgba(0,0,0,0.4); max-width: 90vw; text-align: center; }
 .toast-bull { background: var(--bull); color: #06231A; }
 .toast-bear { background: var(--bear); color: #2B0710; }
+
+.landingWrap {
+  min-height: 100vh; background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif;
+}
+.landingNav { display: flex; align-items: center; justify-content: space-between; padding: 20px 40px; border-bottom: 1px solid var(--border); flex-wrap: wrap; gap: 12px; }
+.landingNavActions { display: flex; align-items: center; gap: 10px; }
+.landingNavBtn { flex: none; padding: 9px 16px; }
+
+.landingHero { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 48px; align-items: center; padding: 64px 40px; max-width: 1180px; margin: 0 auto; }
+.landingHeroCopy { display: flex; flex-direction: column; align-items: flex-start; }
+.landingEyebrow { font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.6px; color: var(--amber); text-transform: uppercase; background: rgba(255,176,32,0.1); border: 1px solid rgba(255,176,32,0.25); padding: 5px 12px; border-radius: 20px; margin-bottom: 20px; }
+.landingH1 { font-family: 'Instrument Sans', sans-serif; font-weight: 700; font-size: 44px; line-height: 1.12; letter-spacing: -0.6px; margin: 0 0 18px; }
+.landingSub { color: var(--text-dim); font-size: 16px; line-height: 1.6; max-width: 52ch; margin: 0 0 26px; }
+.landingHeroBtns { display: flex; gap: 10px; margin-bottom: 34px; }
+.landingCta { flex: none; padding: 12px 22px; font-size: 14px; }
+.heroCandles { width: 260px; height: 78px; }
+@keyframes candleIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .heroCandles g { animation: none !important; } }
+
+.landingHeroCard { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 28px; }
+.landingHeroCard .authSub { margin: 6px 0 0; text-align: left; }
+.landingHeroCard .authSubmit { margin-top: 18px; }
+
+.landingH2 { font-family: 'Instrument Sans', sans-serif; font-weight: 700; font-size: 26px; letter-spacing: -0.3px; text-align: center; margin: 0 0 36px; }
+.landingFeatures { padding: 70px 40px; max-width: 1180px; margin: 0 auto; }
+.landingFeatureGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.landingFeatureCard { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 22px; transition: border-color 0.15s ease, transform 0.15s ease; }
+.landingFeatureCard:hover { border-color: var(--accent); transform: translateY(-2px); }
+.landingFeatureIcon { width: 36px; height: 36px; border-radius: 9px; background: rgba(123,97,255,0.15); color: var(--accent); display: flex; align-items: center; justify-content: center; margin-bottom: 14px; }
+.landingFeatureCard h3 { font-family: 'Instrument Sans', sans-serif; font-size: 15px; margin: 0 0 8px; }
+.landingFeatureCard p { font-size: 13px; line-height: 1.55; margin: 0; }
+
+.landingTrial { text-align: center; padding: 60px 40px 76px; max-width: 640px; margin: 0 auto; }
+.landingTrial .proBadgeIcon { display: block; margin: 0 auto 14px; }
+.landingTrialSub { font-size: 14.5px; line-height: 1.6; margin: 0 auto 26px; max-width: 46ch; }
+
+.landingFooter { border-top: 1px solid var(--border); padding: 28px 40px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; }
+.landingFooterLinks { display: flex; gap: 20px; }
+.landingFooterLinks a { color: var(--text-dim); font-size: 12.5px; text-decoration: none; }
+.landingFooterLinks a:hover { color: var(--text); }
+.landingFooterNote { font-size: 11.5px; width: 100%; text-align: center; order: 3; }
+
+.authBackBtn { position: absolute; top: 18px; left: 18px; background: none; border: none; color: var(--text-dim); font-size: 12.5px; cursor: pointer; padding: 6px 4px; }
+.authBackBtn:hover { color: var(--text); }
+
+@media (max-width: 900px) {
+  .landingHero { grid-template-columns: 1fr; padding: 40px 20px; gap: 32px; }
+  .landingH1 { font-size: 32px; }
+  .landingFeatureGrid { grid-template-columns: 1fr; }
+  .landingFeatures, .landingTrial { padding-left: 20px; padding-right: 20px; }
+  .landingNav { padding: 16px 20px; }
+}
 
 @media (max-width: 900px) {
   .body { flex-direction: column; }
