@@ -34,13 +34,7 @@
   "overrides": {
     "ajv": "^6.12.6",
     "ajv-keywords": "^3.5.2",
-    "terser-webpack-plugin": {
-      "schema-utils": {
-        "ajv": "^8.17.1",
-        "ajv-keywords": "^5.1.0",
-        "ajv-formats": "^2.1.1"
-      }
-    }
+    "schema-utils": "^3.3.0"
   },
   "browserslist": [
     ">0.2%",
