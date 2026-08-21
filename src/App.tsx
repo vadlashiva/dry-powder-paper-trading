@@ -2980,13 +2980,24 @@ const CSS = `
 .toast-bear { background: var(--bear); color: #2B0710; }
 
 .landingWrap {
-  min-height: 100vh; color: var(--text); font-family: 'Inter', sans-serif;
+  min-height: 100vh; font-family: 'Inter', sans-serif;
   background: linear-gradient(160deg, #071A40 0%, #0E3A8F 45%, #2E7CF6 100%);
   background-image:
     radial-gradient(900px 560px at 10% -8%, rgba(255,255,255,0.10), transparent 60%),
     radial-gradient(700px 460px at 92% 8%, color-mix(in srgb, var(--bull) 22%, transparent), transparent 60%),
     linear-gradient(160deg, #071A40 0%, #0E3A8F 45%, #2E7CF6 100%);
   background-repeat: no-repeat;
+  color: #E7ECF6 !important;
+}
+.landingWrap .dim { color: #A9B4C9 !important; }
+.landingWrap .landingSub { color: #C7D0E2 !important; }
+.landingWrap .landingHeroCard,
+.landingWrap .landingFeatureCard {
+  color: var(--text);
+}
+.landingWrap .landingHeroCard .dim,
+.landingWrap .landingFeatureCard .dim {
+  color: var(--text-dim) !important;
 }
 .landingNav { display: flex; align-items: center; justify-content: space-between; padding: 20px 40px; border-bottom: 1px solid rgba(255,255,255,0.14); flex-wrap: wrap; gap: 12px; position: relative; z-index: 1; }
 .landingNavActions { display: flex; align-items: center; gap: 10px; }
