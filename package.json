@@ -27,14 +27,25 @@
   },
   "scripts": {
     "start": "react-scripts start",
-    "build": "react-scripts build",
+    "build": "DISABLE_ESLINT_PLUGIN=true react-scripts build",
     "test": "react-scripts test --env=jsdom",
     "eject": "react-scripts eject"
   },
   "overrides": {
-    "ajv": "^6.12.6",
-    "ajv-keywords": "^3.5.2",
-    "schema-utils": "^3.3.0"
+    "ajv": "^8.17.1",
+    "ajv-formats": "^2.1.1",
+    "fork-ts-checker-webpack-plugin": {
+      "ajv": "^6.12.6",
+      "ajv-keywords": "^3.5.2"
+    },
+    "babel-loader": {
+      "ajv": "^6.12.6",
+      "ajv-keywords": "^3.5.2"
+    },
+    "file-loader": {
+      "ajv": "^6.12.6",
+      "ajv-keywords": "^3.5.2"
+    }
   },
   "browserslist": [
     ">0.2%",
