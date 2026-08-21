@@ -2999,6 +2999,9 @@ const CSS = `
 .landingWrap .landingFeatureCard .dim {
   color: var(--text-dim) !important;
 }
+.landingWrap .landingFooterLinks a { color: #C7D0E2 !important; }
+.landingWrap .landingFooterLinks a:hover { color: #FFFFFF !important; }
+.landingWrap .landingFooterNote { color: #A9B4C9 !important; }
 .landingNav { display: flex; align-items: center; justify-content: space-between; padding: 20px 40px; border-bottom: 1px solid rgba(255,255,255,0.14); flex-wrap: wrap; gap: 12px; position: relative; z-index: 1; }
 .landingNavActions { display: flex; align-items: center; gap: 10px; }
 .landingNavBtn { flex: none; padding: 9px 16px; }
