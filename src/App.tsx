@@ -1131,10 +1131,12 @@ function AuthGate({ themeIdx, cycleTheme, initialMode, onBack }) {
   );
 }
 
-function PhoneGate({ userId, themeIdx, cycleTheme, onDone, onCancel }) {
+function PhoneGate({ userId, userEmail, themeIdx, cycleTheme, onDone, onCancel }) {
   const [phone, setPhone] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [duplicateBlocked, setDuplicateBlocked] = useState(false);
+  const [checkoutBusy, setCheckoutBusy] = useState(false);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -1146,14 +1148,27 @@ function PhoneGate({ userId, themeIdx, cycleTheme, onDone, onCancel }) {
     if (regError) {
       setError(regError.message);
       if (/already linked/i.test(regError.message)) {
-        // This Google account can't be used — sign it back out so the person
-        // can log in with their original account instead.
-        await signOutUser();
-        onCancel();
+        // Don't sign out immediately — this is a real account that just
+        // isn't eligible for another free trial. Offer Pro instead.
+        setDuplicateBlocked(true);
       }
       return;
     }
     onDone();
+  };
+
+  const useDifferentAccount = async () => {
+    await signOutUser();
+    onCancel();
+  };
+
+  const handleUpgrade = () => {
+    setCheckoutBusy(true);
+    startProCheckout({
+      userEmail,
+      onSuccess: () => setCheckoutBusy(false),
+      onError: () => setCheckoutBusy(false),
+    });
   };
 
   return (
@@ -1167,16 +1182,34 @@ function PhoneGate({ userId, themeIdx, cycleTheme, onDone, onCancel }) {
           <Flame size={22} className="brandIcon" />
           <span>WINBANNU</span>
         </div>
-        <div className="authSub">One last step</div>
-        <form onSubmit={submit}>
-          <div className="authField">
-            <UserIcon size={14} className="authIcon" />
-            <input placeholder="Mobile number (e.g. 9876543210)" value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" autoComplete="tel" autoFocus />
-          </div>
-          {error && <div className="authError">{error}</div>}
-          <button type="submit" className="btn btnBull authSubmit" disabled={busy}>{busy ? "Please wait…" : "Continue"}</button>
-        </form>
-        <div className="authNote">One Winbannu account per mobile number — this keeps things fair for everyone during the free trial.</div>
+        <div className="authSub">{duplicateBlocked ? "This number's trial is already used" : "One last step"}</div>
+
+        {duplicateBlocked ? (
+          <>
+            <div className="authError" style={{ marginBottom: "14px" }}>{error}</div>
+            <p className="authNote" style={{ marginTop: 0, marginBottom: "18px" }}>
+              This mobile number has already used its free Winbannu trial. You can still use this account by upgrading to Pro directly — no trial needed.
+            </p>
+            <button className="btn btnMarigold authSubmit" onClick={handleUpgrade} disabled={checkoutBusy} style={{ marginBottom: "10px" }}>
+              {checkoutBusy ? "Opening…" : "Upgrade to Pro — ₹99"}
+            </button>
+            <button className="btn btnGhost authSubmit" onClick={useDifferentAccount}>
+              Use a different account instead
+            </button>
+          </>
+        ) : (
+          <>
+            <form onSubmit={submit}>
+              <div className="authField">
+                <UserIcon size={14} className="authIcon" />
+                <input placeholder="Mobile number (e.g. 9876543210)" value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" autoComplete="tel" autoFocus />
+              </div>
+              {error && <div className="authError">{error}</div>}
+              <button type="submit" className="btn btnBull authSubmit" disabled={busy}>{busy ? "Please wait…" : "Continue"}</button>
+            </form>
+            <div className="authNote">One Winbannu account per mobile number — this keeps things fair for everyone during the free trial.</div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -2825,6 +2858,7 @@ export default function App() {
     return (
       <PhoneGate
         userId={session.user.id}
+        userEmail={session.user.email}
         themeIdx={themeIdx}
         cycleTheme={cycleTheme}
         onDone={() => setPhoneStatus("ok")}
