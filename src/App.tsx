@@ -682,6 +682,47 @@ async function signOutUser() {
   await supabase.auth.signOut();
 }
 
+// ---- Google Sign-In -------------------------------------------------------
+async function signInWithGoogle() {
+  return supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: { redirectTo: window.location.origin },
+  });
+}
+
+// Every account (password OR Google) must have exactly one row in
+// phone_registry, keyed uniquely by phone number. This is what stops someone
+// from creating unlimited accounts (via new Gmail addresses) to keep
+// resetting their free trial.
+async function hasRegisteredPhone(userId) {
+  const { data, error } = await supabase
+    .from("phone_registry")
+    .select("phone")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) { console.error("phone check failed", error); return true; } // fail open — don't lock a user out on a network blip
+  return !!data;
+}
+
+function normalizePhoneInput(phone) {
+  const digits = phone.trim();
+  if (digits.startsWith("+")) return digits;
+  return `+91${digits.replace(/\D/g, "")}`;
+}
+
+async function registerPhoneForUser(userId, phone) {
+  const p = normalizePhoneInput(phone);
+  if (!/^\+\d{8,15}$/.test(p)) return { error: { message: "Enter a valid mobile number." } };
+  const { error } = await supabase.from("phone_registry").insert({ phone: p, user_id: userId });
+  if (error) {
+    if (error.code === "23505") {
+      return { error: { message: "This phone number is already linked to a Winbannu account. Please log in with your original account instead." } };
+    }
+    return { error: { message: "Could not save your phone number. Try again." } };
+  }
+  return { error: null };
+}
+
 function hydratePortfolio(raw) {
   const base = raw || {};
   return {
@@ -939,12 +980,25 @@ function AuthGate({ themeIdx, cycleTheme, initialMode, onBack }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [showPw, setShowPw] = useState(false);
+  const [googleBusy, setGoogleBusy] = useState(false);
 
   const normalizedPhone = () => {
     const digits = phone.trim();
     if (digits.startsWith("+")) return digits;
     // Assume a bare 10-digit Indian mobile number if no country code given
     return `+91${digits.replace(/\D/g, "")}`;
+  };
+
+  const handleGoogle = async () => {
+    setError("");
+    setGoogleBusy(true);
+    const { error: googleError } = await signInWithGoogle();
+    if (googleError) {
+      setError(googleError.message || "Could not start Google sign-in.");
+      setGoogleBusy(false);
+    }
+    // On success, the browser redirects away to Google, so there's nothing
+    // further to do here — App() picks up the session on return.
   };
 
   const submit = async (e) => {
@@ -1017,6 +1071,23 @@ function AuthGate({ themeIdx, cycleTheme, initialMode, onBack }) {
         </div>
         <div className="authSub">Paper trading terminal &middot; NSE &amp; BSE</div>
 
+        <button
+          type="button"
+          className="btn btnGhost authGoogleBtn"
+          onClick={handleGoogle}
+          disabled={googleBusy}
+        >
+          <svg width="16" height="16" viewBox="0 0 48 48" aria-hidden="true">
+            <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.6-6 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.1 8 3l6-6C33.9 5.4 29.2 3.5 24 3.5 12.7 3.5 3.5 12.7 3.5 24S12.7 44.5 24 44.5 44.5 35.3 44.5 24c0-1.2-.1-2.3-.3-3.5z"/>
+            <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.6 15.8 18.9 12.5 24 12.5c3.1 0 5.8 1.1 8 3l6-6C33.9 5.4 29.2 3.5 24 3.5c-7.6 0-14.1 4.3-17.7 10.6z"/>
+            <path fill="#4CAF50" d="M24 44.5c5.1 0 9.8-1.9 13.4-5.1l-6.2-5.2c-2 1.4-4.6 2.3-7.2 2.3-5.3 0-9.7-3.4-11.3-8.1l-6.5 5C9.8 40.1 16.3 44.5 24 44.5z"/>
+            <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.3-2.2 4.2-4.1 5.6l6.2 5.2C40.9 36 44.5 30.6 44.5 24c0-1.2-.1-2.3-.3-3.5z"/>
+          </svg>
+          {googleBusy ? "Redirecting…" : "Continue with Google"}
+        </button>
+
+        <div className="authDivider"><span>or</span></div>
+
         <div className="authTabs">
           <button className={`authTab ${mode === "login" ? "authTabActive" : ""}`} onClick={() => { setMode("login"); setError(""); }}>Log In</button>
           <button className={`authTab ${mode === "register" ? "authTabActive" : ""}`} onClick={() => { setMode("register"); setError(""); }}>Register</button>
@@ -1055,6 +1126,57 @@ function AuthGate({ themeIdx, cycleTheme, initialMode, onBack }) {
             ? "One Winbannu account per mobile number."
             : "Your account and portfolio are saved on the server — log in with the same username and password on any device to pick up right where you left off."}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function PhoneGate({ userId, themeIdx, cycleTheme, onDone, onCancel }) {
+  const [phone, setPhone] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setError("");
+    if (!phone.trim()) return setError("Enter your mobile number.");
+    setBusy(true);
+    const { error: regError } = await registerPhoneForUser(userId, phone);
+    setBusy(false);
+    if (regError) {
+      setError(regError.message);
+      if (/already linked/i.test(regError.message)) {
+        // This Google account can't be used — sign it back out so the person
+        // can log in with their original account instead.
+        await signOutUser();
+        onCancel();
+      }
+      return;
+    }
+    onDone();
+  };
+
+  return (
+    <div className="authWrap" style={THEMES[themeIdx].vars}>
+      <style>{CSS}</style>
+      <button type="button" className="themeBtn authThemeBtn" onClick={cycleTheme} title="Change background theme">
+        <span className="themeEmoji">🎨</span> {THEMES[themeIdx].name}
+      </button>
+      <div className="authCard">
+        <div className="authBrand">
+          <Flame size={22} className="brandIcon" />
+          <span>WINBANNU</span>
+        </div>
+        <div className="authSub">One last step</div>
+        <form onSubmit={submit}>
+          <div className="authField">
+            <UserIcon size={14} className="authIcon" />
+            <input placeholder="Mobile number (e.g. 9876543210)" value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" autoComplete="tel" autoFocus />
+          </div>
+          {error && <div className="authError">{error}</div>}
+          <button type="submit" className="btn btnBull authSubmit" disabled={busy}>{busy ? "Please wait…" : "Continue"}</button>
+        </form>
+        <div className="authNote">One Winbannu account per mobile number — this keeps things fair for everyone during the free trial.</div>
       </div>
     </div>
   );
@@ -2620,6 +2742,7 @@ export default function App() {
   const [themeIdx, setThemeIdx] = useState(() => loadThemeIdx());
   const [showAuthForm, setShowAuthForm] = useState(false);
   const [authInitialMode, setAuthInitialMode] = useState("login");
+  const [phoneStatus, setPhoneStatus] = useState("checking");
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -2631,6 +2754,21 @@ export default function App() {
     });
     return () => listener.subscription.unsubscribe();
   }, []);
+
+  // Every account (password or Google) needs exactly one phone_registry row.
+  // Password sign-up already inserts this at registration time; Google
+  // sign-in skips straight to a session, so we check for it here and show a
+  // one-time PhoneGate if it's missing.
+  useEffect(() => {
+    const userId = session?.user?.id;
+    if (!userId) { setPhoneStatus("checking"); return; }
+    let cancelled = false;
+    setPhoneStatus("checking");
+    hasRegisteredPhone(userId).then((has) => {
+      if (!cancelled) setPhoneStatus(has ? "ok" : "needed");
+    });
+    return () => { cancelled = true; };
+  }, [session?.user?.id]);
 
   const refreshSubscription = async () => {
     const userId = session?.user?.id;
@@ -2682,6 +2820,18 @@ export default function App() {
       />
     );
   }
+  if (phoneStatus === "checking") return <SplashScreen label="Loading…" themeIdx={themeIdx} />;
+  if (phoneStatus === "needed") {
+    return (
+      <PhoneGate
+        userId={session.user.id}
+        themeIdx={themeIdx}
+        cycleTheme={cycleTheme}
+        onDone={() => setPhoneStatus("ok")}
+        onCancel={() => setPhoneStatus("checking")}
+      />
+    );
+  }
   if (portfolioLoading || !portfolioData || !subscription) return <SplashScreen label="Loading your portfolio…" themeIdx={themeIdx} />;
 
   const username = session.user.user_metadata?.username || session.user.email.split("@")[0];
@@ -2729,6 +2879,10 @@ const CSS = `
 .splashCard .authSub { margin: 10px 0 0; }
 .authBrand { display: flex; align-items: center; gap: 8px; font-family: 'Instrument Sans', sans-serif; font-weight: 700; font-size: 18px; justify-content: center; }
 .authSub { text-align: center; color: var(--text-dim); font-size: 12px; margin: 6px 0 22px; }
+.authGoogleBtn { width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 16px; }
+.authDivider { display: flex; align-items: center; text-align: center; color: var(--text-dim); font-size: 11px; margin: 4px 0 16px; }
+.authDivider::before, .authDivider::after { content: ""; flex: 1; border-bottom: 1px solid var(--border); }
+.authDivider span { padding: 0 10px; text-transform: uppercase; letter-spacing: 0.5px; }
 .authTabs { display: flex; background: var(--surface-2); border-radius: 10px; padding: 4px; margin-bottom: 20px; }
 .authTab { flex: 1; background: none; border: none; color: var(--text-dim); padding: 9px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; }
 .authTabActive { background: var(--accent); color: white; }
