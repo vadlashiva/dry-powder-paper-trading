@@ -2242,11 +2242,11 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                           <td className="mono callSide">{call.delta.toFixed(2)}</td>
                           <td className="mono callSide">{call.theta.toFixed(2)}</td>
                           <td className="mono callSide">{(sigma * 100).toFixed(0)}%</td>
-                          <td className={`mono premCell callSide ${callITM ? "itmCall" : ""}`} onClick={() => openTicket("call", strike, currentExpiry)}>{fmtMoney(call.price)}</td>
+                          <td className={`mono premCell callSide ${callITM ? "itmCall" : "otmCall"}`} onClick={() => openTicket("call", strike, currentExpiry)}>{fmtMoney(call.price)}</td>
                           <td className="chainGutter" />
                           <td className="strikeCell mono">{strike}</td>
                           <td className="chainGutter" />
-                          <td className={`mono premCell putSide ${putITM ? "itmPut" : ""}`} onClick={() => openTicket("put", strike, currentExpiry)}>{fmtMoney(put.price)}</td>
+                          <td className={`mono premCell putSide ${putITM ? "itmPut" : "otmPut"}`} onClick={() => openTicket("put", strike, currentExpiry)}>{fmtMoney(put.price)}</td>
                           <td className="mono putSide">{(sigma * 100).toFixed(0)}%</td>
                           <td className="mono putSide">{put.theta.toFixed(2)}</td>
                           <td className="mono putSide">{put.delta.toFixed(2)}</td>
@@ -3083,8 +3083,9 @@ const CSS = `
 .chainGutter { width: 4px; padding: 0; }
 .premCell { cursor: pointer; border-radius: 6px; transition: background 0.12s; }
 .premCell:hover { background: var(--surface-2); }
-.itmCall { background: rgba(20,232,160,0.08); }
-.itmPut { background: rgba(255,84,112,0.08); }
+.itmCall { background: rgba(20,232,160,0.18); font-weight: 700; box-shadow: inset 3px 0 0 var(--bull); }
+.itmPut { background: rgba(255,84,112,0.18); font-weight: 700; box-shadow: inset -3px 0 0 var(--bear); }
+.otmCall, .otmPut { opacity: 0.55; font-weight: 400; }
 .atmRow td { border-top: 1px dashed var(--amber); border-bottom: 1px dashed var(--amber); }
 .chainNote { margin-top: 12px; font-size: 11px; color: var(--text-dim); }
 .lockPanel { background: var(--surface); border: 1px dashed var(--border); border-radius: 12px; padding: 44px 24px; text-align: center; }
