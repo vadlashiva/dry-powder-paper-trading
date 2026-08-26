@@ -7,11 +7,8 @@ import {TrendingUp, TrendingDown, RotateCcw, X, Flame, Activity, LogOut, Lock, U
 declare global { interface Window { Razorpay: any; } }
 /* ---------------- background themes ---------------- */
 const THEMES = [
-  { name: "Midnight", vars: { "--bg": "#0A0D14", "--surface": "#121722", "--surface-2": "#1A2130", "--border": "#232B3D", "--text": "#E7ECF6", "--text-dim": "#8B96AA" } },
-  { name: "Slate", vars: { "--bg": "#0E1013", "--surface": "#16181C", "--surface-2": "#1F2226", "--border": "#2B2F35", "--text": "#ECEDEF", "--text-dim": "#9498A0" } },
-  { name: "Ocean", vars: { "--bg": "#061821", "--surface": "#0C2733", "--surface-2": "#123542", "--border": "#1D4E5E", "--text": "#E3F4F8", "--text-dim": "#7FA9B5" } },
-  { name: "Plum", vars: { "--bg": "#140B1E", "--surface": "#1E1129", "--surface-2": "#291736", "--border": "#3C2450", "--text": "#F1E9FA", "--text-dim": "#A78FC2" } },
-  { name: "Daylight", vars: { "--bg": "#F3F4F7", "--surface": "#FFFFFF", "--surface-2": "#EEF0F4", "--border": "#DADDE3", "--text": "#12151C", "--text-dim": "#5B6270" } },
+  { name: "Night", emoji: "🌙", vars: { "--bg": "#0A0D14", "--surface": "#121722", "--surface-2": "#1A2130", "--border": "#232B3D", "--text": "#E7ECF6", "--text-dim": "#8B96AA" } },
+  { name: "Day", emoji: "☀️", vars: { "--bg": "#F3F4F7", "--surface": "#FFFFFF", "--surface-2": "#EEF0F4", "--border": "#DADDE3", "--text": "#12151C", "--text-dim": "#5B6270" } },
 ];
 const LS_THEME = "tf_theme";
 function loadThemeIdx() {
@@ -1059,7 +1056,7 @@ function AuthGate({ themeIdx, cycleTheme, initialMode, onBack }) {
     <div className="authWrap" style={THEMES[themeIdx].vars}>
       <style>{CSS}</style>
       <button type="button" className="themeBtn authThemeBtn" onClick={cycleTheme} title="Change background theme">
-        <span className="themeEmoji">🎨</span> {THEMES[themeIdx].name}
+        <span className="themeEmoji">{THEMES[themeIdx].emoji}</span> {THEMES[themeIdx].name}
       </button>
       {onBack && (
         <button type="button" className="authBackBtn" onClick={onBack}>← Back to home</button>
@@ -1175,7 +1172,7 @@ function PhoneGate({ userId, userEmail, themeIdx, cycleTheme, onDone, onCancel }
     <div className="authWrap" style={THEMES[themeIdx].vars}>
       <style>{CSS}</style>
       <button type="button" className="themeBtn authThemeBtn" onClick={cycleTheme} title="Change background theme">
-        <span className="themeEmoji">🎨</span> {THEMES[themeIdx].name}
+        <span className="themeEmoji">{THEMES[themeIdx].emoji}</span> {THEMES[themeIdx].name}
       </button>
       <div className="authCard">
         <div className="authBrand">
@@ -1960,7 +1957,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
           {!isPaidPro && (
             <button className="upgradeBtn" onClick={() => setUpgradeModalOpen(true)}><Sparkles size={13} /> {inTrial ? "Upgrade Early" : "Upgrade to Pro"}</button>
           )}
-          <button className="themeBtn" onClick={cycleTheme} title="Change background theme"><span className="themeEmoji">🎨</span> {THEMES[themeIdx].name}</button>
+          <button className="themeBtn" onClick={cycleTheme} title="Change background theme"><span className="themeEmoji">{THEMES[themeIdx].emoji}</span> {THEMES[themeIdx].name}</button>
           <button className="resetBtn" onClick={() => setConfirmReset(true)}><RotateCcw size={14} /> Reset</button>
           <button className="resetBtn" onClick={onLogout}><LogOut size={14} /> Log out</button>
         </div>
