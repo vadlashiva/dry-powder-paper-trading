@@ -2239,17 +2239,17 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                       const putITM = strike > spot;
                       return (
                         <tr key={strike} className={isATM ? "atmRow" : ""}>
-                          <td className="mono dim">{call.delta.toFixed(2)}</td>
-                          <td className="mono dim">{call.theta.toFixed(2)}</td>
-                          <td className="mono dim">{(sigma * 100).toFixed(0)}%</td>
-                          <td className={`mono premCell ${callITM ? "itmCall" : ""}`} onClick={() => openTicket("call", strike, currentExpiry)}>{fmtMoney(call.price)}</td>
+                          <td className="mono callSide">{call.delta.toFixed(2)}</td>
+                          <td className="mono callSide">{call.theta.toFixed(2)}</td>
+                          <td className="mono callSide">{(sigma * 100).toFixed(0)}%</td>
+                          <td className={`mono premCell callSide ${callITM ? "itmCall" : ""}`} onClick={() => openTicket("call", strike, currentExpiry)}>{fmtMoney(call.price)}</td>
                           <td className="chainGutter" />
                           <td className="strikeCell mono">{strike}</td>
                           <td className="chainGutter" />
-                          <td className={`mono premCell ${putITM ? "itmPut" : ""}`} onClick={() => openTicket("put", strike, currentExpiry)}>{fmtMoney(put.price)}</td>
-                          <td className="mono dim">{(sigma * 100).toFixed(0)}%</td>
-                          <td className="mono dim">{put.theta.toFixed(2)}</td>
-                          <td className="mono dim">{put.delta.toFixed(2)}</td>
+                          <td className={`mono premCell putSide ${putITM ? "itmPut" : ""}`} onClick={() => openTicket("put", strike, currentExpiry)}>{fmtMoney(put.price)}</td>
+                          <td className="mono putSide">{(sigma * 100).toFixed(0)}%</td>
+                          <td className="mono putSide">{put.theta.toFixed(2)}</td>
+                          <td className="mono putSide">{put.delta.toFixed(2)}</td>
                         </tr>
                       );
                     })}
@@ -2988,7 +2988,7 @@ const CSS = `
 .mainHead h1 { font-family: 'Instrument Sans', sans-serif; font-weight: 700; font-size: 27px; letter-spacing: -0.3px; margin: 0; }
 .mainHeadName { color: var(--text-dim); font-size: 13px; }
 .mainHeadPrice { display: flex; flex-direction: column; align-items: flex-end; }
-.bigPrice { font-size: 22px; font-weight: 700; }
+.bigPrice { font-size: 22px; font-weight: 700; color: var(--amber); }
 .marketStatusBadge { font-size: 10px; padding: 3px 9px; border-radius: 20px; margin-top: 4px; font-weight: 600; }
 .marketOpen { background: rgba(20,232,160,0.15); color: var(--bull); }
 .marketClosed { background: rgba(255,84,112,0.15); color: var(--bear); }
@@ -3075,6 +3075,8 @@ const CSS = `
 .chainSideHead { font-size: 11px; letter-spacing: 1px; padding-bottom: 10px; }
 .callHead { color: var(--bull); text-align: left; }
 .putHead { color: var(--bear); text-align: right; }
+.callSide { color: var(--bull); }
+.putSide { color: var(--bear); }
 .strikeHead { color: var(--amber); }
 .subhead th { color: var(--text-dim); font-weight: 400; font-size: 10px; border-bottom: 1px solid var(--border); }
 .strikeCell { font-weight: 700; color: var(--amber); background: var(--surface-2); }
