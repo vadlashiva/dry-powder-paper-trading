@@ -884,10 +884,148 @@ function HeroCandles() {
   );
 }
 
+// ---- Live landing-page components ----------------------------------------
+// These reuse the same fetchYahoo() feed as the trading terminal itself, so
+// the landing page shows genuinely live NSE/BSE data before anyone logs in.
+
+function LiveTicker() {
+  const symbols = ["^NSEI", "^NSEBANK", "^BSESN", "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS"];
+  const [rows, setRows] = useState(() => symbols.map((s) => ({ symbol: s, price: null, prevClose: null })));
+
+  useEffect(() => {
+    let cancelled = false;
+    const pull = async () => {
+      const results = await Promise.allSettled(symbols.map((s) => fetchYahoo(s)));
+      if (cancelled) return;
+      setRows(
+        symbols.map((s, i) => {
+          const r = results[i];
+          return r.status === "fulfilled"
+            ? { symbol: s, price: r.value.price, prevClose: r.value.prevClose }
+            : { symbol: s, price: null, prevClose: null };
+        })
+      );
+    };
+    pull();
+    const iv = setInterval(pull, 20000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, []);
+
+  const valid = rows.filter((r) => r.price != null);
+  if (valid.length === 0) return null;
+  const doubled = [...valid, ...valid]; // duplicated once so the scroll loop is seamless
+
+  return (
+    <div className="tickerTapeWrap">
+      <div className="tickerTape">
+        {doubled.map((r, i) => {
+          const chg = r.prevClose ? ((r.price - r.prevClose) / r.prevClose) * 100 : 0;
+          const up = chg >= 0;
+          return (
+            <span key={i} className="tickerItem mono">
+              <b>{displayTicker(r.symbol)}</b> {r.price.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+              <span className={up ? "bull" : "bear"}> {up ? "▲" : "▼"} {Math.abs(chg).toFixed(2)}%</span>
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function LiveHeroPrice() {
+  const [q, setQ] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    const pull = async () => {
+      try {
+        const r = await fetchYahoo("RELIANCE.NS");
+        if (!cancelled) setQ(r);
+      } catch { /* keep showing last known value on a transient failure */ }
+    };
+    pull();
+    const iv = setInterval(pull, 8000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, []);
+  if (!q) return null;
+  const chg = q.prevClose ? ((q.price - q.prevClose) / q.prevClose) * 100 : 0;
+  const up = chg >= 0;
+  return (
+    <div className="heroLivePrice mono">
+      <span className="heroLiveDot" />
+      RELIANCE <span className="heroLivePriceVal">{fmtMoney(q.price)}</span>
+      <span className={up ? "bull" : "bear"}>{up ? "▲" : "▼"} {Math.abs(chg).toFixed(2)}%</span>
+    </div>
+  );
+}
+
+function MiniHeroChart() {
+  const containerRef = useRef(null);
+  const chartRef = useRef(null);
+  const seriesRef = useRef(null);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const chart = createChart(containerRef.current, {
+      width: containerRef.current.clientWidth,
+      height: 90,
+      layout: { background: { color: "transparent" }, textColor: "transparent", attributionLogo: false },
+      grid: { vertLines: { visible: false }, horzLines: { visible: false } },
+      rightPriceScale: { visible: false },
+      leftPriceScale: { visible: false },
+      timeScale: { visible: false },
+      handleScroll: false,
+      handleScale: false,
+      crosshair: { vertLine: { visible: false }, horzLine: { visible: false } },
+    });
+    const series = chart.addSeries(CandlestickSeries, {
+      upColor: "#14E8A0", downColor: "#FF5470", borderVisible: false,
+      wickUpColor: "#14E8A0", wickDownColor: "#FF5470",
+    });
+    chartRef.current = chart;
+    seriesRef.current = series;
+
+    const onResize = () => { if (containerRef.current) chart.applyOptions({ width: containerRef.current.clientWidth }); };
+    window.addEventListener("resize", onResize);
+    return () => { window.removeEventListener("resize", onResize); chart.remove(); };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const r = await fetchYahoo("RELIANCE.NS", "5m", "1d");
+        if (cancelled || !seriesRef.current) return;
+        const source = r.history.length ? r.history : genSyntheticHistory(r.price || 1300, 40, 5 * 60 * 1000);
+        const prepped = prepLW(source);
+        seriesRef.current.setData(prepped.map(({ t, d }) => ({ time: t, open: d.open, high: d.high, low: d.low, close: d.close })));
+        chartRef.current?.timeScale().fitContent();
+      } catch { /* keep last rendered candles on a transient fetch failure */ }
+    };
+    load();
+    const iv = setInterval(load, 20000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, []);
+
+  return <div ref={containerRef} className="miniHeroChart" />;
+}
+
 function LandingPage({ themeIdx, onEnter }) {
+  useEffect(() => {
+    const els = document.querySelectorAll(".landingFeatureCard, .landingTrial");
+    const obs = new IntersectionObserver(
+      (entries) => entries.forEach((e) => { if (e.isIntersecting) e.target.classList.add("revealed"); }),
+      { threshold: 0.15 }
+    );
+    els.forEach((el) => obs.observe(el));
+    return () => obs.disconnect();
+  }, []);
+
   return (
     <div className="landingWrap" style={THEMES[themeIdx].vars}>
       <style>{CSS}</style>
+
+      <LiveTicker />
 
       <header className="landingNav">
         <div className="authBrand" style={{ justifyContent: "flex-start" }}>
@@ -912,7 +1050,7 @@ function LandingPage({ themeIdx, onEnter }) {
             <button className="btn btnBull landingCta" onClick={() => onEnter("register")}><Sparkles size={15} /> Get Started Free</button>
             <button className="btn btnGhost landingCta" onClick={() => onEnter("login")}>Log In</button>
           </div>
-          <HeroCandles />
+          <MiniHeroChart />
         </div>
         <div className="landingHeroCard">
           <div className="authBrand">
@@ -920,6 +1058,7 @@ function LandingPage({ themeIdx, onEnter }) {
             <span>WINBANNU</span>
           </div>
           <div className="authSub">Start trading in under a minute</div>
+          <LiveHeroPrice />
           <ul className="upgradeList" style={{ marginTop: "18px" }}>
             <li>₹10,00,000 virtual starting balance</li>
             <li>Live NSE &amp; BSE market data</li>
@@ -3167,6 +3306,19 @@ const CSS = `
 .toast-bull { background: var(--bull); color: #06231A; }
 .toast-bear { background: var(--bear); color: #2B0710; }
 
+.tickerTapeWrap { background: rgba(0,0,0,0.35); border-bottom: 1px solid rgba(255,255,255,0.08); overflow: hidden; white-space: nowrap; padding: 7px 0; position: relative; z-index: 1; }
+.tickerTape { display: inline-block; padding-left: 100%; animation: tickerScroll 32s linear infinite; }
+.tickerItem { display: inline-block; margin-right: 36px; font-size: 12px; color: var(--text-dim); }
+.tickerItem b { color: var(--text); font-weight: 600; margin-right: 4px; }
+@keyframes tickerScroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
+
+.heroLivePrice { display: flex; align-items: center; gap: 8px; font-size: 13px; background: var(--surface-2); border: 1px solid var(--border); padding: 8px 12px; border-radius: 8px; margin: 14px 0 4px; }
+.heroLiveDot { width: 7px; height: 7px; border-radius: 50%; background: var(--bull); animation: liveDotPulse 1.6s ease-in-out infinite; flex-shrink: 0; }
+.heroLivePriceVal { font-weight: 700; color: var(--text); }
+@keyframes liveDotPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+.miniHeroChart { width: 100%; height: 90px; margin-top: 4px; }
+
 .landingWrap {
   min-height: 100vh; font-family: 'Inter', sans-serif;
   background: linear-gradient(160deg, #071A40 0%, #0E3A8F 45%, #2E7CF6 100%);
@@ -3216,7 +3368,7 @@ const CSS = `
 .landingH2 { font-family: 'Instrument Sans', sans-serif; font-weight: 700; font-size: 26px; letter-spacing: -0.3px; text-align: center; margin: 0 0 36px; }
 .landingFeatures { padding: 70px 40px; max-width: 1180px; margin: 0 auto; }
 .landingFeatureGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
-.landingFeatureCard { background: var(--surface); border: 1px solid var(--border); border-top: 3px solid var(--accent); border-radius: 12px; padding: 22px; transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease; }
+.landingFeatureCard { background: var(--surface); border: 1px solid var(--border); border-top: 3px solid var(--accent); border-radius: 12px; padding: 22px; transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease, opacity 0.5s ease; }
 .landingFeatureCard:hover { transform: translateY(-3px); box-shadow: 0 14px 34px rgba(0,0,0,0.22); }
 .landingFeatureIcon { width: 36px; height: 36px; border-radius: 9px; display: flex; align-items: center; justify-content: center; margin-bottom: 14px; }
 .landingFeatureCard h3 { font-family: 'Instrument Sans', sans-serif; font-size: 15px; margin: 0 0 8px; }
@@ -3231,6 +3383,15 @@ const CSS = `
 }
 .landingTrial .proBadgeIcon { display: block; margin: 0 auto 14px; }
 .landingTrialSub { font-size: 14.5px; line-height: 1.6; margin: 0 auto 26px; max-width: 46ch; }
+
+.landingFeatureCard, .landingTrial { opacity: 0; transform: translateY(16px); transition: opacity 0.5s ease, transform 0.5s ease; }
+.landingFeatureCard.revealed, .landingTrial.revealed { opacity: 1; transform: translateY(0); }
+
+@media (prefers-reduced-motion: reduce) {
+  .tickerTape { animation: none; }
+  .heroLiveDot { animation: none; }
+  .landingFeatureCard, .landingTrial { opacity: 1 !important; transform: none !important; transition: none; }
+}
 
 .landingFooter { border-top: 1px solid rgba(255,255,255,0.14); padding: 28px 40px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; }
 .landingFooterLinks { display: flex; gap: 20px; }
