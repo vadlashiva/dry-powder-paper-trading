@@ -1040,19 +1040,21 @@ function LandingPage({ themeIdx, onEnter }) {
 
       <section className="landingHero">
         <div className="landingHeroCopy">
-          <div className="landingEyebrow">Free forever · 7-day Pro trial included</div>
-          <h1 className="landingH1">Practice trading NSE &amp; BSE with <span className="landingGradientText">real prices</span>. Zero risk.</h1>
-          <p className="landingSub">
+          <div className="landingEyebrow heroReveal heroReveal-1">Free forever · 7-day Pro trial included</div>
+          <h1 className="landingH1 heroReveal heroReveal-2">Practice trading NSE &amp; BSE with <span className="landingGradientText">real prices</span>. Zero risk.</h1>
+          <p className="landingSub heroReveal heroReveal-3">
             WINBANNU is a paper trading terminal for Indian stocks, options, and indices. Trade with
             ₹10,00,000 in virtual cash against live market data — build real skill before you risk real money.
           </p>
-          <div className="landingHeroBtns">
+          <div className="landingHeroBtns heroReveal heroReveal-4">
             <button className="btn btnBull landingCta" onClick={() => onEnter("register")}><Sparkles size={15} /> Get Started Free</button>
             <button className="btn btnGhost landingCta" onClick={() => onEnter("login")}>Log In</button>
           </div>
-          <MiniHeroChart />
+          <div className="heroReveal heroReveal-5">
+            <MiniHeroChart />
+          </div>
         </div>
-        <div className="landingHeroCard">
+        <div className="landingHeroCard heroReveal heroReveal-3">
           <div className="authBrand">
             <Flame size={20} className="brandIcon" />
             <span>WINBANNU</span>
@@ -1065,6 +1067,23 @@ function LandingPage({ themeIdx, onEnter }) {
             <li>No card required to sign up</li>
           </ul>
           <button className="btn btnBull authSubmit" onClick={() => onEnter("register")}>Create free account</button>
+        </div>
+      </section>
+
+      <section className="landingStats">
+        <div className="landingStatItem">
+          <span className="landingStatNum">₹10,00,000</span>
+          <span className="landingStatLabel">Virtual starting cash</span>
+        </div>
+        <div className="landingStatDivider" />
+        <div className="landingStatItem">
+          <span className="landingStatNum">NSE + BSE</span>
+          <span className="landingStatLabel">Live market data</span>
+        </div>
+        <div className="landingStatDivider" />
+        <div className="landingStatItem">
+          <span className="landingStatNum">7 Days</span>
+          <span className="landingStatLabel">Full Pro trial, free</span>
         </div>
       </section>
 
@@ -3319,6 +3338,44 @@ const CSS = `
 
 .miniHeroChart { width: 100%; height: 90px; margin-top: 4px; }
 
+@keyframes heroFadeUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+.heroReveal { opacity: 0; animation: heroFadeUp 0.6s ease forwards; }
+.heroReveal-1 { animation-delay: 0.05s; }
+.heroReveal-2 { animation-delay: 0.15s; }
+.heroReveal-3 { animation-delay: 0.25s; }
+.heroReveal-4 { animation-delay: 0.35s; }
+.heroReveal-5 { animation-delay: 0.45s; }
+
+@keyframes ctaGlow { 0%, 100% { box-shadow: 0 0 0 rgba(20,232,160,0); } 50% { box-shadow: 0 0 22px rgba(20,232,160,0.45); } }
+.landingCta.btnBull { animation: ctaGlow 2.6s ease-in-out infinite; }
+
+.landingStats { display: flex; align-items: center; justify-content: center; gap: 36px; max-width: 900px; margin: 0 auto; padding: 0 40px 60px; flex-wrap: wrap; position: relative; z-index: 1; }
+.landingStatItem { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.landingStatNum { font-family: 'Instrument Sans', sans-serif; font-weight: 700; font-size: 22px; background: linear-gradient(100deg, var(--bull), var(--amber)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+.landingStatLabel { font-size: 12px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; }
+.landingStatDivider { width: 1px; height: 34px; background: rgba(255,255,255,0.16); }
+@media (max-width: 700px) {
+  .landingStatDivider { display: none; }
+  .landingStats { gap: 22px; }
+}
+
+.landingHero::before {
+  content: ""; position: absolute; inset: -40px; z-index: 0; pointer-events: none;
+  background-image: radial-gradient(rgba(255,255,255,0.06) 1px, transparent 1px);
+  background-size: 26px 26px;
+  animation: gridDrift 40s linear infinite;
+  -webkit-mask-image: radial-gradient(circle at 30% 30%, black, transparent 70%);
+  mask-image: radial-gradient(circle at 30% 30%, black, transparent 70%);
+}
+@keyframes gridDrift { from { background-position: 0 0; } to { background-position: 260px 260px; } }
+
+.landingFeatureGrid .landingFeatureCard:nth-child(1) { transition-delay: 0s; }
+.landingFeatureGrid .landingFeatureCard:nth-child(2) { transition-delay: 0.08s; }
+.landingFeatureGrid .landingFeatureCard:nth-child(3) { transition-delay: 0.16s; }
+.landingFeatureGrid .landingFeatureCard:nth-child(4) { transition-delay: 0.24s; }
+.landingFeatureGrid .landingFeatureCard:nth-child(5) { transition-delay: 0.32s; }
+.landingFeatureGrid .landingFeatureCard:nth-child(6) { transition-delay: 0.4s; }
+
 .landingWrap {
   min-height: 100vh; font-family: 'Inter', sans-serif;
   background: linear-gradient(160deg, #071A40 0%, #0E3A8F 45%, #2E7CF6 100%);
@@ -3391,6 +3448,9 @@ const CSS = `
   .tickerTape { animation: none; }
   .heroLiveDot { animation: none; }
   .landingFeatureCard, .landingTrial { opacity: 1 !important; transform: none !important; transition: none; }
+  .heroReveal { opacity: 1 !important; animation: none !important; }
+  .landingCta.btnBull { animation: none !important; }
+  .landingHero::before { animation: none !important; }
 }
 
 .landingFooter { border-top: 1px solid rgba(255,255,255,0.14); padding: 28px 40px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; }
