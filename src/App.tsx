@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { createChart, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries } from "lightweight-charts";
 import { createClient } from "@supabase/supabase-js";
-import {TrendingUp, TrendingDown, RotateCcw, X, Flame, Activity, LogOut, Lock, User as UserIcon, Bell, Trash2, Maximize2, Download, Newspaper, Crosshair, Sparkles,Eye, EyeOff, LineChart, Layers,
+import {TrendingUp, TrendingDown, RotateCcw, X, Flame, Activity, LogOut, Lock, User as UserIcon, Bell, Trash2, Maximize2, Download, Newspaper, Crosshair, Sparkles,Eye, EyeOff, LineChart, Layers, Play, GraduationCap,
 } from "lucide-react";
 declare global { interface Window { Razorpay: any; } }
 /* ---------------- background themes ---------------- */
@@ -849,12 +849,46 @@ async function fetchSymbolNews(query) {
 }
 
 const LANDING_FEATURES = [
-  { icon: Activity, title: "Live Market Data", desc: "Real NSE & BSE prices, updated continuously during market hours — not simulated ticks." },
+  { icon: Activity, title: "Live Market Data", desc: "Real NSE & BSE prices, updated continuously during market hours — not delayed, not simulated ticks." },
   { icon: Layers, title: "Options Chain & Greeks", desc: "Live Black-Scholes pricing with Delta, Gamma, Theta, and Vega across every strike and expiry." },
   { icon: LineChart, title: "Charts & Indicators", desc: "Candlestick and line charts with MA, RSI, and MACD, across five timeframes." },
-  { icon: RotateCcw, title: "Replay Mode", desc: "Rewind to any recent trading day and practice against real historical price action, candle by candle." },
   { icon: Bell, title: "Price Alerts", desc: "Get notified the moment a stock crosses the price you're watching for." },
   { icon: Download, title: "Trade History Export", desc: "Download your full trade log as a CSV whenever you want to review your performance." },
+];
+
+const WHO_FOR = [
+  { icon: GraduationCap, title: "Beginners", desc: "Learn what an order, a position, and a stop-loss actually feel like — before any of it involves real money." },
+  { icon: Sparkles, title: "Students", desc: "Understand how markets move alongside your coursework, with ₹10,00,000 in virtual capital and nothing at stake." },
+  { icon: Activity, title: "Intraday Traders", desc: "Rehearse entries and exits against live, moving prices during real market hours." },
+  { icon: LineChart, title: "Swing Traders", desc: "Plan a setup, hold it across sessions, and see how your thesis actually plays out." },
+  { icon: Layers, title: "Options Traders", desc: "Work through calls, puts, and spreads against live Greeks before risking real premium." },
+  { icon: UserIcon, title: "Experienced Traders", desc: "Test a new idea or timeframe without touching your real-money account while you validate it." },
+];
+
+const MISTAKES = [
+  {
+    title: "Entering too early, or chasing a move",
+    real: "With real money, a rushed entry costs you the moment you click buy.",
+    practice: "In Replay, you can rehearse the same setup candle-by-candle against real past price action — as many times as it takes.",
+  },
+  {
+    title: "Ignoring the stop-loss",
+    real: "One skipped stop-loss can undo weeks of careful, disciplined trades.",
+    practice: "Practice placing and honoring stop and limit orders here first, until it's a habit rather than an afterthought.",
+  },
+  {
+    title: "Sizing a position too large",
+    real: "An oversized trade turns a small misjudgment into a large loss.",
+    practice: "₹10,00,000 in virtual capital lets you feel the real consequence of position sizing, without the real cost.",
+  },
+];
+
+const FAQ_ITEMS = [
+  { q: "Is the money on Winbannu real?", a: "No. Every account starts with ₹10,00,000 in virtual cash. Trades, profits, and losses are simulated and have no monetary value." },
+  { q: "Is the market data live or delayed?", a: "Live. Winbannu pulls real NSE & BSE prices during market hours — not a delayed feed." },
+  { q: "Do I need a broker or demat account?", a: "No. Winbannu isn't a broker — just sign up with Google and a phone number, and you're trading virtual capital immediately." },
+  { q: "What is Replay Mode?", a: "Pick any weekday from the last 30 days and Winbannu replays that day's real price action candle by candle, with its own separate ₹10,00,000 balance — so practicing in Replay never touches your live portfolio." },
+  { q: "Is Winbannu free?", a: "Every new account gets a full 7-day Pro trial, no card required. After that, core paper trading stays free — Pro features like the options chain, alerts, and CSV export need an active subscription." },
 ];
 
 // A small decorative candlestick strip — static, on-brand, ties directly to
@@ -1010,9 +1044,56 @@ function MiniHeroChart() {
   return <div ref={containerRef} className="miniHeroChart" />;
 }
 
-function LandingPage({ themeIdx, onEnter }) {
+function ReplaySpotlight() {
+  const candles = useMemo(() => {
+    let price = 1300;
+    return Array.from({ length: 18 }, () => {
+      const open = price;
+      const close = open + (Math.random() - 0.45) * 10;
+      const high = Math.max(open, close) + Math.random() * 4;
+      const low = Math.min(open, close) - Math.random() * 4;
+      price = close;
+      return { open, close, high, low };
+    });
+  }, []);
+  const [visible, setVisible] = useState(6);
   useEffect(() => {
-    const els = document.querySelectorAll(".landingFeatureCard, .landingTrial");
+    const iv = setInterval(() => {
+      setVisible((v) => (v >= candles.length ? 6 : v + 1));
+    }, 500);
+    return () => clearInterval(iv);
+  }, [candles.length]);
+
+  const w = 320, h = 120, cw = w / candles.length;
+  const allVals = candles.flatMap((c) => [c.high, c.low]);
+  const min = Math.min(...allVals), max = Math.max(...allVals);
+  const y = (v) => h - ((v - min) / (max - min)) * h;
+
+  return (
+    <div className="replayVisual">
+      <svg viewBox={`0 0 ${w} ${h}`} className="replaySvg">
+        {candles.slice(0, visible).map((c, i) => {
+          const x = i * cw + cw / 2;
+          const up = c.close >= c.open;
+          const color = up ? "#14E8A0" : "#FF5470";
+          const top = y(Math.max(c.open, c.close));
+          const bodyH = Math.max(2, Math.abs(y(c.open) - y(c.close)));
+          return (
+            <g key={i}>
+              <line x1={x} y1={y(c.high)} x2={x} y2={y(c.low)} stroke={color} strokeWidth="1" opacity="0.6" />
+              <rect x={x - cw * 0.28} y={top} width={cw * 0.56} height={bodyH} fill={color} rx="1" />
+            </g>
+          );
+        })}
+      </svg>
+      <div className="replayPlayBadge"><Play size={12} fill="currentColor" /> Replaying</div>
+    </div>
+  );
+}
+
+
+  useEffect(() => {
+    const els = document.querySelectorAll(".landingFeatureCard, .landingTrial, .whoForCard, .replaySpotlight, .mistakeRow, .faqItem");
     const obs = new IntersectionObserver(
       (entries) => entries.forEach((e) => { if (e.isIntersecting) e.target.classList.add("revealed"); }),
       { threshold: 0.15 }
@@ -1087,6 +1168,37 @@ function LandingPage({ themeIdx, onEnter }) {
         </div>
       </section>
 
+      <section className="landingWhoFor">
+        <h2 className="landingH2">Wherever You Are in Your Trading Journey</h2>
+        <div className="whoForGrid">
+          {WHO_FOR.map((w) => (
+            <div key={w.title} className="whoForCard">
+              <div className="whoForIcon"><w.icon size={17} /></div>
+              <h3>{w.title}</h3>
+              <p className="dim">{w.desc}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="replaySpotlight">
+        <div className="replaySpotlightCopy">
+          <div className="landingEyebrow">REPLAY MODE</div>
+          <h2 className="landingH2" style={{ textAlign: "left", margin: "0 0 14px" }}>Practice Against a Real Day, Not a Guess.</h2>
+          <p className="dim replaySpotlightText">
+            Pick any weekday from the last 30 days and Winbannu replays that day's real NSE &amp; BSE price
+            action candle by candle — as if it were happening live. Play, pause, or skip ahead at 0.5x, 1x, or 2x speed,
+            and trade against it with a separate ₹10,00,000 balance that never touches your live portfolio.
+          </p>
+          <ul className="upgradeList">
+            <li>Any weekday from the last 30 trading days</li>
+            <li>Play / pause / skip to end, at three speeds</li>
+            <li>A fully separate practice balance — your real portfolio is untouched</li>
+          </ul>
+        </div>
+        <ReplaySpotlight />
+      </section>
+
       <section className="landingFeatures">
         <h2 className="landingH2">Everything you need to learn the market</h2>
         <div className="landingFeatureGrid">
@@ -1100,6 +1212,40 @@ function LandingPage({ themeIdx, onEnter }) {
               </div>
             );
           })}
+        </div>
+      </section>
+
+      <section className="mistakesSection">
+        <h2 className="landingH2">Mistakes Are Part of Learning to Trade.</h2>
+        <p className="dim mistakesIntro">They don't have to be expensive ones.</p>
+        <div className="mistakesList">
+          {MISTAKES.map((m) => (
+            <div key={m.title} className="mistakeRow">
+              <h3>{m.title}</h3>
+              <div className="mistakeCols">
+                <div className="mistakeCol mistakeColReal">
+                  <span className="mistakeColLabel bear">With real money</span>
+                  <p className="dim">{m.real}</p>
+                </div>
+                <div className="mistakeCol mistakeColPractice">
+                  <span className="mistakeColLabel bull">On Winbannu</span>
+                  <p className="dim">{m.practice}</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="landingFaq">
+        <h2 className="landingH2">Questions? Here's What People Usually Ask.</h2>
+        <div className="faqList">
+          {FAQ_ITEMS.map((f) => (
+            <div key={f.q} className="faqItem">
+              <h3>{f.q}</h3>
+              <p className="dim">{f.a}</p>
+            </div>
+          ))}
         </div>
       </section>
 
@@ -3376,6 +3522,42 @@ const CSS = `
 .landingFeatureGrid .landingFeatureCard:nth-child(5) { transition-delay: 0.32s; }
 .landingFeatureGrid .landingFeatureCard:nth-child(6) { transition-delay: 0.4s; }
 
+.landingWhoFor { padding: 20px 40px 70px; max-width: 1180px; margin: 0 auto; position: relative; z-index: 1; }
+.whoForGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+.whoForCard { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 18px; transition: border-color 0.15s ease, transform 0.15s ease; }
+.whoForCard:hover { border-color: rgba(255,255,255,0.25); transform: translateY(-2px); }
+.whoForIcon { width: 30px; height: 30px; border-radius: 8px; background: rgba(255,255,255,0.08); color: var(--bull); display: flex; align-items: center; justify-content: center; margin-bottom: 10px; }
+.whoForCard h3 { font-family: 'Instrument Sans', sans-serif; font-size: 14px; margin: 0 0 6px; }
+.whoForCard p { font-size: 12.5px; line-height: 1.55; margin: 0; }
+
+.replaySpotlight { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center; max-width: 1180px; margin: 0 auto; padding: 20px 40px 80px; position: relative; z-index: 1; }
+.replaySpotlightText { font-size: 14.5px; line-height: 1.65; margin: 0 0 18px; }
+.replayVisual { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px; box-shadow: 0 20px 50px rgba(0,0,0,0.25); }
+.replaySvg { width: 100%; height: 120px; display: block; }
+.replayPlayBadge { position: absolute; top: 14px; right: 14px; display: inline-flex; align-items: center; gap: 6px; background: rgba(20,232,160,0.15); color: var(--bull); font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 20px; }
+
+.mistakesSection { max-width: 900px; margin: 0 auto; padding: 20px 40px 70px; text-align: center; position: relative; z-index: 1; }
+.mistakesIntro { margin: -20px 0 34px; font-size: 14.5px; }
+.mistakesList { display: flex; flex-direction: column; gap: 18px; text-align: left; }
+.mistakeRow { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 18px 20px; }
+.mistakeRow h3 { font-family: 'Instrument Sans', sans-serif; font-size: 15px; margin: 0 0 12px; }
+.mistakeCols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.mistakeColLabel { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 5px; }
+.mistakeCol p { font-size: 12.5px; line-height: 1.55; margin: 0; }
+
+.landingFaq { max-width: 800px; margin: 0 auto; padding: 20px 40px 80px; position: relative; z-index: 1; }
+.faqList { display: flex; flex-direction: column; gap: 14px; }
+.faqItem { border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 14px; }
+.faqItem h3 { font-family: 'Instrument Sans', sans-serif; font-size: 14.5px; margin: 0 0 8px; }
+.faqItem p { font-size: 13px; line-height: 1.6; margin: 0; }
+
+@media (max-width: 900px) {
+  .whoForGrid { grid-template-columns: 1fr; }
+  .replaySpotlight { grid-template-columns: 1fr; padding-left: 20px; padding-right: 20px; }
+  .mistakeCols { grid-template-columns: 1fr; }
+  .landingWhoFor, .mistakesSection, .landingFaq { padding-left: 20px; padding-right: 20px; }
+}
+
 .landingWrap {
   min-height: 100vh; font-family: 'Inter', sans-serif;
   background: linear-gradient(160deg, #071A40 0%, #0E3A8F 45%, #2E7CF6 100%);
@@ -3444,10 +3626,14 @@ const CSS = `
 .landingFeatureCard, .landingTrial { opacity: 0; transform: translateY(16px); transition: opacity 0.5s ease, transform 0.5s ease; }
 .landingFeatureCard.revealed, .landingTrial.revealed { opacity: 1; transform: translateY(0); }
 
+.whoForCard, .replaySpotlight, .mistakeRow, .faqItem { opacity: 0; transform: translateY(16px); transition: opacity 0.5s ease, transform 0.5s ease; }
+.whoForCard.revealed, .replaySpotlight.revealed, .mistakeRow.revealed, .faqItem.revealed { opacity: 1; transform: translateY(0); }
+
 @media (prefers-reduced-motion: reduce) {
   .tickerTape { animation: none; }
   .heroLiveDot { animation: none; }
   .landingFeatureCard, .landingTrial { opacity: 1 !important; transform: none !important; transition: none; }
+  .whoForCard, .replaySpotlight, .mistakeRow, .faqItem { opacity: 1 !important; transform: none !important; transition: none; }
   .heroReveal { opacity: 1 !important; animation: none !important; }
   .landingCta.btnBull { animation: none !important; }
   .landingHero::before { animation: none !important; }
