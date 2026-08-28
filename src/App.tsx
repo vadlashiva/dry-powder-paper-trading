@@ -2568,9 +2568,15 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                       <th colSpan={5} className="chainSideHead putHead">PUTS</th>
                     </tr>
                     <tr className="subhead">
-                      <th>Δ</th><th>Θ</th><th>IV</th><th>Premium</th><th></th>
+                      <th title="Delta — how much the premium moves for a ₹1 move in the underlying. A call delta of 0.50 means the option gains roughly ₹0.50 for every ₹1 the stock rises.">Δ</th>
+                      <th title="Theta — how much value the option loses per day, all else equal, purely from time passing. A theta of -0.80 means the premium erodes about ₹0.80 per day.">Θ</th>
+                      <th title="Implied Volatility (IV) — the market's expectation of how much the underlying will swing, expressed as an annualized percentage. Higher IV means a pricier option.">IV</th>
+                      <th>Premium</th><th></th>
                       <th></th>
-                      <th></th><th>Premium</th><th>IV</th><th>Θ</th><th>Δ</th>
+                      <th></th><th>Premium</th>
+                      <th title="Implied Volatility (IV) — the market's expectation of how much the underlying will swing, expressed as an annualized percentage. Higher IV means a pricier option.">IV</th>
+                      <th title="Theta — how much value the option loses per day, all else equal, purely from time passing. A theta of -0.80 means the premium erodes about ₹0.80 per day.">Θ</th>
+                      <th title="Delta — how much the premium moves for a ₹1 move in the underlying. A put delta of -0.50 means the option gains roughly ₹0.50 for every ₹1 the stock falls.">Δ</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -3081,11 +3087,11 @@ function OptionTicket({ ticket, quotes, instruments, onClose, onSubmit, heldQty,
 
         <div className="greeksGrid mono">
           <div><span className="dim">Premium</span>{fmtMoney(greeks.price)}</div>
-          <div><span className="dim">Delta</span>{greeks.delta.toFixed(3)}</div>
-          <div><span className="dim">Gamma</span>{greeks.gamma.toFixed(4)}</div>
-          <div><span className="dim">Theta</span>{greeks.theta.toFixed(3)}</div>
-          <div><span className="dim">Vega</span>{greeks.vega.toFixed(3)}</div>
-          <div><span className="dim">IV</span>{(sigma * 100).toFixed(1)}%</div>
+          <div><span className="dim" title="Delta — how much this option's premium moves for a ₹1 move in the underlying (e.g. 0.50 = about ₹0.50 of premium change per ₹1 move).">Delta</span>{greeks.delta.toFixed(3)}</div>
+          <div><span className="dim" title="Gamma — how fast Delta itself changes as the underlying moves. Higher gamma means Delta shifts quickly, so risk can change fast near expiry or at-the-money.">Gamma</span>{greeks.gamma.toFixed(4)}</div>
+          <div><span className="dim" title="Theta — how much premium this option loses per day purely from time passing, all else equal (e.g. -0.80 = about ₹0.80 lost per day).">Theta</span>{greeks.theta.toFixed(3)}</div>
+          <div><span className="dim" title="Vega — how much the premium changes for a 1 percentage-point change in implied volatility. Higher vega means the price is more sensitive to shifts in market expectations.">Vega</span>{greeks.vega.toFixed(3)}</div>
+          <div><span className="dim" title="Implied Volatility (IV) — the market's expectation of how much the underlying will swing, expressed as an annualized percentage. Higher IV means a pricier option.">IV</span>{(sigma * 100).toFixed(1)}%</div>
         </div>
 
         <div className="orderRow">
@@ -3431,6 +3437,7 @@ const CSS = `
 .putSide { color: var(--bear); }
 .strikeHead { color: var(--amber); }
 .subhead th { color: var(--text-dim); font-weight: 400; font-size: 10px; border-bottom: 1px solid var(--border); }
+.subhead th[title] { cursor: help; text-decoration: underline dotted; text-underline-offset: 3px; }
 .strikeCell { font-weight: 700; color: var(--amber); background: var(--surface-2); }
 .chainGutter { width: 4px; padding: 0; }
 .premCell { cursor: pointer; border-radius: 6px; transition: background 0.12s; }
@@ -3517,6 +3524,7 @@ const CSS = `
 .greeksGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; background: var(--surface-2); border-radius: 8px; padding: 12px; margin-bottom: 16px; font-size: 13px; }
 .greeksGrid div { display: flex; flex-direction: column; gap: 2px; }
 .greeksGrid .dim { font-size: 10px; text-transform: uppercase; }
+.greeksGrid .dim[title] { cursor: help; text-decoration: underline dotted; text-underline-offset: 2px; }
 
 .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); padding: 12px 20px; border-radius: 10px; font-size: 13px; font-weight: 500; z-index: 60; box-shadow: 0 8px 24px rgba(0,0,0,0.4); max-width: 90vw; text-align: center; }
 .toast-bull { background: var(--bull); color: #06231A; }
