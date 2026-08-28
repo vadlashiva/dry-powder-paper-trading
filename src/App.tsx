@@ -2121,6 +2121,17 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
     showToast(`Price set from chart: ${fmtMoney(price)}`, "bull");
   };
 
+  const startStopLossFromPosition = (p) => {
+    if (!isPro) { setUpgradeModalOpen(true); return; }
+    setSelected(p.symbol);
+    setOrderType("stop");
+    setOrderQty(p.qty);
+    setOrderPrice("");
+    setTab("trade");
+    setPickingPriceFromChart(true);
+    showToast(`Click a price on the ${displayTicker(p.symbol)} chart to set your stop-loss`, "bear");
+  };
+
   const togglePickFromChart = () => {
     setPickingPriceFromChart((v) => {
       const next = !v;
@@ -2641,6 +2652,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                           <td className={`mono ${pnl >= 0 ? "bull" : "bear"}`}>{fmtMoney(pnl)}</td>
                           <td className="orderRowActions">
                             <button className="closeBtn" onClick={() => { setSelected(p.symbol); setTab("trade"); }}><LineChart size={12} /> Chart</button>
+                            <button className="closeBtn" onClick={() => startStopLossFromPosition(p)}><Crosshair size={12} /> Stop-Loss</button>
                             <button className="closeBtn" onClick={() => closeStockPosition(p)}>Close</button>
                           </td>
                         </tr>
