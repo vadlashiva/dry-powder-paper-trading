@@ -892,6 +892,7 @@ const CANDLE_BASICS = [
 
 const LEARN_LINKS = [
   { label: "NSE India (official)", url: "https://www.nseindia.com" },
+  { label: "NSE: Candlestick & Chart Reading Module", url: "https://www.nseindia.com/static/learn/self-study-ncfm-modules-intermediate-technical-analysis-module" },
   { label: "BSE India (official)", url: "https://www.bseindia.com" },
   { label: "SEBI Investor Education", url: "https://investor.sebi.gov.in" },
 ];
