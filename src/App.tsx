@@ -981,6 +981,63 @@ function LiveTicker() {
   );
 }
 
+// Live "Leaders & Laggards" strip for the landing page — ranks the NSE
+// stocks available on Winbannu by today's % change using the same feed.
+const MOVERS_SYMBOLS = ["RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS", "SBIN.NS", "ITC.NS", "BHARTIARTL.NS"];
+
+function MoversStrip() {
+  const [rows, setRows] = useState([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const pull = async () => {
+      const results = await Promise.allSettled(MOVERS_SYMBOLS.map((s) => fetchYahoo(s)));
+      if (cancelled) return;
+      const next = MOVERS_SYMBOLS.map((s, i) => {
+        const r = results[i];
+        if (r.status !== "fulfilled" || r.value.price == null || !r.value.prevClose) return null;
+        const chg = ((r.value.price - r.value.prevClose) / r.value.prevClose) * 100;
+        return { symbol: s, price: r.value.price, chg };
+      }).filter(Boolean);
+      setRows(next);
+    };
+    pull();
+    const iv = setInterval(pull, 30000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, []);
+
+  if (rows.length < 2) return null;
+
+  const sorted = [...rows].sort((a, b) => b.chg - a.chg);
+  const leaders = sorted.slice(0, 4);
+  const laggards = sorted.slice(-4).reverse();
+
+  const MoverRow = ({ r }) => (
+    <div className="moverRow">
+      <span className="mono moverSym">{displayTicker(r.symbol)}</span>
+      <span className="mono moverPrice dim">{fmtMoney(r.price)}</span>
+      <span className={`mono moverChg ${r.chg >= 0 ? "bull" : "bear"}`}>{fmtPct(r.chg)}</span>
+    </div>
+  );
+
+  return (
+    <section className="landingMovers">
+      <h2 className="landingH2">Who's Leading, Who's Lagging Right Now</h2>
+      <p className="dim mistakesIntro">Live NSE movers among the stocks you can trade on Winbannu — refreshes automatically.</p>
+      <div className="moversGrid">
+        <div className="moversCol moversColUp">
+          <h3 className="moversColTitle bull"><TrendingUp size={14} /> Leading</h3>
+          {leaders.map((r) => <MoverRow key={r.symbol} r={r} />)}
+        </div>
+        <div className="moversCol moversColDown">
+          <h3 className="moversColTitle bear"><TrendingDown size={14} /> Lagging</h3>
+          {laggards.map((r) => <MoverRow key={r.symbol} r={r} />)}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function LiveHeroPrice() {
   const [q, setQ] = useState(null);
   useEffect(() => {
@@ -1181,6 +1238,8 @@ function LandingPage({ themeIdx, onEnter }) {
           <span className="landingStatLabel">Full Pro trial, free</span>
         </div>
       </section>
+
+      <MoversStrip />
 
       <section className="landingWhoFor">
         <h2 className="landingH2">Wherever You Are in Your Trading Journey</h2>
@@ -3562,6 +3621,21 @@ const CSS = `
 @media (max-width: 700px) {
   .landingStatDivider { display: none; }
   .landingStats { gap: 22px; }
+}
+
+.landingMovers { max-width: 900px; margin: 0 auto; padding: 20px 40px 70px; text-align: center; position: relative; z-index: 1; }
+.moversGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 30px; text-align: left; }
+.moversCol { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px 20px; }
+.moversColUp { border-top: 3px solid var(--bull); }
+.moversColDown { border-top: 3px solid var(--bear); }
+.moversColTitle { display: flex; align-items: center; gap: 6px; font-family: 'Instrument Sans', sans-serif; font-size: 14px; margin: 0 0 12px; }
+.moverRow { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.08); font-size: 13px; }
+.moverRow:last-child { border-bottom: none; }
+.moverSym { font-weight: 700; }
+.moverPrice { flex: 1; text-align: right; }
+.moverChg { min-width: 62px; text-align: right; font-weight: 600; }
+@media (max-width: 700px) {
+  .moversGrid { grid-template-columns: 1fr; }
 }
 
 .landingHero::before {
