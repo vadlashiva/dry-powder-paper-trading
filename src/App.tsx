@@ -1091,7 +1091,7 @@ function ReplaySpotlight() {
   );
 }
 
-
+function LandingPage({ themeIdx, onEnter }) {
   useEffect(() => {
     const els = document.querySelectorAll(".landingFeatureCard, .landingTrial, .whoForCard, .replaySpotlight, .mistakeRow, .faqItem");
     const obs = new IntersectionObserver(
