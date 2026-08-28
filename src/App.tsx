@@ -883,6 +883,19 @@ const MISTAKES = [
   },
 ];
 
+const CANDLE_BASICS = [
+  { icon: TrendingUp, title: "Green candle = bullish", desc: "The close was higher than the open — buyers were in control during that period." },
+  { icon: TrendingDown, title: "Red candle = bearish", desc: "The close was lower than the open — sellers pushed the price down during that period." },
+  { icon: Activity, title: "Wicks show the extremes", desc: "The thin lines above and below the body mark the highest and lowest price traded in that period — the body itself just shows open vs. close." },
+  { icon: LineChart, title: "One candle = one timeframe", desc: "Switch between 1m, 5m, 15m, 1H, and 1D — each candle then represents that much time, from a minute to a full trading day." },
+];
+
+const LEARN_LINKS = [
+  { label: "NSE India (official)", url: "https://www.nseindia.com" },
+  { label: "BSE India (official)", url: "https://www.bseindia.com" },
+  { label: "SEBI Investor Education", url: "https://investor.sebi.gov.in" },
+];
+
 const FAQ_ITEMS = [
   { q: "Is the money on Winbannu real?", a: "No. Every account starts with ₹10,00,000 in virtual cash. Trades, profits, and losses are simulated and have no monetary value." },
   { q: "Is the market data live or delayed?", a: "Live. Winbannu pulls real NSE & BSE prices during market hours — not a delayed feed." },
@@ -1233,6 +1246,25 @@ function LandingPage({ themeIdx, onEnter }) {
                 </div>
               </div>
             </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="landingLearn">
+        <h2 className="landingH2">New to Reading Charts? Start Here.</h2>
+        <p className="dim mistakesIntro">A 60-second primer on candlesticks, plus where to learn more about the exchanges themselves.</p>
+        <div className="whoForGrid">
+          {CANDLE_BASICS.map((c) => (
+            <div key={c.title} className="whoForCard">
+              <div className="whoForIcon"><c.icon size={17} /></div>
+              <h3>{c.title}</h3>
+              <p className="dim">{c.desc}</p>
+            </div>
+          ))}
+        </div>
+        <div className="learnLinks">
+          {LEARN_LINKS.map((l) => (
+            <a key={l.url} href={l.url} target="_blank" rel="noopener noreferrer" className="btn btnGhost landingCta learnLinkBtn">{l.label} →</a>
           ))}
         </div>
       </section>
@@ -3558,6 +3590,10 @@ const CSS = `
 .mistakeColLabel { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 5px; }
 .mistakeCol p { font-size: 12.5px; line-height: 1.55; margin: 0; }
 
+.landingLearn { max-width: 1080px; margin: 0 auto; padding: 20px 40px 80px; text-align: center; position: relative; z-index: 1; }
+.learnLinks { display: flex; justify-content: center; flex-wrap: wrap; gap: 12px; margin-top: 30px; }
+.learnLinkBtn { flex: none; text-decoration: none; }
+
 .landingFaq { max-width: 800px; margin: 0 auto; padding: 20px 40px 80px; position: relative; z-index: 1; }
 .faqList { display: flex; flex-direction: column; gap: 14px; }
 .faqItem { border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 14px; }
@@ -3568,7 +3604,7 @@ const CSS = `
   .whoForGrid { grid-template-columns: 1fr; }
   .replaySpotlight { grid-template-columns: 1fr; padding: 28px 24px; margin-left: 20px; margin-right: 20px; }
   .mistakeCols { grid-template-columns: 1fr; }
-  .landingWhoFor, .mistakesSection, .landingFaq { padding-left: 20px; padding-right: 20px; }
+  .landingWhoFor, .mistakesSection, .landingLearn, .landingFaq { padding-left: 20px; padding-right: 20px; }
 }
 
 .landingWrap {
