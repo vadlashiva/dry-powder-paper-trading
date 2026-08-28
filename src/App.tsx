@@ -3530,7 +3530,14 @@ const CSS = `
 .whoForCard h3 { font-family: 'Instrument Sans', sans-serif; font-size: 14px; margin: 0 0 6px; }
 .whoForCard p { font-size: 12.5px; line-height: 1.55; margin: 0; }
 
-.replaySpotlight { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center; max-width: 1180px; margin: 0 auto; padding: 20px 40px 80px; position: relative; z-index: 1; }
+.replaySpotlight {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center;
+  max-width: 1080px; margin: 20px auto 80px; padding: 44px 48px; position: relative; z-index: 1;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--bull) 10%, transparent), rgba(255,255,255,0.03));
+  border: 1px solid color-mix(in srgb, var(--bull) 35%, transparent);
+  border-radius: 22px;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--bull) 12%, transparent), 0 30px 70px rgba(0,0,0,0.35), 0 0 60px color-mix(in srgb, var(--bull) 18%, transparent);
+}
 .replaySpotlightText { font-size: 14.5px; line-height: 1.65; margin: 0 0 18px; }
 .replayVisual { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px; box-shadow: 0 20px 50px rgba(0,0,0,0.25); }
 .replaySvg { width: 100%; height: 120px; display: block; }
@@ -3553,7 +3560,7 @@ const CSS = `
 
 @media (max-width: 900px) {
   .whoForGrid { grid-template-columns: 1fr; }
-  .replaySpotlight { grid-template-columns: 1fr; padding-left: 20px; padding-right: 20px; }
+  .replaySpotlight { grid-template-columns: 1fr; padding: 28px 24px; margin-left: 20px; margin-right: 20px; }
   .mistakeCols { grid-template-columns: 1fr; }
   .landingWhoFor, .mistakesSection, .landingFaq { padding-left: 20px; padding-right: 20px; }
 }
