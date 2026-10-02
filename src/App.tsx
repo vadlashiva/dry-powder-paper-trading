@@ -1801,7 +1801,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
     return () => clearInterval(iv);
   }, []);
   const [exchangeFilter, setExchangeFilter] = useState("ALL");
-  const [selected, setSelected] = useState("RELIANCE.NS");
+  const [selected, setSelected] = useState(null);
   const [tab, setTab] = useState("trade");
   const [cash, setCash] = useState(() => saved?.cash ?? STARTING_CASH);
   const [stockPositions, setStockPositions] = useState(() => saved?.stockPositions ?? []);
@@ -2031,6 +2031,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
 
   useEffect(() => {
     let cancelled = false;
+    if (!selected) { setChartHistory([]); return; }
     const load = async () => {
       const { interval, range } = TIMEFRAMES[timeframe];
       try {
@@ -2206,8 +2207,11 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
     showToast(live ? `${displayTicker(result.symbol)} added to your watchlist` : `Added ${displayTicker(result.symbol)} (live price unavailable, using placeholder)`, live ? "bull" : "bear");
   };
 
-  const q = quotes[selected];
-  const meta = allInstruments.find((s) => s.symbol === selected);
+  // Nothing is selected when the terminal first opens; viewSym keeps the
+  // background calculations safe until the user picks a symbol.
+  const viewSym = selected || INSTRUMENTS[0].symbol;
+  const q = quotes[viewSym];
+  const meta = allInstruments.find((s) => s.symbol === viewSym);
   const isIndex = meta.exchange === "INDEX";
   const chartSeries = useMemo(() => buildChartSeries(chartHistory.length ? chartHistory : q.history, indicators), [chartHistory, q.history, indicators]);
   const indicatorLatest = useMemo(() => {
@@ -2255,7 +2259,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
   useEffect(() => { setPickingPriceFromChart(false); }, [selected, tab]);
 
   useEffect(() => {
-    if (tab !== "news" || !isPro) return;
+    if (tab !== "news" || !isPro || !selected) return;
     let cancelled = false;
     setNewsLoading(true);
     fetchSymbolNews(meta.name || displayTicker(selected))
@@ -2682,6 +2686,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
         </div>
 
         <div className="main">
+          {selected ? (
           <div className="mainHead">
             <div className="mainHeadLeft">
               <h1>{displayTicker(selected)}</h1>
@@ -2694,6 +2699,16 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
               <span className={`marketStatusBadge ${marketStatus.isOpen ? "marketOpen" : "marketClosed"}`}>{marketStatus.label}</span>
             </div>
           </div>
+          ) : (
+            <div className="mainHead">
+              <div className="mainHeadLeft">
+                <h1>Pick a symbol</h1>
+              </div>
+              <div className="mainHeadPrice">
+                <span className={`marketStatusBadge ${marketStatus.isOpen ? "marketOpen" : "marketClosed"}`}>{marketStatus.label}</span>
+              </div>
+            </div>
+          )}
 
           <div className="tabs">
             {[["trade", "Chart & Trade"], ["indicators", `Indicators${activeIndicatorCount ? ` (${activeIndicatorCount})` : ""}`], ["chain", "Options Chain"], ["positions", "Positions"], ["orders", `Orders${pendingOrders.length ? ` (${pendingOrders.length})` : ""}`], ["alerts", `Alerts${activeAlerts ? ` (${activeAlerts})` : ""}`], ["news", "News"], ["history", "History"], ["replay", "Replay"]].map(([id, label]) => (
@@ -2701,7 +2716,19 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
             ))}
           </div>
 
-          {tab === "trade" && (
+          {!selected && ["trade", "indicators", "chain", "alerts", "news"].includes(tab) && (
+            <div className="pickEmpty">
+              <h3>Choose a stock or index to start</h3>
+              <p className="dim">Click any symbol in the watchlist, or search for one, to see its chart, indicators and options chain and place a trade.</p>
+              <div className="pickQuick">
+                {["^NSEI", "^NSEBANK", "^BSESN"].filter((sym) => allInstruments.some((s) => s.symbol === sym)).map((sym) => (
+                  <button key={sym} className="btn btnGhost pickQuickBtn" onClick={() => setSelected(sym)}>{displayTicker(sym)}</button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {tab === "trade" && selected && (
             <div className="tradeGrid">
               <div className="chartCard">
                 <div className="chartHead">
@@ -2871,7 +2898,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
             </div>
           )}
 
-          {tab === "indicators" && (
+          {tab === "indicators" && selected && (
             <div className="indTab">
               <div className="indTabHead">
                 <div>
@@ -2909,7 +2936,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
             </div>
           )}
 
-          {tab === "chain" && (
+          {tab === "chain" && selected && (
             !isPro ? (
               <ProLockPanel title="Options Chain is a Pro feature" description="Live Black-Scholes pricing and Greeks across every strike and expiry." onUpgrade={() => setUpgradeModalOpen(true)} />
             ) : (
@@ -3094,7 +3121,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
             </div>
           )}
 
-          {tab === "alerts" && (
+          {tab === "alerts" && selected && (
             !isPro ? (
               <ProLockPanel title="Price alerts are a Pro feature" description="Get notified the moment a stock crosses the price you're watching for." onUpgrade={() => setUpgradeModalOpen(true)} />
             ) : (
@@ -3135,7 +3162,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
             )
           )}
 
-          {tab === "news" && (
+          {tab === "news" && selected && (
             !isPro ? (
               <ProLockPanel title="News is a Pro feature" description="Recent headlines for whatever stock you're currently viewing." onUpgrade={() => setUpgradeModalOpen(true)} />
             ) : (
@@ -3817,6 +3844,11 @@ const CSS = `
 .indText { font-size: 11.5px; color: var(--text-dim); margin-top: 2px; }
 .indText.bull { color: var(--bull); } .indText.bear { color: var(--bear); }
 @media (max-width: 700px) { .indRow { grid-template-columns: auto auto 1fr; } .indRead { grid-column: 3; text-align: left; } }
+.pickEmpty { background: var(--surface); border: 1px dashed var(--border); border-radius: 12px; padding: 48px 24px; text-align: center; }
+.pickEmpty h3 { margin: 0 0 8px; font-family: 'Instrument Sans'; font-size: 17px; }
+.pickEmpty p { max-width: 46ch; margin: 0 auto 18px; font-size: 13px; line-height: 1.6; }
+.pickQuick { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.pickQuickBtn { flex: none; padding: 8px 16px; }
 .chainWrap { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
 .expiryTabs { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
 .expiryTab { background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim); padding: 6px 14px; border-radius: 20px; font-size: 12px; cursor: pointer; }
