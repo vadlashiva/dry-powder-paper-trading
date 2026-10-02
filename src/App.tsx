@@ -983,6 +983,29 @@ async function fetchYahooDay(symbol, dateISO) {
 }
 
 const REPLAY_CANDLE_MS = 5 * 60 * 1000;
+const REPLAY_CHANNEL = "winbannu-replay";
+
+// Most recent completed NSE session (skips weekends and NSE holidays).
+function lastTradingDayISO() {
+  const istNow = new Date(Date.now() + 19800000); // IST wall clock, read with UTC getters
+  let d = new Date(Date.UTC(istNow.getUTCFullYear(), istNow.getUTCMonth(), istNow.getUTCDate()));
+  const afterClose = istNow.getUTCHours() * 60 + istNow.getUTCMinutes() >= 15 * 60 + 30;
+  if (!afterClose) d.setUTCDate(d.getUTCDate() - 1);
+  for (let i = 0; i < 15; i++) {
+    const iso = d.toISOString().slice(0, 10);
+    const wd = d.getUTCDay();
+    if (wd !== 0 && wd !== 6 && !NSE_HOLIDAYS[iso]) return iso;
+    d.setUTCDate(d.getUTCDate() - 1);
+  }
+  return d.toISOString().slice(0, 10);
+}
+
+function openChartPopout(dateISO, sym) {
+  const url = `${window.location.origin}/#/chart?date=${encodeURIComponent(dateISO)}&sym=${encodeURIComponent(sym || "^NSEI")}`;
+  const w = window.open(url, "winbannu-chart", "width=1280,height=800");
+  if (w) w.focus();
+  return !!w;
+}
 const fmtReplayTime = (ms) => new Date(ms).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
 // Price inside a 5-minute candle at fraction f (0..1): open -> one extreme -> the other -> close,
@@ -2164,6 +2187,38 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
     });
   }, [quotes, selected, replayActive, marketStatus.isOpen]);
 
+  // Replay <-> popout chart window
+  const replaySyncRef = useRef({});
+  replaySyncRef.current = { replayActive, replayData, replayClock, replayRunning, replayRate };
+  const replayChannelRef = useRef(null);
+  useEffect(() => {
+    if (typeof BroadcastChannel === "undefined") return;
+    const ch = new BroadcastChannel(REPLAY_CHANNEL);
+    replayChannelRef.current = ch;
+    ch.onmessage = (e) => {
+      const m = e.data || {};
+      const st = replaySyncRef.current;
+      if (m.type === "hello") {
+        ch.postMessage({ type: "state", active: st.replayActive, date: st.replayData?.date, clock: st.replayClock, running: st.replayRunning, rate: st.replayRate });
+        return;
+      }
+      if (!st.replayActive || !st.replayData || m.date !== st.replayData.date) return;
+      if (m.type === "seek") setReplayClock(Math.max(st.replayData.dayStart, Math.min(m.clock, st.replayData.dayEnd)));
+      if (m.type === "play") setReplayRunning(true);
+      if (m.type === "pause") setReplayRunning(false);
+      if (m.type === "rate") setReplayRate(m.rate);
+    };
+    return () => { ch.close(); replayChannelRef.current = null; };
+  }, []);
+  useEffect(() => {
+    replayChannelRef.current?.postMessage({ type: "state", active: replayActive, date: replayData?.date, clock: replayClock, running: replayRunning, rate: replayRate });
+  }, [replayActive, replayData, replayClock, replayRunning, replayRate]);
+
+  const popOutChart = () => {
+    const date = replayActive && replayData ? replayData.date : lastTradingDayISO();
+    if (!openChartPopout(date, selected || "^NSEI")) showToast("Your browser blocked the pop-up — allow pop-ups for winbannu.com", "bear");
+  };
+
   // Replay: advance the simulated clock
   useEffect(() => {
     if (!replayActive || !replayRunning || !replayData) return;
@@ -2830,6 +2885,17 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
             <button key={r} className={`indToggle ${replayRate === r ? "indToggleActive" : ""}`} onClick={() => setReplayRate(r)}>{r}x</button>
           ))}
           <button className="indToggle" onClick={() => setReplayClock((c) => Math.min(c + 15 * 60000, replayData.dayEnd))} disabled={replayClock >= replayData.dayEnd}>+15 min</button>
+          <input
+            type="range"
+            className="replaySlider"
+            aria-label="Replay time"
+            min={replayData.dayStart}
+            max={replayData.dayEnd}
+            step={60000}
+            value={replayClock}
+            onChange={(e) => setReplayClock(Number(e.target.value))}
+          />
+          <button className="indToggle" onClick={popOutChart}>Pop out chart</button>
           <button className="resetBtn replayExitBtn" onClick={exitReplay}>Exit replay</button>
         </div>
       )}
@@ -2948,6 +3014,9 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                   <div className="indToggles">
                     <button className={`indToggle ${activeIndicatorCount ? "indToggleActive" : ""}`} onClick={() => setTab("indicators")}>
                       <Layers size={11} /> Indicators{activeIndicatorCount ? ` (${activeIndicatorCount})` : ""}
+                    </button>
+                    <button className="indToggle" title="Open a full-day chart in a new window" onClick={popOutChart}>
+                      <Maximize2 size={11} /> Pop out
                     </button>
                     <button className="indToggle fitBtn" title="Reset zoom / fit all candles" onClick={() => fitAllInGroup(syncGroupRef)}>
                       <Maximize2 size={11} /> Fit
@@ -3610,7 +3679,212 @@ function SplashScreen({ label, themeIdx }) {
   );
 }
 
+function PopoutCanvas({ entry, clock, dayStart, dayEnd, fitKey, prevClose }) {
+  const ref = useRef(null);
+  const chartRef = useRef(null);
+  const seriesRef = useRef(null);
+  const prevLineRef = useRef(null);
+  const fitRef = useRef(null);
+
+  useEffect(() => {
+    if (!ref.current) return;
+    const chart = createChart(ref.current, {
+      width: ref.current.clientWidth,
+      height: ref.current.clientHeight || 480,
+      layout: { background: { color: "transparent" }, textColor: LW_COLORS.text, fontFamily: "JetBrains Mono, monospace", fontSize: 11, attributionLogo: false },
+      grid: { vertLines: { color: LW_COLORS.grid }, horzLines: { color: LW_COLORS.grid } },
+      crosshair: { mode: CrosshairMode.Normal },
+      rightPriceScale: { borderColor: LW_COLORS.grid },
+      timeScale: { borderColor: LW_COLORS.grid, timeVisible: true, secondsVisible: false, rightOffset: 0 },
+    });
+    seriesRef.current = chart.addSeries(CandlestickSeries, {
+      upColor: LW_COLORS.bull, downColor: LW_COLORS.bear, borderVisible: false, wickUpColor: LW_COLORS.bull, wickDownColor: LW_COLORS.bear,
+    });
+    chartRef.current = chart;
+    const onResize = () => { if (ref.current) chart.applyOptions({ width: ref.current.clientWidth, height: ref.current.clientHeight || 480 }); };
+    window.addEventListener("resize", onResize);
+    return () => { window.removeEventListener("resize", onResize); chart.remove(); };
+  }, []);
+
+  useEffect(() => {
+    const series = seriesRef.current;
+    if (!series) return;
+    if (!entry) { series.setData([]); return; }
+    const snap = replaySnapshot(entry, clock);
+    const today = snap.history.filter((c) => c.time >= dayStart);
+    const data = today.map((c) => ({ time: Math.floor(c.time / 1000) + IST_OFFSET_SEC, open: c.open, high: c.high, low: c.low, close: c.close }));
+    // empty slots up to 3:30 PM keep the whole session on the time axis
+    let t = today.length ? today[today.length - 1].time + REPLAY_CANDLE_MS : dayStart;
+    for (; t < dayEnd; t += REPLAY_CANDLE_MS) data.push({ time: Math.floor(t / 1000) + IST_OFFSET_SEC });
+    series.setData(data);
+    if (prevLineRef.current) { series.removePriceLine(prevLineRef.current); prevLineRef.current = null; }
+    if (prevClose) prevLineRef.current = series.createPriceLine({ price: prevClose, color: LW_COLORS.text, lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: "prev close" });
+    if (fitRef.current !== fitKey) { chartRef.current?.timeScale().fitContent(); fitRef.current = fitKey; }
+  }, [entry, clock, dayStart, dayEnd, fitKey, prevClose]);
+
+  return <div ref={ref} className="popChart" />;
+}
+
+function PopoutChart() {
+  const params = new URLSearchParams((window.location.hash.split("?")[1]) || "");
+  const [themeIdx, setThemeIdx] = useState(() => loadThemeIdx());
+  const [date, setDate] = useState(params.get("date") || lastTradingDayISO());
+  const [sym, setSym] = useState(params.get("sym") || "^NSEI");
+  const [entry, setEntry] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const dayStart = Date.parse(date + "T09:15:00+05:30");
+  const dayEnd = dayStart + 375 * 60000;
+  const [clock, setClock] = useState(dayStart);
+  const [running, setRunning] = useState(false);
+  const [rate, setRate] = useState(5);
+  const [linked, setLinked] = useState(false);
+  const lastStateRef = useRef(0);
+  const chRef = useRef(null);
+  const meta = INSTRUMENTS.find((s) => s.symbol === sym);
+
+  useEffect(() => { document.title = `${displayTicker(sym)} · ${date} · Winbannu chart`; }, [sym, date]);
+
+  // load the chosen symbol's day
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true); setError("");
+    fetchYahooDay(sym, date)
+      .then((e) => {
+        if (cancelled) return;
+        if (!e.candles.length) { setEntry(null); setError("No data for this day. Pick a recent weekday that wasn't a market holiday."); }
+        else setEntry(e);
+      })
+      .catch(() => { if (!cancelled) { setEntry(null); setError("Couldn't load this day's data. Try another date."); } })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [sym, date]);
+
+  // follow the main terminal's replay when it is running the same day
+  useEffect(() => {
+    if (typeof BroadcastChannel === "undefined") return;
+    const ch = new BroadcastChannel(REPLAY_CHANNEL);
+    chRef.current = ch;
+    ch.onmessage = (e) => {
+      const m = e.data || {};
+      if (m.type !== "state") return;
+      if (m.active && m.date === date) {
+        lastStateRef.current = Date.now();
+        setLinked(true); setClock(m.clock); setRunning(m.running); setRate(m.rate);
+      } else if (!m.active || m.date !== date) {
+        setLinked(false);
+      }
+    };
+    ch.postMessage({ type: "hello" });
+    const iv = setInterval(() => { if (Date.now() - lastStateRef.current > 3000) setLinked(false); }, 1500);
+    return () => { clearInterval(iv); ch.close(); chRef.current = null; };
+  }, [date]);
+
+  // own clock when not linked
+  useEffect(() => {
+    if (linked || !running) return;
+    const iv = setInterval(() => setClock((c) => Math.min(c + 500 * rate, dayEnd)), 500);
+    return () => clearInterval(iv);
+  }, [linked, running, rate, dayEnd]);
+  useEffect(() => { if (!linked && clock >= dayEnd && running) setRunning(false); }, [clock, dayEnd, running, linked]);
+  useEffect(() => { if (!linked) { setClock(dayStart); setRunning(false); } }, [date]);
+
+  const send = (msg) => chRef.current?.postMessage({ ...msg, date });
+  const seek = (t) => { const v = Math.max(dayStart, Math.min(t, dayEnd)); if (linked) send({ type: "seek", clock: v }); else setClock(v); };
+  const togglePlay = () => {
+    if (linked) { send({ type: running ? "pause" : "play" }); return; }
+    if (clock >= dayEnd) setClock(dayStart);
+    setRunning((r) => !r);
+  };
+  const changeRate = (r) => { if (linked) send({ type: "rate", rate: r }); else setRate(r); };
+
+  const snap = entry ? replaySnapshot(entry, clock) : null;
+  const todayCandles = snap ? snap.history.filter((c) => c.time >= dayStart) : [];
+  const price = snap ? snap.price : null;
+  const chg = snap && snap.prevClose ? ((snap.price - snap.prevClose) / snap.prevClose) * 100 : 0;
+  const dayHigh = todayCandles.length ? Math.max(...todayCandles.map((c) => c.high)) : null;
+  const dayLow = todayCandles.length ? Math.min(...todayCandles.map((c) => c.low)) : null;
+  const timeLabel = new Date(clock).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" });
+  const minDate = new Date(Date.now() - 55 * 86400000).toISOString().slice(0, 10);
+  const ticks = ["09:15", "10:30", "11:45", "13:00", "14:15", "15:30"];
+
+  return (
+    <div className="app popWrap" style={THEMES[themeIdx].vars}>
+      <style>{CSS}</style>
+      <div className="popTop">
+        <div className="brand"><Flame size={18} className="brandIcon" /><span>WINBANNU</span><span className="brandSub">full-day chart</span></div>
+        <div className="popTopRight">
+          {linked ? <span className="popLinked">Linked to terminal replay</span> : <span className="dim popHint">Standalone · open Replay in the terminal to link</span>}
+          <label className="dim popDateLabel">Date
+            <input type="date" className="qtyInput mono" value={date} min={minDate} max={new Date().toISOString().slice(0, 10)} onChange={(e) => e.target.value && setDate(e.target.value)} disabled={linked} />
+          </label>
+          <button className="themeBtn" onClick={() => setThemeIdx((i) => { const n = (i + 1) % THEMES.length; saveThemeIdx(n); return n; })}><span className="themeEmoji">{THEMES[themeIdx].emoji}</span> {THEMES[themeIdx].name}</button>
+        </div>
+      </div>
+
+      <div className="popBody">
+        <div className="popList">
+          {["INDEX", "NSE", "BSE"].map((ex) => (
+            <div key={ex}>
+              <div className="popListHead dim">{ex === "INDEX" ? "Indices" : ex}</div>
+              {INSTRUMENTS.filter((s) => s.exchange === ex).map((s) => (
+                <button key={s.symbol} className={`popListRow ${sym === s.symbol ? "popListRowActive" : ""}`} onClick={() => setSym(s.symbol)}>
+                  <span className="wlTicker">{displayTicker(s.symbol)}</span>
+                  <span className="wlName">{s.name}</span>
+                </button>
+              ))}
+            </div>
+          ))}
+        </div>
+
+        <div className="popMain">
+          <div className="popHead">
+            <div>
+              <h1>{displayTicker(sym)}</h1>
+              <span className="dim">{meta?.name} · {new Date(dayStart).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</span>
+            </div>
+            {price != null && (
+              <div className="popPrice">
+                <span className="mono bigPrice">{fmtMoney(price)}</span>
+                <span className={`mono ${chg >= 0 ? "bull" : "bear"}`}>{fmtPct(chg)}</span>
+                {dayHigh != null && <span className="dim mono popHL">H {fmtMoney(dayHigh)} · L {fmtMoney(dayLow)}</span>}
+              </div>
+            )}
+          </div>
+
+          <div className="popChartCard">
+            {loading && <div className="popOverlay dim">Loading {displayTicker(sym)}…</div>}
+            {error && !loading && <div className="popOverlay bear">{error}</div>}
+            <PopoutCanvas entry={entry} clock={clock} dayStart={dayStart} dayEnd={dayEnd} fitKey={`${sym}|${date}|${entry ? 1 : 0}`} prevClose={entry?.prevClose} />
+          </div>
+
+          <div className="popControls">
+            <button className="btn btnBull popPlay" onClick={togglePlay} disabled={!entry}>{running ? "Pause" : clock >= dayEnd ? "Replay day" : "Play"}</button>
+            <span className="mono popClock">{timeLabel}</span>
+            <div className="popSliderWrap">
+              <input type="range" className="replaySlider popSlider" aria-label="Choose time" min={dayStart} max={dayEnd} step={60000} value={clock} onChange={(e) => seek(Number(e.target.value))} disabled={!entry} />
+              <div className="popTicks dim mono">{ticks.map((t) => <span key={t}>{t}</span>)}</div>
+            </div>
+            {[1, 5, 30, 60].map((r) => (
+              <button key={r} className={`indToggle ${rate === r ? "indToggleActive" : ""}`} onClick={() => changeRate(r)}>{r}x</button>
+            ))}
+            <button className="indToggle" onClick={() => seek(dayStart)} disabled={!entry}>Open</button>
+            <button className="indToggle" onClick={() => seek(dayEnd)} disabled={!entry}>Close</button>
+          </div>
+          <div className="dim popFoot">Drag the time bar to any minute between 9:15 AM and 3:30 PM, then press Play. When the terminal is running a replay of the same day, this window follows and controls the same clock.</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const isPopoutRoute = () => typeof window !== "undefined" && window.location.hash.startsWith("#/chart");
+
 export default function App() {
+  return isPopoutRoute() ? <PopoutChart /> : <MainApp />;
+}
+
+function MainApp() {
   const [session, setSession] = useState(null);
   const [sessionLoading, setSessionLoading] = useState(true);
   const [portfolioData, setPortfolioData] = useState(null);
@@ -3944,6 +4218,37 @@ const CSS = `
 .replayProgress div { height: 100%; background: var(--amber); }
 .replayExitBtn { margin-left: auto; }
 .replayTitle { margin: 0 0 12px; font-family: 'Instrument Sans'; font-size: 16px; }
+.replaySlider { flex: 2; min-width: 140px; accent-color: var(--amber); cursor: pointer; }
+.popWrap { height: 100vh; overflow: hidden; }
+.popTop { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 18px; border-bottom: 1px solid var(--border); background: var(--surface); flex-wrap: wrap; }
+.popTopRight { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.popLinked { background: color-mix(in srgb, var(--amber) 20%, transparent); color: var(--amber); font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 999px; }
+.popHint { font-size: 11px; }
+.popDateLabel { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.popDateLabel .qtyInput { width: 150px; text-align: left; }
+.popBody { display: flex; height: calc(100vh - 58px); }
+.popList { width: 210px; flex-shrink: 0; overflow-y: auto; border-right: 1px solid var(--border); background: var(--surface); padding-bottom: 12px; }
+.popListHead { font-size: 10px; text-transform: uppercase; letter-spacing: 0.6px; padding: 12px 14px 6px; }
+.popListRow { width: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 8px 14px; background: none; border: none; border-left: 3px solid transparent; cursor: pointer; color: var(--text); text-align: left; }
+.popListRow:hover { background: var(--surface-2); }
+.popListRowActive { background: var(--surface-2); border-left-color: var(--accent); }
+.popMain { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 14px 20px; gap: 12px; }
+.popHead { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.popHead h1 { margin: 0; font-family: 'Instrument Sans'; font-size: 24px; }
+.popHead .dim { font-size: 12.5px; }
+.popPrice { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.popHL { font-size: 11px; }
+.popChartCard { position: relative; flex: 1; min-height: 260px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 10px; }
+.popChart { width: 100%; height: 100%; }
+.popOverlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 5; font-size: 13px; text-align: center; padding: 20px; }
+.popControls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px; }
+.popPlay { flex: none; min-width: 96px; }
+.popClock { font-size: 16px; font-weight: 700; color: var(--amber); min-width: 70px; text-align: center; }
+.popSliderWrap { flex: 1; min-width: 220px; display: flex; flex-direction: column; gap: 2px; }
+.popSlider { width: 100%; }
+.popTicks { display: flex; justify-content: space-between; font-size: 10px; }
+.popFoot { font-size: 11px; }
+@media (max-width: 760px) { .popList { display: none; } .popWrap { height: auto; overflow: auto; } .popBody { height: auto; } .popChartCard { height: 420px; flex: none; } }
 .chainWrap { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
 .expiryTabs { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
 .expiryTab { background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim); padding: 6px 14px; border-radius: 20px; font-size: 12px; cursor: pointer; }
