@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="en-IN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How to Read an Options Chain (NIFTY Example) – Beginner's Guide | Winbannu</title>
+<meta name="description" content="Learn to read an NSE options chain step by step: calls vs puts, strike prices, ITM/ATM/OTM, premium, open interest, IV and the Greeks, with a worked NIFTY example and lot-size maths.">
+<link rel="canonical" href="https://winbannu.com/how-to-read-options-chain.html">
+<meta property="og:title" content="How to Read an Options Chain – NIFTY Example for Beginners">
+<meta property="og:description" content="Calls, puts, strikes, open interest, IV and Greeks explained in plain language with a worked NIFTY example.">
+<meta property="og:url" content="https://winbannu.com/how-to-read-options-chain.html">
+<meta property="og:type" content="article">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "How to read an options chain: a beginner's guide with a NIFTY example",
+  "description": "Calls vs puts, strike prices, ITM/ATM/OTM, premium, open interest, IV and the Greeks, explained with a worked NIFTY example.",
+  "datePublished": "2026-10-02",
+  "dateModified": "2026-10-02",
+  "author": { "@type": "Organization", "name": "Winbannu" },
+  "publisher": { "@type": "Organization", "name": "Winbannu", "url": "https://winbannu.com/" },
+  "mainEntityOfPage": "https://winbannu.com/how-to-read-options-chain.html"
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    { "@type": "Question", "name": "Why are calls on the left and puts on the right in an options chain?",
+      "acceptedAnswer": { "@type": "Answer", "text": "It is a convention. Every strike price sits in the middle column, with that strike's call data on the left and its put data on the right, so you can compare both sides of the same strike in one row." } },
+    { "@type": "Question", "name": "Is the premium shown per lot or per unit?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Per unit. To get the cost of one lot, multiply the premium by the lot size. One NIFTY lot is 65 units, so a premium of ₹120 means about ₹7,800 per lot." } },
+    { "@type": "Question", "name": "Does high open interest mean the price will stop at that strike?",
+      "acceptedAnswer": { "@type": "Answer", "text": "No. High open interest shows where many contracts are open, and traders often watch those strikes as possible support or resistance, but it does not guarantee the price will stop there." } },
+    { "@type": "Question", "name": "Can I practise reading an options chain without real money?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes. Winbannu's paper trading options chain shows modelled premiums, delta, theta and IV for NIFTY, BANKNIFTY and SENSEX, and lets you buy and sell options in proper lot sizes with virtual money." } }
+  ]
+}
+</script>
+<style>
+:root{
+  --paper:#F6F7FA; --ink:#141820; --ink-soft:#4A5263; --navy:#0C2354; --navy-2:#163A86;
+  --mint:#0A9C6B; --mint-bright:#14E8A0; --loss:#C23B4E; --rule:#DDE1E9; --card:#FFFFFF;
+  --call-bg:#E6F6EF; --put-bg:#FBE9EC; --atm:#FFF4D6; --strike:#EEF1F7;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --paper:#0D111A; --ink:#E8ECF4; --ink-soft:#A3ACBE; --navy:#081A40; --navy-2:#12306E;
+    --mint:#3FD9A3; --loss:#FF7088; --rule:#262E40; --card:#141A26;
+    --call-bg:#12302A; --put-bg:#3A1A22; --atm:#3A3216; --strike:#1C2333;
+  }
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:"Source Serif 4",Georgia,"Times New Roman",serif;font-size:1.125rem;line-height:1.7}
+a{color:var(--mint);text-underline-offset:3px}
+a:focus-visible,.cta:focus-visible{outline:3px solid var(--mint-bright);outline-offset:3px;border-radius:4px}
+
+.site{background:var(--navy);color:#fff}
+.site-inner{max-width:68rem;margin:0 auto;padding:1rem 1.25rem;display:flex;align-items:center;justify-content:space-between;gap:1rem}
+.brand{font-family:"Instrument Sans",system-ui,sans-serif;font-weight:700;font-size:1.1rem;letter-spacing:.02em;color:#fff;text-decoration:none}
+.brand span{color:#FFB020}
+.site-link{font-family:"Instrument Sans",system-ui,sans-serif;font-weight:600;font-size:.95rem;color:#fff;background:rgba(255,255,255,.12);padding:.5rem .9rem;border-radius:8px;text-decoration:none}
+
+.hero{background:linear-gradient(180deg,var(--navy) 0%,var(--navy-2) 100%);color:#fff;padding:3.5rem 1.25rem 4.5rem}
+.hero-inner{max-width:44rem;margin:0 auto}
+h1{font-family:"Instrument Sans",system-ui,sans-serif;font-weight:700;font-size:clamp(2rem,5vw,3.1rem);line-height:1.12;letter-spacing:-.015em;margin:0 0 1.25rem}
+.lede{font-size:1.25rem;line-height:1.6;color:#D6DEEF;margin:0}
+.updated{margin-top:1.5rem;font-family:"Instrument Sans",system-ui,sans-serif;font-size:.9rem;color:#A9B6D3}
+
+main{max-width:44rem;margin:0 auto;padding:0 1.25rem 4rem}
+article{margin-top:-2.25rem;background:var(--card);border:1px solid var(--rule);border-radius:14px;padding:2.25rem clamp(1.25rem,4vw,2.75rem)}
+h2{font-family:"Instrument Sans",system-ui,sans-serif;font-weight:700;font-size:1.55rem;line-height:1.25;letter-spacing:-.01em;margin:2.75rem 0 .75rem}
+h2:first-child{margin-top:0}
+h3{font-family:"Instrument Sans",system-ui,sans-serif;font-weight:600;font-size:1.15rem;margin:1.75rem 0 .4rem}
+p{margin:0 0 1.1rem}
+ul,ol{padding-left:1.4rem;margin:0 0 1.2rem}
+li{margin-bottom:.5rem}
+strong{font-weight:600}
+
+/* the memorable element: a small, annotated options chain */
+.chain-wrap{margin:1.75rem 0 .75rem;overflow-x:auto;border:2px solid var(--ink);border-radius:10px}
+.chain{width:100%;min-width:34rem;border-collapse:collapse;font-family:"Instrument Sans",system-ui,sans-serif;font-size:.98rem;font-variant-numeric:tabular-nums;text-align:center}
+.chain caption{caption-side:top;text-align:left;padding:.8rem 1rem;font-weight:600;border-bottom:2px solid var(--ink)}
+.chain caption span{font-weight:500;color:var(--ink-soft)}
+.chain th{padding:.55rem .6rem;font-size:.85rem;font-weight:600;color:var(--ink-soft);border-bottom:1px solid var(--rule)}
+.chain th.side-call{color:var(--mint)}
+.chain th.side-put{color:var(--loss)}
+.chain td{padding:.6rem .6rem;border-bottom:1px solid var(--rule)}
+.chain td.k{font-weight:700;background:var(--strike)}
+.chain td.itm-c{background:var(--call-bg)}
+.chain td.itm-p{background:var(--put-bg)}
+.chain tr.atm td{border-top:2px dashed #D69A00;border-bottom:2px dashed #D69A00}
+.chain tr:last-child td{border-bottom:none}
+.chain-key{font-family:"Instrument Sans",system-ui,sans-serif;font-size:.92rem;color:var(--ink-soft);margin:0 0 2rem;display:flex;flex-wrap:wrap;gap:.5rem 1.25rem}
+.chain-key i{display:inline-block;width:.9rem;height:.9rem;border-radius:3px;vertical-align:-.1rem;margin-right:.35rem}
+
+.calc{margin:1.25rem 0 1.75rem;border:2px solid var(--ink);border-radius:10px;overflow:hidden;font-family:"Instrument Sans",system-ui,sans-serif}
+.calc table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+.calc td{padding:.65rem 1.1rem;border-bottom:1px dashed var(--rule)}
+.calc td:last-child{text-align:right;font-weight:600;white-space:nowrap}
+.calc tr:last-child td{border-bottom:none}
+.calc .neg{color:var(--loss)}
+
+.callout{border-left:4px solid var(--mint);padding:.25rem 0 .25rem 1.1rem;margin:1.5rem 0;color:var(--ink-soft)}
+
+.start{margin:2.75rem 0 0;padding:1.75rem;border-radius:12px;background:var(--navy);color:#fff}
+.start h2{margin-top:0;color:#fff}
+.start p{color:#D6DEEF}
+.cta{display:inline-block;margin-top:.5rem;background:var(--mint-bright);color:#06231A;font-family:"Instrument Sans",system-ui,sans-serif;font-weight:700;font-size:1.05rem;padding:.85rem 1.4rem;border-radius:10px;text-decoration:none}
+
+.disclaimer{margin-top:2.5rem;padding-top:1.25rem;border-top:1px solid var(--rule);font-size:.95rem;color:var(--ink-soft)}
+footer{max-width:44rem;margin:0 auto;padding:0 1.25rem 3rem;font-family:"Instrument Sans",system-ui,sans-serif;font-size:.92rem;color:var(--ink-soft);display:flex;gap:1.25rem;flex-wrap:wrap}
+footer a{color:var(--ink-soft)}
+
+@media (max-width:560px){
+  body{font-size:1.06rem}
+  .hero{padding:2.5rem 1.25rem 3.75rem}
+}
+</style>
+</head>
+<body>
+
+<header class="site">
+  <div class="site-inner">
+    <a class="brand" href="/"><span>&#128293;</span> WINBANNU</a>
+    <a class="site-link" href="/">Open the trading terminal</a>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="hero-inner">
+    <h1>How to read an options chain: a beginner's guide with a NIFTY example</h1>
+    <p class="lede">An options chain looks like a wall of numbers, but every row follows the same simple pattern. Once you know what each column means, you can read it in under a minute and spot which options are cheap, expensive, likely or unlikely to pay off.</p>
+    <p class="updated">Updated 2 October 2026</p>
+  </div>
+</section>
+
+<main>
+<article>
+
+<h2>What an options chain is</h2>
+<p>An options chain is a table of every option available on one underlying, such as NIFTY, for one expiry date. Each row is a strike price. The left half of the table shows call options at that strike, the right half shows put options, and the strike sits in the middle.</p>
+<p>If you're new to options, two definitions are all you need to start:</p>
+<ul>
+  <li><strong>A call option</strong> gains value when the underlying rises above its strike price.</li>
+  <li><strong>A put option</strong> gains value when the underlying falls below its strike price.</li>
+</ul>
+
+<h2>A real-looking chain, explained</h2>
+<p>Here is a small slice of a NIFTY chain with the index at 22,451.85. Premiums are per unit. Real chains show many more strikes and columns, but these are the ones that matter most.</p>
+
+<div class="chain-wrap">
+<table class="chain">
+  <caption>NIFTY options chain <span>(spot 22,451.85, nearest weekly expiry)</span></caption>
+  <thead>
+    <tr><th class="side-call" colspan="3">Calls</th><th>Strike</th><th class="side-put" colspan="3">Puts</th></tr>
+    <tr><th>Delta</th><th>IV</th><th>Premium</th><th></th><th>Premium</th><th>IV</th><th>Delta</th></tr>
+  </thead>
+  <tbody>
+    <tr><td class="itm-c">0.72</td><td class="itm-c">13%</td><td class="itm-c">₹208.40</td><td class="k">22,300</td><td>₹52.10</td><td>14%</td><td>−0.28</td></tr>
+    <tr><td class="itm-c">0.58</td><td class="itm-c">13%</td><td class="itm-c">₹158.70</td><td class="k">22,400</td><td>₹101.30</td><td>13%</td><td>−0.42</td></tr>
+    <tr class="atm"><td>0.43</td><td>13%</td><td>₹119.60</td><td class="k">22,500</td><td class="itm-p">₹162.20</td><td class="itm-p">13%</td><td class="itm-p">−0.57</td></tr>
+    <tr><td>0.29</td><td>14%</td><td>₹72.30</td><td class="k">22,600</td><td class="itm-p">₹215.00</td><td class="itm-p">14%</td><td class="itm-p">−0.71</td></tr>
+  </tbody>
+</table>
+</div>
+<p class="chain-key"><span><i style="background:var(--call-bg)"></i>Call in the money</span><span><i style="background:var(--put-bg)"></i>Put in the money</span><span><i style="border:2px dashed #D69A00"></i>At the money (closest strike to spot)</span></p>
+<p>The numbers in this table are illustrative, rounded for teaching. Live premiums change every second.</p>
+
+<h2>Reading it column by column</h2>
+
+<h3>Strike price (the middle column)</h3>
+<p>The price at which the option lets you buy (call) or sell (put) the index. NIFTY strikes are 50 points apart; most liquid trading happens at the 100-point strikes near the current price.</p>
+
+<h3>In the money, at the money, out of the money</h3>
+<p>This describes where a strike sits relative to the current price, and it's the first thing to check in any row.</p>
+<ul>
+  <li><strong>At the money (ATM):</strong> the strike closest to the current price. Here, 22,500.</li>
+  <li><strong>In the money (ITM):</strong> a call with a strike below the current price, or a put with a strike above it. These already have real value built in.</li>
+  <li><strong>Out of the money (OTM):</strong> a call above the current price or a put below it. These are pure bets on a future move and cost less.</li>
+</ul>
+<p>Notice that the shading swaps sides: the 22,300 call is in the money while the 22,300 put is out of the money.</p>
+
+<h3>Premium (LTP)</h3>
+<p>The price of the option per unit, often labelled LTP (last traded price). Every premium is made of two parts:</p>
+<ul>
+  <li><strong>Intrinsic value</strong>, what the option would be worth if it expired right now. The 22,500 put is worth 22,500 − 22,451.85 = ₹48.15 at expiry today.</li>
+  <li><strong>Time value</strong>, everything above that, which you pay for the chance of a bigger move. For that put: ₹162.20 − ₹48.15 = ₹114.05 of time value. Out-of-the-money options are all time value.</li>
+</ul>
+<p>Time value shrinks every day and disappears completely at expiry. That's why buying options and waiting is harder than it looks.</p>
+
+<h3>Implied volatility (IV)</h3>
+<p>IV is the market's estimate of how much the index will swing, expressed as a yearly percentage. Higher IV means more expensive options for every strike. IV usually rises before big events such as election results or a budget, and falls after them, which can shrink premiums even if the index moves the way you expected.</p>
+
+<h3>Open interest (OI) and change in OI</h3>
+<p>Exchange chains like the one on the NSE website also show open interest: the number of contracts still open at each strike. A strike with very high call OI is often watched as possible resistance, and very high put OI as possible support, because many option sellers have positions there. "Change in OI" shows whether those positions were added or closed today.</p>
+<div class="callout">High open interest shows where positions are crowded. It doesn't promise the price will stop there.</div>
+
+<h2>The Greeks, without the maths</h2>
+<p>Greeks describe how a premium reacts to change. You only need two to start, and both are easier to understand in rupees per lot.</p>
+
+<h3>Delta: how much the premium moves with NIFTY</h3>
+<p>The 22,500 call has a delta of 0.43, so it gains about ₹0.43 per unit for every 1-point rise in NIFTY. Put deltas are negative because puts gain when NIFTY falls. Delta also works as a rough probability: a 0.43 delta call has around a 43% chance of finishing in the money.</p>
+
+<h3>Theta: how much value is lost each day</h3>
+<p>Theta is the daily time decay. A theta of −13.9 means the option loses roughly ₹13.90 per unit per day if nothing else changes, and decay speeds up as expiry gets close.</p>
+
+<h3>What that means for one lot</h3>
+<p>One NIFTY lot is 65 units, so multiply everything by 65:</p>
+<div class="calc">
+  <table>
+    <tr><td>Cost of 1 lot of the 22,500 call (₹119.60 × 65)</td><td>₹7,774</td></tr>
+    <tr><td>Gain per 1-point NIFTY rise (0.43 × 65)</td><td>≈ ₹28</td></tr>
+    <tr><td>Gain if NIFTY rises 50 points, same day</td><td>≈ ₹1,400</td></tr>
+    <tr><td>Daily time decay (−13.9 × 65)</td><td class="neg">≈ −₹904</td></tr>
+  </table>
+</div>
+<p>Put those last two lines side by side and the core challenge of buying options is obvious: NIFTY needs to move about 32 points in your favour every day just to cover the decay.</p>
+
+<h3>Gamma and vega</h3>
+<p>Gamma measures how fast delta itself changes; it's highest for at-the-money options near expiry, which is why those can swing wildly. Vega measures how much the premium changes for a 1-point change in IV. Come back to these once delta and theta feel natural.</p>
+
+<h2>Two numbers traders pull from the whole chain</h2>
+<h3>Put-call ratio (PCR)</h3>
+<p>Total put open interest divided by total call open interest. Traders read a PCR well below 1 as more call activity and well above 1 as more put activity, but its meaning depends on context, and it's best used alongside price action rather than on its own.</p>
+<h3>Max pain</h3>
+<p>The strike at which option buyers as a group would lose the most at expiry. Some traders watch it on expiry day. It's a description of where positions sit, not a forecast.</p>
+
+<h2>A one-minute routine for reading any chain</h2>
+<ol>
+  <li>Find the at-the-money strike, the one closest to the current price.</li>
+  <li>Check the expiry date. Fewer days left means faster time decay.</li>
+  <li>Look at IV. Is it high or low compared with recent days?</li>
+  <li>Pick a strike and read its delta and theta, then multiply both by the lot size.</li>
+  <li>Decide your stop-loss on the premium before you buy, not after.</li>
+</ol>
+
+<section class="start">
+  <h2>Practise on a live options chain, with virtual money</h2>
+  <p>Winbannu's options chain shows premiums, delta, theta and IV for NIFTY, BANKNIFTY and SENSEX, priced from the live index using the Black-Scholes model. Click any premium to open a ticket with all the Greeks, see the cost of one lot, and buy or sell with ₹10,00,000 in virtual cash. New to paper trading? Start with our guide to <a href="/paper-trading-india.html" style="color:#9FF3D3">paper trading in India</a>.</p>
+  <a class="cta" href="/">Try the options chain free</a>
+</section>
+
+<section>
+  <h2>Common questions</h2>
+  <h3>Why are calls on the left and puts on the right?</h3>
+  <p>It's a convention. Each strike sits in the middle with its call data on the left and put data on the right, so you can compare both sides of the same strike in one row.</p>
+  <h3>Is the premium per lot or per unit?</h3>
+  <p>Per unit. Multiply by the lot size to get the cost of one lot. One NIFTY lot is 65 units, so a premium of ₹120 means about ₹7,800 per lot.</p>
+  <h3>Does high open interest mean the price will stop at that strike?</h3>
+  <p>No. It shows where many contracts are open, and traders watch those strikes as possible support or resistance, but it doesn't guarantee anything.</p>
+  <h3>Can I practise reading an options chain without real money?</h3>
+  <p>Yes. Winbannu's paper trading options chain lets you buy and sell NIFTY, BANKNIFTY and SENSEX options in proper lot sizes with virtual money. Premiums are modelled, so they're close to, but not identical with, live exchange prices.</p>
+</section>
+
+<p class="disclaimer">This guide is for education only. It isn't investment advice or a recommendation to buy or sell any security. Options trading carries a high risk of loss. Winbannu is a practice platform and doesn't execute real trades.</p>
+
+</article>
+</main>
+
+<footer>
+  <a href="/">Winbannu home</a>
+  <a href="/paper-trading-india.html">Paper trading in India</a>
+  <a href="/privacy.html">Privacy</a>
+  <a href="/terms.html">Terms</a>
+  <a href="/contact.html">Contact</a>
+</footer>
+
+</body>
+</html>
