@@ -55,6 +55,9 @@ function shortMarginPerLot(spot, strike, type, lot) {
   return Math.round(Math.max(0.09 * contract - 0.5 * otm, 0.04 * contract));
 }
 const TRIAL_DAYS = 7;
+// During Replay the whole terminal runs on a simulated clock.
+let SIM_NOW = null;
+const nowMs = () => (SIM_NOW ?? Date.now());
 function trialDaysRemaining(createdAtIso) {
   if (!createdAtIso) return 0;
   const start = new Date(createdAtIso).getTime();
@@ -130,9 +133,9 @@ function blackScholes(S, K, T, r, sigma, type) {
   return { price: Math.max(price, 0.05), delta, gamma, theta, vega };
 }
 
-function nextThursdays(n) {
+function nextThursdays(n, base = null) {
   const out = [];
-  let d = new Date();
+  let d = base ? new Date(base) : new Date();
   d.setHours(15, 30, 0, 0);
   const day = d.getDay();
   let diff = (4 - day + 7) % 7;
@@ -948,6 +951,71 @@ async function startProCheckout({ userEmail, onSuccess, onError }) {
   } catch (e) {
     onError(e.message || "Could not open payment link");
   }
+}
+
+// One full trading day of 5-minute candles plus the previous day's close.
+async function fetchYahooDay(symbol, dateISO) {
+  const p1 = Math.floor(new Date(dateISO + "T00:00:00+05:30").getTime() / 1000);
+  const res = await fetch(`${YAHOO_PROXY_URL}?type=chart&symbol=${encodeURIComponent(symbol)}&interval=5m&period1=${p1}&period2=${p1 + 86400}`);
+  if (!res.ok) throw new Error("bad response");
+  const json = await res.json();
+  const result = json.chart?.result?.[0];
+  if (!result) throw new Error("no data");
+  const ts = result.timestamp || [];
+  const q0 = result.indicators.quote[0];
+  const open = Date.parse(dateISO + "T09:15:00+05:30"), close = Date.parse(dateISO + "T15:30:00+05:30");
+  const candles = ts.map((t, i) => ({ start: t * 1000, open: q0.open?.[i], high: q0.high?.[i], low: q0.low?.[i], close: q0.close?.[i] }))
+    .filter((c) => c.start >= open && c.start < close && [c.open, c.high, c.low, c.close].every((v) => typeof v === "number"));
+  const prevClose = result.meta?.chartPreviousClose ?? result.meta?.previousClose ?? candles[0]?.open;
+  return { candles, prevClose };
+}
+
+const REPLAY_CANDLE_MS = 5 * 60 * 1000;
+const fmtReplayTime = (ms) => new Date(ms).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
+// Price inside a 5-minute candle at fraction f (0..1): open -> one extreme -> the other -> close,
+// with a small wiggle so it feels like live ticks. Always stays within the candle's high/low.
+function replayPriceInCandle(c, f) {
+  const up = c.close >= c.open;
+  const pts = [[0, c.open], [0.3, up ? c.low : c.high], [0.7, up ? c.high : c.low], [1, c.close]];
+  let p = c.close;
+  for (let i = 0; i < pts.length - 1; i++) {
+    if (f <= pts[i + 1][0]) { const [f0, v0] = pts[i], [f1, v1] = pts[i + 1]; p = v0 + (v1 - v0) * ((f - f0) / (f1 - f0)); break; }
+  }
+  if (f > 0 && f < 1) p += Math.sin(f * 37 + c.open) * 0.08 * (c.high - c.low);
+  return Math.min(c.high, Math.max(c.low, p));
+}
+
+function replaySnapshot(entry, clock) {
+  const hist = [];
+  let price = entry.candles.length ? entry.candles[0].open : entry.prevClose;
+  for (const c of entry.candles) {
+    if (c.start > clock) break;
+    if (c.start + REPLAY_CANDLE_MS <= clock) {
+      hist.push({ time: c.start, price: c.close, open: c.open, high: c.high, low: c.low, close: c.close });
+      price = c.close;
+    } else {
+      const f = (clock - c.start) / REPLAY_CANDLE_MS;
+      let h = c.open, l = c.open;
+      for (let g = 0; g <= f; g += 0.05) { const v = replayPriceInCandle(c, g); h = Math.max(h, v); l = Math.min(l, v); }
+      const p = replayPriceInCandle(c, f);
+      h = Math.max(h, p); l = Math.min(l, p);
+      hist.push({ time: c.start, price: p, open: c.open, high: h, low: l, close: p });
+      price = p;
+    }
+  }
+  return { price: +price.toFixed(2), prevClose: entry.prevClose, history: hist };
+}
+
+function aggregateCandles(hist, minutes, dayStart) {
+  const size = minutes * 60000, out = [];
+  hist.forEach((c) => {
+    const bucket = dayStart + Math.floor((c.time - dayStart) / size) * size;
+    const last = out[out.length - 1];
+    if (last && last.time === bucket) { last.high = Math.max(last.high, c.high); last.low = Math.min(last.low, c.low); last.close = c.close; last.price = c.close; }
+    else out.push({ time: bucket, price: c.close, open: c.open, high: c.high, low: c.low, close: c.close });
+  });
+  return out;
 }
 
 async function fetchYahooRange(symbol, interval, period1, period2) {
@@ -1793,7 +1861,21 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
     });
     return q;
   });
-  const [marketStatus, setMarketStatus] = useState(() => getMarketStatus());
+  const [liveMarketStatus, setMarketStatus] = useState(() => getMarketStatus());
+  // ---- Full-terminal Replay ----
+  const [replayActive, setReplayActive] = useState(false);
+  const replayActiveRef = useRef(false);
+  const [replayDay, setReplayDay] = useState("");
+  const [replayData, setReplayData] = useState(null); // { date, dayStart, dayEnd, bySym }
+  const [replayClock, setReplayClock] = useState(0);
+  const [replayRunning, setReplayRunning] = useState(false);
+  const [replayRate, setReplayRate] = useState(5);
+  const [replayBusy, setReplayBusy] = useState(false);
+  const liveStashRef = useRef(null);
+  SIM_NOW = replayActive ? replayClock : null;
+  const marketStatus = replayActive && replayData
+    ? { isOpen: replayClock >= replayData.dayStart && replayClock < replayData.dayEnd, label: replayClock >= replayData.dayEnd ? `Replay · session closed (${replayData.date})` : `Replay · ${fmtReplayTime(replayClock)}` }
+    : liveMarketStatus;
   const marketStatusRef = useRef(marketStatus);
   useEffect(() => { marketStatusRef.current = marketStatus; }, [marketStatus]);
   useEffect(() => {
@@ -1965,7 +2047,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
   const todayISO = new Date().toISOString().slice(0, 10);
   const thirtyDaysAgoISO = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString().slice(0, 10);
 
-  const expiries = useMemo(() => nextThursdays(4), []);
+  const expiries = useMemo(() => nextThursdays(4, replayActive && replayData ? replayData.dayStart : null), [replayActive, replayData]);
   const quotesRef = useRef(quotes);
   useEffect(() => { quotesRef.current = quotes; }, [quotes]);
   const cashRef = useRef(cash);
@@ -1977,12 +2059,13 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
 
   const saveTimerRef = useRef(null);
   useEffect(() => {
+    if (replayActive) return; // replay sessions are never saved over the real portfolio
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
       upsertPortfolio(userId, { cash, stockPositions, optionPositions, trades, alerts, pendingOrders, customInstruments });
     }, 600);
     return () => clearTimeout(saveTimerRef.current);
-  }, [userId, cash, stockPositions, optionPositions, trades, alerts, pendingOrders, customInstruments]);
+  }, [userId, cash, stockPositions, optionPositions, trades, alerts, pendingOrders, customInstruments, replayActive]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1991,6 +2074,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
       const results = await Promise.allSettled(list.map((s) => fetchYahoo(s.symbol)));
       if (cancelled) return;
       setQuotes((prev) => {
+        if (replayActiveRef.current) return prev;
         const next = { ...prev };
         results.forEach((r, i) => {
           const sym = list[i].symbol;
@@ -2009,7 +2093,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
 
   useEffect(() => {
     const iv = setInterval(() => {
-      if (!marketStatusRef.current.isOpen) return;
+      if (replayActiveRef.current || !marketStatusRef.current.isOpen) return;
       setQuotes((prev) => {
         const next = { ...prev };
         allInstrumentsRef.current.forEach((s) => {
@@ -2031,6 +2115,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
 
   useEffect(() => {
     let cancelled = false;
+    if (replayActive) return;
     if (!selected) { setChartHistory([]); return; }
     const load = async () => {
       const { interval, range } = TIMEFRAMES[timeframe];
@@ -2052,7 +2137,44 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
     load();
     const iv = setInterval(load, 30000);
     return () => { cancelled = true; clearInterval(iv); };
-  }, [selected, timeframe]);
+  }, [selected, timeframe, replayActive]);
+
+  // Replay: advance the simulated clock
+  useEffect(() => {
+    if (!replayActive || !replayRunning || !replayData) return;
+    const iv = setInterval(() => setReplayClock((c) => Math.min(c + 1000 * replayRate, replayData.dayEnd)), 1000);
+    return () => clearInterval(iv);
+  }, [replayActive, replayRunning, replayRate, replayData]);
+
+  useEffect(() => {
+    if (replayActive && replayData && replayRunning && replayClock >= replayData.dayEnd) {
+      setReplayRunning(false);
+      showToast("Replay session closed at 3:30 PM — review Positions and History, then exit replay", "bull");
+    }
+  }, [replayClock, replayActive, replayData, replayRunning]);
+
+  // Replay: every symbol's price follows the simulated clock
+  useEffect(() => {
+    if (!replayActive || !replayData) return;
+    setQuotes((prev) => {
+      const next = { ...prev };
+      Object.entries(replayData.bySym).forEach(([sym, entry]) => {
+        const snap = replaySnapshot(entry, replayClock);
+        next[sym] = { price: snap.price, prevClose: snap.prevClose, history: snap.history.slice(-90), live: true };
+      });
+      return next;
+    });
+  }, [replayActive, replayData, replayClock]);
+
+  // Replay: chart for the selected symbol
+  useEffect(() => {
+    if (!replayActive || !replayData || !selected) return;
+    const entry = replayData.bySym[selected];
+    if (!entry) { setChartHistory([]); return; }
+    const snap = replaySnapshot(entry, replayClock);
+    const mins = timeframe === "15m" ? 15 : timeframe === "1H" ? 60 : 5;
+    setChartHistory(mins === 5 ? snap.history : aggregateCandles(snap.history, mins, replayData.dayStart));
+  }, [replayActive, replayData, replayClock, selected, timeframe]);
 
   useEffect(() => {
     let changed = false;
@@ -2184,6 +2306,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
 
   const addCustomInstrument = async (result) => {
     if (!isPro) { setUpgradeModalOpen(true); return; }
+    if (replayActiveRef.current) { showToast("Exit replay to add new symbols", "bear"); return; }
     showToast(`Adding ${displayTicker(result.symbol)}…`, "bull");
     let price, prevClose, history, live;
     try {
@@ -2273,7 +2396,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
   const optionMktValue = optionPositions.reduce((sum, p) => {
     const spot = quotes[p.symbol]?.price ?? 0;
     const symMeta = allInstruments.find((s) => s.symbol === p.symbol);
-    const T = (p.expiry - Date.now()) / (365 * 24 * 3600 * 1000);
+    const T = (p.expiry - nowMs()) / (365 * 24 * 3600 * 1000);
     const sigma = symMeta.iv * (1 + 0.15 * Math.abs(p.strike - spot) / spot);
     const { price } = blackScholes(spot, p.strike, T, RISK_FREE, sigma, p.type);
     return sum + (isShort(p) ? (p.margin || 0) - price * posMultiplier(p) * p.qty : price * posMultiplier(p) * p.qty);
@@ -2310,7 +2433,47 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
     setTimeout(() => setToast(null), 2600);
   };
   const logTrade = (label, amount) => {
-    setTrades((prev) => [{ id: uid(), time: new Date(), label, amount }, ...prev].slice(0, 200));
+    setTrades((prev) => [{ id: uid(), time: new Date(nowMs()), label, amount }, ...prev].slice(0, 200));
+  };
+
+  const startReplay = async () => {
+    if (!replayDay) return showToast("Pick a date first", "bear");
+    const wd = new Date(replayDay + "T12:00:00+05:30").getUTCDay();
+    if (wd === 0 || wd === 6) return showToast("That's a weekend — pick a weekday", "bear");
+    if (NSE_HOLIDAYS[replayDay]) return showToast(`${NSE_HOLIDAYS[replayDay]} was a market holiday — pick another day`, "bear");
+    setReplayBusy(true);
+    const list = allInstrumentsRef.current;
+    const results = await Promise.allSettled(list.map((s) => fetchYahooDay(s.symbol, replayDay)));
+    setReplayBusy(false);
+    const bySym = {};
+    results.forEach((r, i) => { if (r.status === "fulfilled" && r.value.candles.length >= 3) bySym[list[i].symbol] = r.value; });
+    if (!Object.keys(bySym).length) return showToast("No market data for that date — try a more recent weekday", "bear");
+    const dayStart = Date.parse(replayDay + "T09:15:00+05:30");
+    const dayEnd = Date.parse(replayDay + "T15:30:00+05:30");
+    liveStashRef.current = { cash, stockPositions, optionPositions, trades, pendingOrders, alerts, quotes };
+    replayActiveRef.current = true;
+    setCash(REPLAY_CASH); setStockPositions([]); setOptionPositions([]); setTrades([]); setPendingOrders([]); setAlerts([]);
+    setReplayData({ date: replayDay, dayStart, dayEnd, bySym });
+    setReplayClock(dayStart);
+    setReplayRunning(true);
+    setReplayActive(true);
+    if (!selected || !bySym[selected]) setSelected(bySym["^NSEI"] ? "^NSEI" : Object.keys(bySym)[0]);
+    setTab("trade");
+    showToast(`Replaying ${new Date(dayStart).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })} from the 9:15 AM open — trade as if it's live`, "bull");
+  };
+
+  const exitReplay = () => {
+    const st = liveStashRef.current;
+    replayActiveRef.current = false;
+    setReplayRunning(false);
+    setReplayActive(false);
+    setReplayData(null);
+    if (st) {
+      setCash(st.cash); setStockPositions(st.stockPositions); setOptionPositions(st.optionPositions);
+      setTrades(st.trades); setPendingOrders(st.pendingOrders); setAlerts(st.alerts); setQuotes(st.quotes);
+    }
+    liveStashRef.current = null;
+    showToast("Back to the live market and your real portfolio", "bull");
   };
 
   const handleUpgrade = () => {
@@ -2483,7 +2646,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
     if (!ticket || qty <= 0) return;
     const spot = quotes[ticket.symbol]?.price ?? 0;
     const symMeta = allInstruments.find((s) => s.symbol === ticket.symbol);
-    const T = (ticket.expiry - Date.now()) / (365 * 24 * 3600 * 1000);
+    const T = (ticket.expiry - nowMs()) / (365 * 24 * 3600 * 1000);
     const sigma = symMeta.iv * (1 + 0.15 * Math.abs(ticket.strike - spot) / spot);
     const { price } = blackScholes(spot, ticket.strike, T, RISK_FREE, sigma, ticket.type);
     const lot = lotSizeFor(ticket.symbol);
@@ -2549,7 +2712,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
   const closeOptionPosition = (pos) => {
     const spot = quotes[pos.symbol]?.price ?? 0;
     const symMeta = allInstruments.find((s) => s.symbol === pos.symbol);
-    const T = (pos.expiry - Date.now()) / (365 * 24 * 3600 * 1000);
+    const T = (pos.expiry - nowMs()) / (365 * 24 * 3600 * 1000);
     const sigma = symMeta.iv * (1 + 0.15 * Math.abs(pos.strike - spot) / spot);
     const { price } = blackScholes(spot, pos.strike, T, RISK_FREE, sigma, pos.type);
     const total = price * posMultiplier(pos) * pos.qty;
@@ -2599,7 +2762,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
 
   const currentExpiry = expiries[expiryIdx];
   const chainStrikes = strikesAround(q?.price ?? meta.fallback);
-  const T = currentExpiry ? (currentExpiry.getTime() - Date.now()) / (365 * 24 * 3600 * 1000) : 0;
+  const T = currentExpiry ? (currentExpiry.getTime() - nowMs()) / (365 * 24 * 3600 * 1000) : 0;
 
   return (
     <div className="app" style={THEMES[themeIdx].vars}>
@@ -2612,6 +2775,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
           <span className="brandSub">paper terminal</span>
         </div>
         <div className="stats">
+          {replayActive && <span className="replayBadge">REPLAY</span>}
           <Stat label="Cash" value={fmtMoney(cash, 0)} />
           <Stat label="Equity" value={fmtMoney(equity, 0)} pulse={pulse} />
           <Stat label="Total P&L" value={fmtMoney(dayPnl, 0)} tone={dayPnl >= 0 ? "bull" : "bear"} />
@@ -2631,6 +2795,20 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
         </div>
       </div>
 
+      {replayActive && replayData && (
+        <div className="replayBar">
+          <span className="replayBarTag">Replay</span>
+          <span className="mono replayBarClock">{fmtReplayTime(replayClock)} IST</span>
+          <div className="replayProgress" aria-hidden="true"><div style={{ width: `${Math.min(100, ((replayClock - replayData.dayStart) / (replayData.dayEnd - replayData.dayStart)) * 100)}%` }} /></div>
+          <button className="indToggle" onClick={() => setReplayRunning((r) => !r)} disabled={replayClock >= replayData.dayEnd}>{replayRunning ? "Pause" : "Play"}</button>
+          {[1, 5, 30, 60].map((r) => (
+            <button key={r} className={`indToggle ${replayRate === r ? "indToggleActive" : ""}`} onClick={() => setReplayRate(r)}>{r}x</button>
+          ))}
+          <button className="indToggle" onClick={() => setReplayClock((c) => Math.min(c + 15 * 60000, replayData.dayEnd))} disabled={replayClock >= replayData.dayEnd}>+15 min</button>
+          <button className="resetBtn replayExitBtn" onClick={exitReplay}>Exit replay</button>
+        </div>
+      )}
+
       <div className="body">
         <div className="watchlist">
           <input className="search" placeholder="Search symbol…" value={search} onChange={(e) => setSearch(e.target.value)} />
@@ -2640,7 +2818,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
             ))}
           </div>
           <div className="wlHead">
-            <span>Live via public market feed</span>
+            <span>{replayActive ? "Replay: past session prices" : "Live via public market feed"}</span>
             <Activity size={12} className={quotes[selected]?.live ? "liveDot" : "liveDotOff"} />
           </div>
           <div className="wlList">
@@ -3065,7 +3243,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                     {optionPositions.map((p) => {
                       const spot = quotes[p.symbol]?.price ?? 0;
                       const symMeta = allInstruments.find((s) => s.symbol === p.symbol);
-                      const pT = (p.expiry - Date.now()) / (365 * 24 * 3600 * 1000);
+                      const pT = (p.expiry - nowMs()) / (365 * 24 * 3600 * 1000);
                       const sigma = symMeta.iv * (1 + 0.15 * Math.abs(p.strike - spot) / spot);
                       const { price } = blackScholes(spot, p.strike, pT, RISK_FREE, sigma, p.type);
                       const short = isShort(p);
@@ -3216,144 +3394,28 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
           {tab === "replay" && (
             <div className="replayWrap">
               <div className="replayControls">
-                <div className="replayControlsRow">
-                  <div className="replayField">
-                    <label>Symbol</label>
-                    <select className="alertSelect" value={replaySymbol} onChange={(e) => setReplaySymbol(e.target.value)}>
-                      {allInstruments.map((s) => (
-                        <option key={s.symbol} value={s.symbol}>{displayTicker(s.symbol)} ({s.exchange})</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="replayField">
-                    <label>Date</label>
-                    <input
-                      type="date"
-                      className="qtyInput mono"
-                      value={replayDate}
-                      min={thirtyDaysAgoISO}
-                      max={todayISO}
-                      onChange={(e) => setReplayDate(e.target.value)}
-                    />
-                  </div>
-                  <button className="btn btnBull replayLoadBtn" onClick={loadReplayDay} disabled={replayLoading}>
-                    {replayLoading ? "Loading…" : "Load Day"}
-                  </button>
-                  <button className="btn btnGhost replayLoadBtn" onClick={() => setTab("trade")}>
-                    ← Back to Live
-                  </button>
-                </div>
-                <div className="dim replayHint">
-                  Pick any weekday in the last 30 days. The chart replays that day's real price action candle by candle — practice trading as if it were happening live, with a separate {fmtMoney(REPLAY_CASH, 0)} practice balance that never touches your real portfolio.
-                </div>
-                {replayError && <div className="authError" style={{ marginTop: "8px" }}>{replayError}</div>}
+                {!replayActive ? (
+                  <>
+                    <h3 className="replayTitle">Replay a past trading day</h3>
+                    <div className="replayControlsRow">
+                      <div className="replayField">
+                        <label>Date</label>
+                        <input type="date" className="qtyInput mono" value={replayDay} min={thirtyDaysAgoISO} max={todayISO} onChange={(e) => setReplayDay(e.target.value)} />
+                      </div>
+                      <button className="btn btnBull replayLoadBtn" onClick={startReplay} disabled={replayBusy}>{replayBusy ? `Loading ${allInstruments.length} symbols…` : "Start replay"}</button>
+                    </div>
+                    <div className="dim replayHint">
+                      The whole terminal goes back to that day: watchlist prices, charts, indicators and the options chain all move the way they did, starting from the 9:15 AM open. You get a separate {fmtMoney(REPLAY_CASH, 0)} practice balance, and your real portfolio is untouched. Control the clock with Play, Pause and the speed buttons in the replay bar at the top.
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <h3 className="replayTitle">Replaying {new Date(replayData.dayStart).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</h3>
+                    <div className="dim replayHint">Use Chart &amp; Trade, Options Chain and the other tabs exactly as you would live. This session's trades and P&amp;L show in Positions and History. Exit replay to go back to the live market and your real portfolio.</div>
+                    <button className="btn btnBear replayLoadBtn" onClick={exitReplay}>Exit replay</button>
+                  </>
+                )}
               </div>
-
-              {replayFullHistory.length > 0 && (
-                <>
-                  <div className="replayStats">
-                    <Stat label="Replay Cash" value={fmtMoney(replayCash, 0)} />
-                    <Stat label="Replay Equity" value={fmtMoney(replayEquity, 0)} />
-                    <Stat label="Replay P&L" value={fmtMoney(replayEquity - REPLAY_CASH, 0)} tone={replayEquity - REPLAY_CASH >= 0 ? "bull" : "bear"} />
-                    <button className="resetBtn replayResetBtn" onClick={resetReplaySession}><RotateCcw size={13} /> Reset Session</button>
-                  </div>
-
-                  <div className="tradeGrid">
-                    <div className="chartCard">
-                      <div className="chartHead">
-                        <div className="tfTabs">
-                          <button className={`tfTab ${replayPlaying ? "" : "tfTabActive"}`} onClick={() => setReplayPlaying(false)} disabled={!replayPlaying}>
-                            <Lock size={0} />Pause
-                          </button>
-                          <button className={`tfTab ${replayPlaying ? "tfTabActive" : ""}`} onClick={() => setReplayPlaying(true)} disabled={replayDone}>
-                            Play
-                          </button>
-                          <button className="tfTab" onClick={() => setReplayVisibleCount(replayFullHistory.length)} disabled={replayDone}>
-                            Skip to End
-                          </button>
-                        </div>
-                        <div className="indToggles">
-                          <button className={`indToggle ${replayShowMA ? "indToggleActive" : ""}`} onClick={() => setReplayShowMA((v) => !v)}>
-                            <span className="indDot" style={{ background: LW_COLORS.amber }} />MA(20)
-                          </button>
-                          <span style={{ width: "10px" }} />
-                          {[["slow", "0.5x"], ["normal", "1x"], ["fast", "2x"]].map(([key, label]) => (
-                            <button key={key} className={`indToggle ${replaySpeed === key ? "indToggleActive" : ""}`} onClick={() => setReplaySpeed(key)}>{label}</button>
-                          ))}
-                        </div>
-                      </div>
-
-                      <PriceChart
-                        data={replayChartSeries}
-                        showMA={replayShowMA}
-                        syncGroupRef={replaySyncGroupRef}
-                        pickMode={false}
-                        onPricePick={() => {}}
-                        chartType="candle"
-                        resetKey={`${replaySymbol}-${replayDate}`}
-                        draftPrice={null}
-                        pendingLines={[]}
-                      />
-
-                      <div className="chartHint dim">
-                        Candle {replayVisibleCount} of {replayFullHistory.length}{replayDone ? " — day complete" : ""}
-                      </div>
-                    </div>
-
-                    <div className="orderCard">
-                      <div className="orderCardHead">
-                        <h3>Replay Order</h3>
-                        <span className="orderCardSym mono">{displayTicker(replaySymbol)}</span>
-                      </div>
-                      <div className="orderRow">
-                        <label>Quantity</label>
-                        <input type="number" min="1" className="qtyInput mono" value={replayQty} onChange={(e) => setReplayQty(Math.max(1, parseInt(e.target.value) || 1))} />
-                      </div>
-                      <div className="orderEst mono">
-                        <span className="dim">Current price</span>
-                        <span>{replayCurrentPrice != null ? fmtMoney(replayCurrentPrice) : "—"}</span>
-                      </div>
-                      <div className="orderBtns">
-                        <button className="btn btnBull" onClick={() => placeReplayOrder("buy")}><TrendingUp size={14} /> Buy</button>
-                        <button className="btn btnBear" onClick={() => placeReplayOrder("sell")}><TrendingDown size={14} /> Sell</button>
-                      </div>
-                      {replayPos ? (
-                        <div className="posSummary">
-                          <div className="posSummaryRow">
-                            <span className="dim">Held</span>
-                            <span className="mono">{replayPos.qty} sh · avg {fmtMoney(replayPos.avgPrice)}</span>
-                          </div>
-                          <div className="posSummaryRow">
-                            <span className="dim">Unrealized P&amp;L</span>
-                            <span className={`mono ${replayCurrentPrice != null && (replayCurrentPrice - replayPos.avgPrice) >= 0 ? "bull" : "bear"}`}>
-                              {replayCurrentPrice != null ? fmtMoney((replayCurrentPrice - replayPos.avgPrice) * replayPos.qty) : "—"}
-                            </span>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="held mono">Held: 0 shares</div>
-                      )}
-                    </div>
-                  </div>
-
-                  {replayTrades.length > 0 && (
-                    <div className="mt">
-                      <h3>Replay Trade Log</h3>
-                      <table className="posTable">
-                        <thead><tr><th>Trade</th><th>Cash Impact</th></tr></thead>
-                        <tbody>
-                          {replayTrades.map((t) => (
-                            <tr key={t.id}>
-                              <td className="mono">{t.label}</td>
-                              <td className={`mono ${t.amount >= 0 ? "bull" : "bear"}`}>{fmtMoney(t.amount)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </>
-              )}
             </div>
           )}
         </div>
@@ -3458,7 +3520,7 @@ function OptionTicket({ ticket, quotes, instruments, onClose, onSubmit, heldQty,
   const [qty, setQty] = useState(1);
   const spot = quotes[ticket.symbol]?.price ?? 0;
   const symMeta = instruments.find((s) => s.symbol === ticket.symbol);
-  const T = (ticket.expiry - Date.now()) / (365 * 24 * 3600 * 1000);
+  const T = (ticket.expiry - nowMs()) / (365 * 24 * 3600 * 1000);
   const sigma = symMeta.iv * (1 + 0.15 * Math.abs(ticket.strike - spot) / spot);
   const greeks = blackScholes(spot, ticket.strike, T, RISK_FREE, sigma, ticket.type);
   const lot = lotSizeFor(ticket.symbol);
@@ -3849,6 +3911,14 @@ const CSS = `
 .pickEmpty p { max-width: 46ch; margin: 0 auto 18px; font-size: 13px; line-height: 1.6; }
 .pickQuick { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
 .pickQuickBtn { flex: none; padding: 8px 16px; }
+.replayBadge { align-self: center; background: var(--amber); color: #241800; font-size: 10px; font-weight: 800; padding: 3px 8px; border-radius: 999px; letter-spacing: 0.5px; }
+.replayBar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 24px; background: color-mix(in srgb, var(--amber) 14%, var(--surface)); border-bottom: 1px solid color-mix(in srgb, var(--amber) 40%, var(--border)); }
+.replayBarTag { background: var(--amber); color: #241800; font-size: 10px; font-weight: 800; padding: 3px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+.replayBarClock { font-size: 13px; font-weight: 600; margin-right: 6px; }
+.replayProgress { flex: 1; min-width: 80px; height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; margin-right: 6px; }
+.replayProgress div { height: 100%; background: var(--amber); }
+.replayExitBtn { margin-left: auto; }
+.replayTitle { margin: 0 0 12px; font-family: 'Instrument Sans'; font-size: 16px; }
 .chainWrap { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
 .expiryTabs { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
 .expiryTab { background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim); padding: 6px 14px; border-radius: 20px; font-size: 12px; cursor: pointer; }
