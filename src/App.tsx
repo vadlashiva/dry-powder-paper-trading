@@ -46,6 +46,14 @@ const LOT_SIZES = { NIFTY: 65, BANKNIFTY: 30, SENSEX: 20 };
 const lotSizeFor = (symbol) => LOT_SIZES[displayTicker(symbol)] ?? 1;
 // Positions opened before this change were stored in units, not lots.
 const posMultiplier = (p) => (p.lotBased ? lotSizeFor(p.symbol) : 1);
+const isShort = (p) => p.side === "short";
+// Simplified estimate of SPAN + exposure margin for SELLING one lot of an option.
+// Not exchange-exact: about 9% of contract value, reduced for out-of-the-money strikes, minimum 4%.
+function shortMarginPerLot(spot, strike, type, lot) {
+  const contract = spot * lot;
+  const otm = Math.max(0, type === "call" ? strike - spot : spot - strike) * lot;
+  return Math.round(Math.max(0.09 * contract - 0.5 * otm, 0.04 * contract));
+}
 const TRIAL_DAYS = 7;
 function trialDaysRemaining(createdAtIso) {
   if (!createdAtIso) return 0;
@@ -2058,7 +2066,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
     const T = (p.expiry - Date.now()) / (365 * 24 * 3600 * 1000);
     const sigma = symMeta.iv * (1 + 0.15 * Math.abs(p.strike - spot) / spot);
     const { price } = blackScholes(spot, p.strike, T, RISK_FREE, sigma, p.type);
-    return sum + price * posMultiplier(p) * p.qty;
+    return sum + (isShort(p) ? (p.margin || 0) - price * posMultiplier(p) * p.qty : price * posMultiplier(p) * p.qty);
   }, 0);
   const equity = cash + stockMktValue + optionMktValue;
   const dayPnl = equity - STARTING_CASH;
@@ -2272,30 +2280,58 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
     const premiumTotal = price * lot * qty;
     const label = `${ticket.type.toUpperCase()} ${displayTicker(ticket.symbol)} ${ticket.strike} ${fmtDate(new Date(ticket.expiry))}`;
 
+    const plural = `${qty} lot${qty > 1 ? "s" : ""} (${qty * lot} units)`;
+    const sameContract = (p) => p.symbol === ticket.symbol && p.type === ticket.type && p.strike === ticket.strike && p.expiry === ticket.expiry && p.lotBased;
+    const longKey = (p) => sameContract(p) && !isShort(p);
+    const shortKey = (p) => sameContract(p) && isShort(p);
+
     if (mode === "buy") {
       if (premiumTotal > cash) return showToast("Insufficient buying power", "bear");
       setCash((c) => c - premiumTotal);
       setOptionPositions((prev) => {
-        const key = (p) => p.symbol === ticket.symbol && p.type === ticket.type && p.strike === ticket.strike && p.expiry === ticket.expiry && p.lotBased;
-        const existing = prev.find(key);
+        const existing = prev.find(longKey);
         if (existing) {
           const totalQty = existing.qty + qty;
           const avgPremium = (existing.avgPremium * existing.qty + price * qty) / totalQty;
-          return prev.map((p) => (key(p) ? { ...p, qty: totalQty, avgPremium } : p));
+          return prev.map((p) => (longKey(p) ? { ...p, qty: totalQty, avgPremium } : p));
         }
-        return [...prev, { id: uid(), symbol: ticket.symbol, type: ticket.type, strike: ticket.strike, expiry: ticket.expiry, qty, avgPremium: price, lotBased: true }];
+        return [...prev, { id: uid(), symbol: ticket.symbol, type: ticket.type, strike: ticket.strike, expiry: ticket.expiry, qty, avgPremium: price, lotBased: true, side: "long" }];
       });
-      logTrade(`BTO ${qty} lot${qty > 1 ? "s" : ""} (${qty * lot} units) ${label} @ ${fmtMoney(price)}`, -premiumTotal);
-      showToast(`Opened ${qty} lot${qty > 1 ? "s" : ""} (${qty * lot} units) ${label}`, "bull");
-    } else {
-      const key = (p) => p.symbol === ticket.symbol && p.type === ticket.type && p.strike === ticket.strike && p.expiry === ticket.expiry && p.lotBased;
-      const existing = optionPositions.find(key);
+      logTrade(`BTO ${plural} ${label} @ ${fmtMoney(price)}`, -premiumTotal);
+      showToast(`Bought ${plural} ${label}`, "bull");
+    } else if (mode === "sell") {
+      const existing = optionPositions.find(longKey);
       const held = existing?.qty ?? 0;
-      if (qty > held) return showToast(`Only ${held} held`, "bear");
+      if (qty > held) return showToast(held ? `Only ${held} lot${held > 1 ? "s" : ""} held — use Sell to Open to go short` : "You don't hold this option — use Sell to Open to go short", "bear");
       setCash((c) => c + premiumTotal);
-      setOptionPositions((prev) => prev.map((p) => (key(p) ? { ...p, qty: p.qty - qty } : p)).filter((p) => p.qty > 0));
-      logTrade(`STC ${qty} lot${qty > 1 ? "s" : ""} (${qty * lot} units) ${label} @ ${fmtMoney(price)}`, premiumTotal);
-      showToast(`Closed ${qty} lot${qty > 1 ? "s" : ""} (${qty * lot} units) ${label}`, "bear");
+      setOptionPositions((prev) => prev.map((p) => (longKey(p) ? { ...p, qty: p.qty - qty } : p)).filter((p) => p.qty > 0));
+      logTrade(`STC ${plural} ${label} @ ${fmtMoney(price)}`, premiumTotal);
+      showToast(`Sold ${plural} ${label}`, "bear");
+    } else if (mode === "short") {
+      const marginNeeded = shortMarginPerLot(spot, ticket.strike, ticket.type, lot) * qty;
+      if (marginNeeded - premiumTotal > cash) return showToast(`Insufficient margin — selling ${plural} needs about ${fmtMoney(marginNeeded, 0)}`, "bear");
+      setCash((c) => c - marginNeeded + premiumTotal);
+      setOptionPositions((prev) => {
+        const existing = prev.find(shortKey);
+        if (existing) {
+          const totalQty = existing.qty + qty;
+          const avgPremium = (existing.avgPremium * existing.qty + price * qty) / totalQty;
+          return prev.map((p) => (shortKey(p) ? { ...p, qty: totalQty, avgPremium, margin: (p.margin || 0) + marginNeeded } : p));
+        }
+        return [...prev, { id: uid(), symbol: ticket.symbol, type: ticket.type, strike: ticket.strike, expiry: ticket.expiry, qty, avgPremium: price, lotBased: true, side: "short", margin: marginNeeded }];
+      });
+      logTrade(`STO ${plural} ${label} @ ${fmtMoney(price)} (margin ${fmtMoney(marginNeeded, 0)} blocked)`, premiumTotal);
+      showToast(`Shorted ${plural} ${label} — margin ${fmtMoney(marginNeeded, 0)} blocked`, "bear");
+    } else if (mode === "cover") {
+      const existing = optionPositions.find(shortKey);
+      const held = existing?.qty ?? 0;
+      if (qty > held) return showToast(held ? `Only ${held} lot${held > 1 ? "s" : ""} short` : "You have no short position in this option", "bear");
+      const release = (existing.margin || 0) * (qty / held);
+      if (premiumTotal > cash + release) return showToast("Insufficient funds to buy back", "bear");
+      setCash((c) => c + release - premiumTotal);
+      setOptionPositions((prev) => prev.map((p) => (shortKey(p) ? { ...p, qty: p.qty - qty, margin: (p.margin || 0) - release } : p)).filter((p) => p.qty > 0));
+      logTrade(`BTC ${plural} ${label} @ ${fmtMoney(price)}`, -premiumTotal);
+      showToast(`Covered ${plural} ${label}`, "bull");
     }
     setTicket(null);
   };
@@ -2307,9 +2343,10 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
     const sigma = symMeta.iv * (1 + 0.15 * Math.abs(pos.strike - spot) / spot);
     const { price } = blackScholes(spot, pos.strike, T, RISK_FREE, sigma, pos.type);
     const total = price * posMultiplier(pos) * pos.qty;
-    setCash((c) => c + total);
+    const short = isShort(pos);
+    setCash((c) => c + (short ? (pos.margin || 0) - total : total));
     setOptionPositions((prev) => prev.filter((p) => p.id !== pos.id));
-    logTrade(`STC ${pos.qty}x ${pos.type.toUpperCase()} ${displayTicker(pos.symbol)} ${pos.strike} @ ${fmtMoney(price)}`, total);
+    logTrade(`${short ? "BTC" : "STC"} ${pos.qty}x ${pos.type.toUpperCase()} ${displayTicker(pos.symbol)} ${pos.strike} @ ${fmtMoney(price)}`, short ? -total : total);
     showToast("Position closed", "bear");
   };
 
@@ -2680,7 +2717,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                   </tbody>
                 </table>
               </div>
-              <div className="chainNote">Premiums &amp; Greeks are modeled live from the underlying price via Black-Scholes — not a live exchange options feed. Quantities are in exchange lots (NIFTY 65, BANKNIFTY 30, SENSEX 20).</div>
+              <div className="chainNote">Premiums &amp; Greeks are modeled live from the underlying price via Black-Scholes — not a live exchange options feed. Quantities are in exchange lots (NIFTY 65, BANKNIFTY 30, SENSEX 20). You can buy or sell (short) options; selling blocks an estimated margin from your cash.</div>
               {!marketStatus.isOpen && (
                 <div className="chainNote" style={{ color: "var(--bear)", fontWeight: 600 }}>Market Closed — you can browse the chain, but new orders are disabled until 9:15 AM Mon–Fri.</div>
               )}
@@ -2754,11 +2791,12 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                       const pT = (p.expiry - Date.now()) / (365 * 24 * 3600 * 1000);
                       const sigma = symMeta.iv * (1 + 0.15 * Math.abs(p.strike - spot) / spot);
                       const { price } = blackScholes(spot, p.strike, pT, RISK_FREE, sigma, p.type);
-                      const mv = price * posMultiplier(p) * p.qty;
-                      const pnl = mv - p.avgPremium * posMultiplier(p) * p.qty;
+                      const short = isShort(p);
+                      const mv = (short ? -1 : 1) * price * posMultiplier(p) * p.qty;
+                      const pnl = (short ? p.avgPremium - price : price - p.avgPremium) * posMultiplier(p) * p.qty;
                       return (
                         <tr key={p.id}>
-                          <td className="mono">{p.type === "call" ? "C" : "P"} {displayTicker(p.symbol)} {p.strike} {fmtDate(new Date(p.expiry))}</td>
+                          <td className="mono">{short && <span className="shortTag">SHORT</span>}{p.type === "call" ? "C" : "P"} {displayTicker(p.symbol)} {p.strike} {fmtDate(new Date(p.expiry))}{short && p.margin ? <div className="dim" style={{ fontSize: "11px" }}>margin {fmtMoney(p.margin, 0)}</div> : null}</td>
                           <td className="mono">{p.lotBased ? `${p.qty} × ${lotSizeFor(p.symbol)}` : p.qty}</td>
                           <td className="mono">{fmtMoney(p.avgPremium)}</td>
                           <td className="mono">{fmtMoney(price)}</td>
@@ -2766,7 +2804,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                           <td className={`mono ${pnl >= 0 ? "bull" : "bear"}`}>{fmtMoney(pnl)}</td>
                           <td className="orderRowActions">
                             <button className="closeBtn" onClick={() => { setSelected(p.symbol); setTab("trade"); }}><LineChart size={12} /> Chart</button>
-                            <button className="closeBtn" onClick={() => closeOptionPosition(p)}>Close</button>
+                            <button className="closeBtn" onClick={() => closeOptionPosition(p)}>{short ? "Cover" : "Close"}</button>
                           </td>
                         </tr>
                       );
@@ -3052,7 +3090,8 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
           onClose={() => setTicket(null)}
           onSubmit={placeOptionOrder}
           marketOpen={marketStatus.isOpen}
-          heldQty={optionPositions.find((p) => p.symbol === ticket.symbol && p.type === ticket.type && p.strike === ticket.strike && p.expiry === ticket.expiry && p.lotBased)?.qty ?? 0}
+          heldQty={optionPositions.find((p) => p.symbol === ticket.symbol && p.type === ticket.type && p.strike === ticket.strike && p.expiry === ticket.expiry && p.lotBased && !isShort(p))?.qty ?? 0}
+          shortQty={optionPositions.find((p) => p.symbol === ticket.symbol && p.type === ticket.type && p.strike === ticket.strike && p.expiry === ticket.expiry && p.lotBased && isShort(p))?.qty ?? 0}
         />
       )}
 
@@ -3138,7 +3177,7 @@ function ProLockPanel({ title, description, onUpgrade }) {
   );
 }
 
-function OptionTicket({ ticket, quotes, instruments, onClose, onSubmit, heldQty, marketOpen }) {
+function OptionTicket({ ticket, quotes, instruments, onClose, onSubmit, heldQty, shortQty, marketOpen }) {
   const [qty, setQty] = useState(1);
   const spot = quotes[ticket.symbol]?.price ?? 0;
   const symMeta = instruments.find((s) => s.symbol === ticket.symbol);
@@ -3146,6 +3185,7 @@ function OptionTicket({ ticket, quotes, instruments, onClose, onSubmit, heldQty,
   const sigma = symMeta.iv * (1 + 0.15 * Math.abs(ticket.strike - spot) / spot);
   const greeks = blackScholes(spot, ticket.strike, T, RISK_FREE, sigma, ticket.type);
   const lot = lotSizeFor(ticket.symbol);
+  const marginEst = shortMarginPerLot(spot, ticket.strike, ticket.type, lot) * qty;
 
   return (
     <div className="modalOverlay" onClick={onClose}>
@@ -3172,12 +3212,20 @@ function OptionTicket({ ticket, quotes, instruments, onClose, onSubmit, heldQty,
           <label>Lots <span className="dim">(1 lot = {lot})</span></label>
           <input type="number" min="1" className="qtyInput mono" value={qty} onChange={(e) => setQty(Math.max(1, parseInt(e.target.value) || 1))} />
         </div>
-        <div className="orderEst mono">Est. total ({qty * lot} units): <span>{fmtMoney(greeks.price * lot * qty)}</span> · Held: {heldQty} lot{heldQty === 1 ? "" : "s"}</div>
+        <div className="orderEst mono">Premium ({qty * lot} units): <span>{fmtMoney(greeks.price * lot * qty)}</span></div>
+        <div className="orderHint dim mono" style={{ marginTop: "-8px" }}>Long: {heldQty} lot{heldQty === 1 ? "" : "s"} · Short: {shortQty} lot{shortQty === 1 ? "" : "s"} · Margin to short ≈ {fmtMoney(marginEst, 0)}</div>
 
+        <div className="ticketSection dim">Buy (long)</div>
         <div className="orderBtns">
           <button className="btn btnBull" disabled={!marketOpen} onClick={() => onSubmit("buy", qty)}>Buy to Open</button>
-          <button className="btn btnBear" disabled={!marketOpen} onClick={() => onSubmit("sell", qty)}>Sell to Close</button>
+          <button className="btn btnGhost" disabled={!marketOpen || heldQty === 0} onClick={() => onSubmit("sell", qty)}>Sell to Close</button>
         </div>
+        <div className="ticketSection dim">Sell (short / option writing)</div>
+        <div className="orderBtns">
+          <button className="btn btnBear" disabled={!marketOpen} onClick={() => onSubmit("short", qty)}>Sell to Open</button>
+          <button className="btn btnGhost" disabled={!marketOpen || shortQty === 0} onClick={() => onSubmit("cover", qty)}>Buy to Close</button>
+        </div>
+        <div className="orderHint dim">Selling an option earns the premium upfront but blocks margin, and losses can be much larger than the premium if the market moves against you. Margin shown is a simplified estimate.</div>
         {!marketOpen && (
           <div className="orderHint dim" style={{ textAlign: "center", marginTop: "10px" }}>Market is closed — trading resumes 9:15 AM Mon–Fri</div>
         )}
@@ -3594,6 +3642,8 @@ const CSS = `
 .typeBadge { font-size: 10px; padding: 2px 8px; border-radius: 4px; font-weight: 700; }
 .typeBadge.call { background: rgba(20,232,160,0.15); color: var(--bull); }
 .typeBadge.put { background: rgba(255,84,112,0.15); color: var(--bear); }
+.ticketSection { font-size: 10px; text-transform: uppercase; letter-spacing: 0.6px; margin: 4px 0 6px; }
+.shortTag { background: rgba(255,84,112,0.15); color: var(--bear); font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 4px; margin-right: 6px; letter-spacing: 0.4px; }
 .iconBtn { background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; color: var(--text-dim); padding: 6px; cursor: pointer; }
 .greeksGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; background: var(--surface-2); border-radius: 8px; padding: 12px; margin-bottom: 16px; font-size: 13px; }
 .greeksGrid div { display: flex; flex-direction: column; gap: 2px; }
