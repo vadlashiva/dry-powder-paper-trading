@@ -403,6 +403,7 @@ const DRAW_TOOLS = [
 
 function PriceChart({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPrice, pendingLines, chartType, resetKey, overlays = [] }) {
   const overlaySeriesRef = useRef(new Map());
+  const fitKeyRef = useRef(null);
   const containerRef = useRef(null);
   const legendRef = useRef(null);
   const chartRef = useRef(null);
@@ -553,7 +554,8 @@ function PriceChart({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPr
     if (maRef.current) {
       maRef.current.setData(showMA ? prepped.filter(({ d }) => d.ma != null).map(({ t, d }) => ({ time: t, value: d.ma })) : []);
     }
-    if (chartRef.current) chartRef.current.timeScale().fitContent();
+    const fitKey = `${resetKey}|${prepped.length ? 1 : 0}`;
+    if (chartRef.current && fitKeyRef.current !== fitKey) { chartRef.current.timeScale().fitContent(); fitKeyRef.current = fitKey; }
   }, [data, showMA]);
 
   const overlaysKey = overlays.map((o) => o.id).join(",");
@@ -982,7 +984,7 @@ function replayPriceInCandle(c, f) {
   for (let i = 0; i < pts.length - 1; i++) {
     if (f <= pts[i + 1][0]) { const [f0, v0] = pts[i], [f1, v1] = pts[i + 1]; p = v0 + (v1 - v0) * ((f - f0) / (f1 - f0)); break; }
   }
-  if (f > 0 && f < 1) p += Math.sin(f * 37 + c.open) * 0.08 * (c.high - c.low);
+  if (f > 0 && f < 1) { const r = c.high - c.low; p += Math.sin(f * 37 + c.open) * 0.08 * r + Math.sin(f * 331 + c.close) * 0.06 * r + Math.sin(f * 977) * 0.04 * r; }
   return Math.min(c.high, Math.max(c.low, p));
 }
 
@@ -2139,10 +2141,23 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
     return () => { cancelled = true; clearInterval(iv); };
   }, [selected, timeframe, replayActive]);
 
+  // Live: the newest candle on the chart follows every price tick
+  useEffect(() => {
+    if (replayActive || !selected || !marketStatus.isOpen) return;
+    const px = quotes[selected]?.price;
+    if (px == null) return;
+    setChartHistory((prev) => {
+      if (!prev.length) return prev;
+      const last = prev[prev.length - 1];
+      if (last.close === px) return prev;
+      return [...prev.slice(0, -1), { ...last, price: px, close: px, high: Math.max(last.high ?? px, px), low: Math.min(last.low ?? px, px) }];
+    });
+  }, [quotes, selected, replayActive, marketStatus.isOpen]);
+
   // Replay: advance the simulated clock
   useEffect(() => {
     if (!replayActive || !replayRunning || !replayData) return;
-    const iv = setInterval(() => setReplayClock((c) => Math.min(c + 1000 * replayRate, replayData.dayEnd)), 1000);
+    const iv = setInterval(() => setReplayClock((c) => Math.min(c + 500 * replayRate, replayData.dayEnd)), 500);
     return () => clearInterval(iv);
   }, [replayActive, replayRunning, replayRate, replayData]);
 
@@ -2945,7 +2960,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                   pickMode={pickingPriceFromChart}
                   onPricePick={handleChartPricePick}
                   chartType={chartType}
-                  resetKey={`${selected}-${timeframe}`}
+                  resetKey={`${selected}-${timeframe}-${replayActive && replayData ? replayData.date : "live"}`}
                   draftPrice={orderType !== "market" && orderPrice ? parseFloat(orderPrice) || null : null}
                   pendingLines={pendingOrders
                     .filter((o) => o.symbol === selected)
