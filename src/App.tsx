@@ -350,11 +350,12 @@ function buildChartSeries(history, ind) {
   });
 }
 
+const IST_OFFSET_SEC = 5.5 * 3600;
 function prepLW(data) {
   const out = [];
   let lastT = -Infinity;
   for (const d of data) {
-    const t = Math.floor(d.time / 1000);
+    const t = Math.floor(d.time / 1000) + IST_OFFSET_SEC; // label the axis in IST
     if (t <= lastT) continue;
     lastT = t;
     out.push({ t, d });
@@ -958,7 +959,8 @@ async function startProCheckout({ userEmail, onSuccess, onError }) {
 // One full trading day of 5-minute candles plus the previous day's close.
 async function fetchYahooDay(symbol, dateISO) {
   const p1 = Math.floor(new Date(dateISO + "T00:00:00+05:30").getTime() / 1000);
-  const res = await fetch(`${YAHOO_PROXY_URL}?type=chart&symbol=${encodeURIComponent(symbol)}&interval=5m&period1=${p1}&period2=${p1 + 86400}`);
+  const from = p1 - 6 * 86400; // include the previous trading session for chart context
+  const res = await fetch(`${YAHOO_PROXY_URL}?type=chart&symbol=${encodeURIComponent(symbol)}&interval=5m&period1=${from}&period2=${p1 + 86400}`);
   if (!res.ok) throw new Error("bad response");
   const json = await res.json();
   const result = json.chart?.result?.[0];
@@ -966,10 +968,18 @@ async function fetchYahooDay(symbol, dateISO) {
   const ts = result.timestamp || [];
   const q0 = result.indicators.quote[0];
   const open = Date.parse(dateISO + "T09:15:00+05:30"), close = Date.parse(dateISO + "T15:30:00+05:30");
-  const candles = ts.map((t, i) => ({ start: t * 1000, open: q0.open?.[i], high: q0.high?.[i], low: q0.low?.[i], close: q0.close?.[i] }))
-    .filter((c) => c.start >= open && c.start < close && [c.open, c.high, c.low, c.close].every((v) => typeof v === "number"));
-  const prevClose = result.meta?.chartPreviousClose ?? result.meta?.previousClose ?? candles[0]?.open;
-  return { candles, prevClose };
+  const all = ts.map((t, i) => ({ start: t * 1000, open: q0.open?.[i], high: q0.high?.[i], low: q0.low?.[i], close: q0.close?.[i] }))
+    .filter((c) => [c.open, c.high, c.low, c.close].every((v) => typeof v === "number"));
+  const candles = all.filter((c) => c.start >= open && c.start < close);
+  // previous session = the last trading day before this date, regular hours only
+  const before = all.filter((c) => c.start < open);
+  const lastDay = before.length ? new Date(before[before.length - 1].start + 19800000).toISOString().slice(0, 10) : null;
+  const prevCandles = lastDay ? before.filter((c) => {
+    const ds = Date.parse(lastDay + "T09:15:00+05:30");
+    return c.start >= ds && c.start < ds + 375 * 60000;
+  }) : [];
+  const prevClose = prevCandles.length ? prevCandles[prevCandles.length - 1].close : (result.meta?.chartPreviousClose ?? candles[0]?.open);
+  return { candles, prevCandles, prevClose };
 }
 
 const REPLAY_CANDLE_MS = 5 * 60 * 1000;
@@ -989,7 +999,7 @@ function replayPriceInCandle(c, f) {
 }
 
 function replaySnapshot(entry, clock) {
-  const hist = [];
+  const hist = (entry.prevCandles || []).map((c) => ({ time: c.start, price: c.close, open: c.open, high: c.high, low: c.low, close: c.close }));
   let price = entry.candles.length ? entry.candles[0].open : entry.prevClose;
   for (const c of entry.candles) {
     if (c.start > clock) break;
