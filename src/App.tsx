@@ -232,10 +232,96 @@ function computeMACD(arr, fast = 12, slow = 26, signal = 9) {
   const hist = macdLine.map((v, i) => (v != null && signalLine[i] != null ? v - signalLine[i] : null));
   return { macdLine, signalLine, hist };
 }
+const hi = (d) => d.high ?? d.price;
+const lo = (d) => d.low ?? d.price;
+const cl = (d) => d.close ?? d.price;
+
+function computeBollinger(arr, period = 20, mult = 2) {
+  const mid = computeSMA(arr, period);
+  const up = [], low = [];
+  arr.forEach((_, i) => {
+    if (mid[i] == null) { up.push(null); low.push(null); return; }
+    let v = 0;
+    for (let j = i - period + 1; j <= i; j++) v += (arr[j].price - mid[i]) ** 2;
+    const sd = Math.sqrt(v / period);
+    up.push(mid[i] + mult * sd);
+    low.push(mid[i] - mult * sd);
+  });
+  return { mid, up, low };
+}
+
+function computeATR(arr, period = 14) {
+  const out = new Array(arr.length).fill(null);
+  if (arr.length <= period) return out;
+  const tr = arr.map((d, i) => (i === 0 ? hi(d) - lo(d) : Math.max(hi(d) - lo(d), Math.abs(hi(d) - cl(arr[i - 1])), Math.abs(lo(d) - cl(arr[i - 1])))));
+  let atr = tr.slice(1, period + 1).reduce((a, b) => a + b, 0) / period;
+  out[period] = atr;
+  for (let i = period + 1; i < arr.length; i++) { atr = (atr * (period - 1) + tr[i]) / period; out[i] = atr; }
+  return out;
+}
+
+function computeSupertrend(arr, period = 10, mult = 3) {
+  const atr = computeATR(arr, period);
+  const line = new Array(arr.length).fill(null), up = new Array(arr.length).fill(null);
+  let fUpper = null, fLower = null, trendUp = true;
+  for (let i = 0; i < arr.length; i++) {
+    if (atr[i] == null) continue;
+    const mid = (hi(arr[i]) + lo(arr[i])) / 2;
+    const bUpper = mid + mult * atr[i], bLower = mid - mult * atr[i];
+    const prevClose = i > 0 ? cl(arr[i - 1]) : cl(arr[i]);
+    fUpper = fUpper == null || bUpper < fUpper || prevClose > fUpper ? bUpper : fUpper;
+    fLower = fLower == null || bLower > fLower || prevClose < fLower ? bLower : fLower;
+    if (trendUp && cl(arr[i]) < fLower) trendUp = false;
+    else if (!trendUp && cl(arr[i]) > fUpper) trendUp = true;
+    line[i] = trendUp ? fLower : fUpper;
+    up[i] = trendUp;
+  }
+  return { line, up };
+}
+
+function computeStochastic(arr, kPeriod = 14, dPeriod = 3) {
+  const k = arr.map((d, i) => {
+    if (i < kPeriod - 1) return null;
+    let h = -Infinity, l = Infinity;
+    for (let j = i - kPeriod + 1; j <= i; j++) { h = Math.max(h, hi(arr[j])); l = Math.min(l, lo(arr[j])); }
+    return h === l ? 50 : ((cl(d) - l) / (h - l)) * 100;
+  });
+  const d = k.map((_, i) => {
+    if (i < kPeriod - 2 + dPeriod || k[i] == null) return null;
+    let sum = 0, n = 0;
+    for (let j = i - dPeriod + 1; j <= i; j++) if (k[j] != null) { sum += k[j]; n++; }
+    return n === dPeriod ? sum / n : null;
+  });
+  return { k, d };
+}
+
+const IND_COLORS = { sma50: "#5EC8D8", ema9: "#FF8A5B", ema21: "#B98EFF", bb: "#6FCF97", stoch: "#FFB020", atr: "#5EC8D8" };
+const INDICATOR_DEFS = [
+  { key: "ma", group: "overlay", name: "SMA 20", color: "#FFB020", pro: false, desc: "Average closing price of the last 20 candles. Price staying above it usually means an uptrend." },
+  { key: "sma50", group: "overlay", name: "SMA 50", color: IND_COLORS.sma50, pro: true, desc: "Slower 50-candle average, used to judge the bigger trend." },
+  { key: "ema9", group: "overlay", name: "EMA 9", color: IND_COLORS.ema9, pro: true, desc: "Fast exponential average that reacts quickly to recent prices." },
+  { key: "ema21", group: "overlay", name: "EMA 21", color: IND_COLORS.ema21, pro: true, desc: "Medium exponential average. EMA 9 crossing EMA 21 is a popular trend signal." },
+  { key: "bb", group: "overlay", name: "Bollinger Bands (20, 2)", color: IND_COLORS.bb, pro: true, desc: "A band two standard deviations around SMA 20. Price at the edges means it's stretched." },
+  { key: "st", group: "overlay", name: "Supertrend (10, 3)", color: "#14E8A0", pro: true, desc: "Trend-following line: green below price in an uptrend, red above price in a downtrend." },
+  { key: "rsi", group: "pane", name: "RSI (14)", color: "#7B61FF", pro: true, desc: "Momentum from 0 to 100. Above 70 is often called overbought, below 30 oversold." },
+  { key: "macd", group: "pane", name: "MACD (12, 26, 9)", color: "#14E8A0", pro: true, desc: "Difference between two EMAs with a signal line. Crossovers show changes in momentum." },
+  { key: "stoch", group: "pane", name: "Stochastic (14, 3)", color: IND_COLORS.stoch, pro: true, desc: "Where the close sits within the recent high-low range. Above 80 is high, below 20 low." },
+  { key: "atr", group: "pane", name: "ATR (14)", color: IND_COLORS.atr, pro: true, desc: "Average True Range: how much price typically moves per candle. Useful for setting stop-losses." },
+];
+const ALL_INDICATORS_ON = Object.fromEntries(INDICATOR_DEFS.map((d) => [d.key, true]));
+
 function buildChartSeries(history, ind) {
   const sma = ind.ma ? computeSMA(history, 20) : null;
   const rsi = ind.rsi ? computeRSI(history, 14) : null;
   const macd = ind.macd ? computeMACD(history) : null;
+  const sma50 = ind.sma50 ? computeSMA(history, 50) : null;
+  const closes = history.map((d) => d.price);
+  const ema9 = ind.ema9 ? computeEMASeries(closes, 9) : null;
+  const ema21 = ind.ema21 ? computeEMASeries(closes, 21) : null;
+  const bb = ind.bb ? computeBollinger(history) : null;
+  const st = ind.st ? computeSupertrend(history) : null;
+  const stoch = ind.stoch ? computeStochastic(history) : null;
+  const atr = ind.atr ? computeATR(history) : null;
   return history.map((d, i) => {
     const open = d.open ?? d.price;
     const high = d.high ?? d.price;
@@ -250,6 +336,13 @@ function buildChartSeries(history, ind) {
       macdLine: macd ? macd.macdLine[i] : null,
       signalLine: macd ? macd.signalLine[i] : null,
       hist: macd ? macd.hist[i] : null,
+      sma50: sma50 ? sma50[i] : null,
+      ema9: ema9 && i >= 8 ? ema9[i] : null,
+      ema21: ema21 && i >= 20 ? ema21[i] : null,
+      bbU: bb ? bb.up[i] : null, bbM: bb ? bb.mid[i] : null, bbL: bb ? bb.low[i] : null,
+      st: st ? st.line[i] : null, stUp: st ? st.up[i] : null,
+      stochK: stoch ? stoch.k[i] : null, stochD: stoch ? stoch.d[i] : null,
+      atr: atr ? atr[i] : null,
     };
   });
 }
@@ -305,7 +398,8 @@ const DRAW_TOOLS = [
   { id: "erase", label: "Erase" },
 ];
 
-function PriceChart({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPrice, pendingLines, chartType, resetKey }) {
+function PriceChart({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPrice, pendingLines, chartType, resetKey, overlays = [] }) {
+  const overlaySeriesRef = useRef(new Map());
   const containerRef = useRef(null);
   const legendRef = useRef(null);
   const chartRef = useRef(null);
@@ -459,6 +553,27 @@ function PriceChart({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPr
     if (chartRef.current) chartRef.current.timeScale().fitContent();
   }, [data, showMA]);
 
+  const overlaysKey = overlays.map((o) => o.id).join(",");
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    const wanted = new Set(overlays.map((o) => o.id));
+    overlaySeriesRef.current.forEach((series, id) => {
+      if (!wanted.has(id)) { try { chart.removeSeries(series); } catch { /* already gone */ } overlaySeriesRef.current.delete(id); }
+    });
+    const prepped = prepLW(data);
+    overlays.forEach((o) => {
+      let series = overlaySeriesRef.current.get(o.id);
+      if (!series) {
+        series = chart.addSeries(LineSeries, { color: o.color, lineWidth: o.width ?? 1.5, lineStyle: o.lineStyle ?? 0, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
+        overlaySeriesRef.current.set(o.id, series);
+      }
+      series.setData(prepped.filter(({ d }) => d[o.field] != null).map(({ t, d }) => (
+        o.trendColored ? { time: t, value: d[o.field], color: d.stUp ? LW_COLORS.bull : LW_COLORS.bear } : { time: t, value: d[o.field] }
+      )));
+    });
+  }, [data, overlaysKey]);
+
   useEffect(() => {
     const activeSeries = chartType === "line" ? lineRef.current : candleRef.current;
     if (!activeSeries) return;
@@ -575,6 +690,42 @@ function PriceChart({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPr
       </div>
     </div>
   );
+}
+
+function IndicatorPane({ data, syncGroupRef, lines, levels = [] }) {
+  const containerRef = useRef(null);
+  const seriesRefs = useRef([]);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const chart = createChart(containerRef.current, {
+      width: containerRef.current.clientWidth,
+      height: 110,
+      layout: { background: { color: "transparent" }, textColor: LW_COLORS.text, fontFamily: "JetBrains Mono, monospace", fontSize: 10, attributionLogo: false },
+      grid: { vertLines: { color: LW_COLORS.grid }, horzLines: { color: LW_COLORS.grid } },
+      crosshair: { mode: CrosshairMode.Normal },
+      rightPriceScale: { borderColor: LW_COLORS.grid },
+      timeScale: { borderColor: LW_COLORS.grid, visible: false },
+      handleScroll: { mouseWheel: true, pressedMouseMove: true },
+      handleScale: { mouseWheel: true, pinch: true },
+    });
+    seriesRefs.current = lines.map((l) => chart.addSeries(LineSeries, { color: l.color, lineWidth: 2, priceLineVisible: false, lastValueVisible: false }));
+    levels.forEach((lv) => seriesRefs.current[0].createPriceLine({ price: lv.price, color: lv.color, lineWidth: 1, lineStyle: 2, axisLabelVisible: true }));
+    joinSyncGroup(chart, syncGroupRef);
+    const onResize = () => { if (containerRef.current) chart.applyOptions({ width: containerRef.current.clientWidth }); };
+    window.addEventListener("resize", onResize);
+    return () => { window.removeEventListener("resize", onResize); leaveSyncGroup(chart, syncGroupRef); chart.remove(); };
+  }, []);
+
+  useEffect(() => {
+    const prepped = prepLW(data);
+    lines.forEach((l, i) => {
+      const s = seriesRefs.current[i];
+      if (s) s.setData(prepped.filter(({ d }) => d[l.field] != null).map(({ t, d }) => ({ time: t, value: d[l.field] })));
+    });
+  }, [data]);
+
+  return <div ref={containerRef} className="lwChart" />;
 }
 
 function RSIChart({ data, syncGroupRef }) {
@@ -1673,7 +1824,21 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
 
   const [timeframe, setTimeframe] = useState("1D");
   const [chartHistory, setChartHistory] = useState([]);
-  const [indicators, setIndicators] = useState({ ma: true, rsi: false, macd: false });
+  const [indicators, setIndicators] = useState(() => ({ ...Object.fromEntries(INDICATOR_DEFS.map((d) => [d.key, false])), ma: true }));
+  const activeIndicatorCount = INDICATOR_DEFS.filter((d) => indicators[d.key]).length;
+  const chartOverlays = useMemo(() => {
+    const o = [];
+    if (indicators.sma50) o.push({ id: "sma50", field: "sma50", color: IND_COLORS.sma50 });
+    if (indicators.ema9) o.push({ id: "ema9", field: "ema9", color: IND_COLORS.ema9 });
+    if (indicators.ema21) o.push({ id: "ema21", field: "ema21", color: IND_COLORS.ema21 });
+    if (indicators.bb) {
+      o.push({ id: "bbU", field: "bbU", color: IND_COLORS.bb, width: 1 });
+      o.push({ id: "bbM", field: "bbM", color: IND_COLORS.bb, width: 1, lineStyle: 2 });
+      o.push({ id: "bbL", field: "bbL", color: IND_COLORS.bb, width: 1 });
+    }
+    if (indicators.st) o.push({ id: "st", field: "st", color: LW_COLORS.bull, width: 2, trendColored: true });
+    return o;
+  }, [indicators]);
   const [chartType, setChartType] = useState("candle");
 
   const [alerts, setAlerts] = useState(() => saved?.alerts ?? []);
@@ -2045,6 +2210,47 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
   const meta = allInstruments.find((s) => s.symbol === selected);
   const isIndex = meta.exchange === "INDEX";
   const chartSeries = useMemo(() => buildChartSeries(chartHistory.length ? chartHistory : q.history, indicators), [chartHistory, q.history, indicators]);
+  const indicatorLatest = useMemo(() => {
+    const all = buildChartSeries(chartHistory.length ? chartHistory : q.history, ALL_INDICATORS_ON);
+    return all[all.length - 1] || null;
+  }, [chartHistory, q.history]);
+  const toggleIndicator = (def) => {
+    if (def.pro && !isPro) { setUpgradeModalOpen(true); return; }
+    setIndicators((prev) => ({ ...prev, [def.key]: !prev[def.key] }));
+  };
+  const indicatorReading = (key) => {
+    const L = indicatorLatest;
+    if (!L) return { value: "—", text: "Not enough data yet", tone: "" };
+    const px = L.close;
+    const f = (v) => (v == null ? "—" : v.toLocaleString("en-IN", { maximumFractionDigits: 2 }));
+    const vsLine = (v) => (v == null ? { value: "—", text: "Needs more candles", tone: "" }
+      : px >= v ? { value: f(v), text: "Price above: bullish bias", tone: "bull" } : { value: f(v), text: "Price below: bearish bias", tone: "bear" });
+    switch (key) {
+      case "ma": return vsLine(L.ma);
+      case "sma50": return vsLine(L.sma50);
+      case "ema9": return vsLine(L.ema9);
+      case "ema21": return vsLine(L.ema21);
+      case "bb":
+        if (L.bbU == null) return { value: "—", text: "Needs 20 candles", tone: "" };
+        return { value: `${f(L.bbL)} – ${f(L.bbU)}`, text: px >= L.bbU ? "At upper band: stretched up" : px <= L.bbL ? "At lower band: stretched down" : "Inside the bands", tone: px >= L.bbU ? "bear" : px <= L.bbL ? "bull" : "" };
+      case "st":
+        if (L.st == null) return { value: "—", text: "Needs more candles", tone: "" };
+        return { value: f(L.st), text: L.stUp ? "Uptrend" : "Downtrend", tone: L.stUp ? "bull" : "bear" };
+      case "rsi":
+        if (L.rsi == null) return { value: "—", text: "Needs 15 candles", tone: "" };
+        return { value: L.rsi.toFixed(1), text: L.rsi >= 70 ? "Overbought zone" : L.rsi <= 30 ? "Oversold zone" : "Neutral", tone: L.rsi >= 70 ? "bear" : L.rsi <= 30 ? "bull" : "" };
+      case "macd":
+        if (L.macdLine == null || L.signalLine == null) return { value: "—", text: "Needs 35 candles", tone: "" };
+        return { value: L.macdLine.toFixed(2), text: L.macdLine >= L.signalLine ? "Above signal: bullish momentum" : "Below signal: bearish momentum", tone: L.macdLine >= L.signalLine ? "bull" : "bear" };
+      case "stoch":
+        if (L.stochK == null) return { value: "—", text: "Needs 14 candles", tone: "" };
+        return { value: L.stochK.toFixed(1), text: L.stochK >= 80 ? "High (overbought)" : L.stochK <= 20 ? "Low (oversold)" : "Mid-range", tone: L.stochK >= 80 ? "bear" : L.stochK <= 20 ? "bull" : "" };
+      case "atr":
+        if (L.atr == null) return { value: "—", text: "Needs 15 candles", tone: "" };
+        return { value: f(L.atr), text: `${((L.atr / px) * 100).toFixed(2)}% of price per candle`, tone: "" };
+      default: return { value: "—", text: "", tone: "" };
+    }
+  };
 
   useEffect(() => { setPickingPriceFromChart(false); }, [selected, tab]);
 
@@ -2490,7 +2696,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
           </div>
 
           <div className="tabs">
-            {[["trade", "Chart & Trade"], ["chain", "Options Chain"], ["positions", "Positions"], ["orders", `Orders${pendingOrders.length ? ` (${pendingOrders.length})` : ""}`], ["alerts", `Alerts${activeAlerts ? ` (${activeAlerts})` : ""}`], ["news", "News"], ["history", "History"], ["replay", "Replay"]].map(([id, label]) => (
+            {[["trade", "Chart & Trade"], ["indicators", `Indicators${activeIndicatorCount ? ` (${activeIndicatorCount})` : ""}`], ["chain", "Options Chain"], ["positions", "Positions"], ["orders", `Orders${pendingOrders.length ? ` (${pendingOrders.length})` : ""}`], ["alerts", `Alerts${activeAlerts ? ` (${activeAlerts})` : ""}`], ["news", "News"], ["history", "History"], ["replay", "Replay"]].map(([id, label]) => (
               <button key={id} className={`tab ${tab === id ? "tabActive" : ""}`} onClick={() => setTab(id)}>{label}</button>
             ))}
           </div>
@@ -2510,18 +2716,9 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                     })}
                   </div>
                   <div className="indToggles">
-                    {[["ma", "MA(20)", LW_COLORS.amber, false], ["rsi", "RSI(14)", LW_COLORS.accent, true], ["macd", "MACD", LW_COLORS.bull, true]].map(([key, label, dot, proOnly]) => {
-                      const locked = proOnly && !isPro;
-                      return (
-                        <button
-                          key={key}
-                          className={`indToggle ${indicators[key] ? "indToggleActive" : ""}`}
-                          onClick={() => (locked ? setUpgradeModalOpen(true) : setIndicators((prev) => ({ ...prev, [key]: !prev[key] })))}
-                        >
-                          {locked ? <Lock size={10} /> : <span className="indDot" style={{ background: dot }} />}{label}
-                        </button>
-                      );
-                    })}
+                    <button className={`indToggle ${activeIndicatorCount ? "indToggleActive" : ""}`} onClick={() => setTab("indicators")}>
+                      <Layers size={11} /> Indicators{activeIndicatorCount ? ` (${activeIndicatorCount})` : ""}
+                    </button>
                     <button className="indToggle fitBtn" title="Reset zoom / fit all candles" onClick={() => fitAllInGroup(syncGroupRef)}>
                       <Maximize2 size={11} /> Fit
                     </button>
@@ -2538,6 +2735,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                 <PriceChart
                   data={chartSeries}
                   showMA={indicators.ma}
+                  overlays={chartOverlays}
                   syncGroupRef={syncGroupRef}
                   pickMode={pickingPriceFromChart}
                   onPricePick={handleChartPricePick}
@@ -2565,6 +2763,20 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                   <div className="subChart">
                     <span className="subChartLabel"><span className="indDot" style={{ background: LW_COLORS.bull }} />MACD (12, 26, 9)</span>
                     <MACDChart data={chartSeries} syncGroupRef={syncGroupRef} />
+                  </div>
+                )}
+
+                {indicators.stoch && (
+                  <div className="subChart">
+                    <span className="subChartLabel"><span className="indDot" style={{ background: IND_COLORS.stoch }} />Stochastic (14, 3)</span>
+                    <IndicatorPane data={chartSeries} syncGroupRef={syncGroupRef} lines={[{ field: "stochK", color: IND_COLORS.stoch }, { field: "stochD", color: LW_COLORS.accent }]} levels={[{ price: 80, color: LW_COLORS.bear }, { price: 20, color: LW_COLORS.bull }]} />
+                  </div>
+                )}
+
+                {indicators.atr && (
+                  <div className="subChart">
+                    <span className="subChartLabel"><span className="indDot" style={{ background: IND_COLORS.atr }} />ATR (14)</span>
+                    <IndicatorPane data={chartSeries} syncGroupRef={syncGroupRef} lines={[{ field: "atr", color: IND_COLORS.atr }]} />
                   </div>
                 )}
 
@@ -2656,6 +2868,44 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                   })()}
                 </div>
               )}
+            </div>
+          )}
+
+          {tab === "indicators" && (
+            <div className="indTab">
+              <div className="indTabHead">
+                <div>
+                  <h3>Indicators</h3>
+                  <p className="dim">Switch indicators on or off for the {displayTicker(selected)} chart. Readings use the {timeframe} candles. They describe what price has done; they aren't trade recommendations.</p>
+                </div>
+                <button className="btn btnBull indTabChartBtn" onClick={() => setTab("trade")}><LineChart size={14} /> View chart</button>
+              </div>
+              {[["overlay", "Drawn on the price chart"], ["pane", "Shown below the chart"]].map(([group, title]) => (
+                <div key={group} className="indGroup">
+                  <h4 className="dim">{title}</h4>
+                  {INDICATOR_DEFS.filter((d) => d.group === group).map((def) => {
+                    const on = !!indicators[def.key];
+                    const locked = def.pro && !isPro;
+                    const r = locked ? { value: "", text: "Pro feature", tone: "" } : indicatorReading(def.key);
+                    return (
+                      <div key={def.key} className={`indRow ${on ? "indRowOn" : ""}`}>
+                        <button className={`indSwitch ${on ? "indSwitchOn" : ""}`} role="switch" aria-checked={on} aria-label={`Show ${def.name}`} onClick={() => toggleIndicator(def)}>
+                          {locked ? <Lock size={11} /> : <span />}
+                        </button>
+                        <span className="indDot" style={{ background: def.color }} />
+                        <div className="indInfo">
+                          <div className="indName">{def.name}</div>
+                          <div className="indDesc dim">{def.desc}</div>
+                        </div>
+                        <div className="indRead">
+                          <div className="mono indVal">{r.value}</div>
+                          <div className={`indText ${r.tone}`}>{r.text}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
             </div>
           )}
 
@@ -3545,6 +3795,28 @@ const CSS = `
 .posSummaryRow { display: flex; justify-content: space-between; align-items: center; font-size: 11.5px; padding: 3px 0; }
 .posSummaryRow .mono { font-variant-numeric: tabular-nums; }
 
+.indTab { display: flex; flex-direction: column; gap: 18px; }
+.indTabHead { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+.indTabHead h3 { margin: 0 0 4px; font-family: 'Instrument Sans'; font-size: 16px; }
+.indTabHead p { margin: 0; font-size: 12.5px; max-width: 62ch; line-height: 1.5; }
+.indTabChartBtn { flex: none; padding: 9px 16px; }
+.indGroup { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.indGroup h4 { margin: 0; padding: 12px 16px; font-size: 11px; font-weight: 600; border-bottom: 1px solid var(--border); }
+.indRow { display: grid; grid-template-columns: auto auto 1fr minmax(150px, 220px); align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+.indRow:last-child { border-bottom: none; }
+.indRowOn { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.indSwitch { width: 36px; height: 20px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-2); position: relative; cursor: pointer; padding: 0; display: inline-flex; align-items: center; justify-content: center; color: var(--text-dim); }
+.indSwitch span { position: absolute; left: 2px; top: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--text-dim); transition: transform 0.15s ease, background 0.15s ease; }
+.indSwitchOn { background: var(--accent); border-color: var(--accent); }
+.indSwitchOn span { transform: translateX(16px); background: white; }
+.indSwitch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.indName { font-size: 13.5px; font-weight: 600; }
+.indDesc { font-size: 11.5px; line-height: 1.45; margin-top: 2px; }
+.indRead { text-align: right; }
+.indVal { font-size: 13px; font-weight: 600; }
+.indText { font-size: 11.5px; color: var(--text-dim); margin-top: 2px; }
+.indText.bull { color: var(--bull); } .indText.bear { color: var(--bear); }
+@media (max-width: 700px) { .indRow { grid-template-columns: auto auto 1fr; } .indRead { grid-column: 3; text-align: left; } }
 .chainWrap { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
 .expiryTabs { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
 .expiryTab { background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim); padding: 6px 14px; border-radius: 20px; font-size: 12px; cursor: pointer; }
