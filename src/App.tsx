@@ -2869,6 +2869,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
           {!isPaidPro && (
             <button className="upgradeBtn" onClick={() => setUpgradeModalOpen(true)}><Sparkles size={13} /> {inTrial ? "Upgrade Early" : "Upgrade to Pro"}</button>
           )}
+          <button className="resetBtn" onClick={popOutChart} title="Open a full-day chart in a new window"><Maximize2 size={14} /> Pop-out chart</button>
           <button className="themeBtn" onClick={cycleTheme} title="Change background theme"><span className="themeEmoji">{THEMES[themeIdx].emoji}</span> {THEMES[themeIdx].name}</button>
           <button className="resetBtn" onClick={() => setConfirmReset(true)}><RotateCcw size={14} /> Reset</button>
           <button className="resetBtn" onClick={onLogout}><LogOut size={14} /> Log out</button>
@@ -2993,6 +2994,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                 {["^NSEI", "^NSEBANK", "^BSESN"].filter((sym) => allInstruments.some((s) => s.symbol === sym)).map((sym) => (
                   <button key={sym} className="btn btnGhost pickQuickBtn" onClick={() => setSelected(sym)}>{displayTicker(sym)}</button>
                 ))}
+                <button className="btn btnGhost pickQuickBtn" onClick={popOutChart}><Maximize2 size={13} /> Pop-out full-day chart</button>
               </div>
             </div>
           )}
