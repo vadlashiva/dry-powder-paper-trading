@@ -2160,31 +2160,11 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
       });
     };
     pull();
-    const iv = setInterval(pull, 20000);
+    const iv = setInterval(pull, 10000);
     return () => { cancelled = true; clearInterval(iv); };
   }, []);
 
-  useEffect(() => {
-    const iv = setInterval(() => {
-      if (replayActiveRef.current || !marketStatusRef.current.isOpen) return;
-      setQuotes((prev) => {
-        const next = { ...prev };
-        allInstrumentsRef.current.forEach((s) => {
-          const cur = prev[s.symbol];
-          if (!cur) return;
-          const open = cur.price;
-          const close = +(open + open * (Math.random() - 0.5) * 0.0015).toFixed(2);
-          const wick = open * Math.random() * 0.0008;
-          const high = +(Math.max(open, close) + wick).toFixed(2);
-          const low = +(Math.min(open, close) - wick).toFixed(2);
-          const history = [...cur.history, { time: Date.now(), price: close, open, high, low, close }].slice(-90);
-          next[s.symbol] = { ...cur, price: close, history };
-        });
-        return next;
-      });
-    }, 2200);
-    return () => clearInterval(iv);
-  }, []);
+  // Prices come only from the real feed (no simulated ticks), so fills and P&L use real prices.
 
   useEffect(() => {
     let cancelled = false;
@@ -2363,11 +2343,12 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
         if (fillQty <= 0) { cancelled.push(o); return; }
         const total = fillPrice * fillQty;
         workingCash += total;
+        const realized = (fillPrice - workingPositions[idx].avgPrice) * fillQty;
         workingPositions[idx] = { ...workingPositions[idx], qty: workingPositions[idx].qty - fillQty };
         if (fillQty < o.qty) {
-          partial.push({ ...o, filledQty: fillQty, remainingQty: o.qty - fillQty, resolution: "cancelled" });
+          partial.push({ ...o, filledQty: fillQty, remainingQty: o.qty - fillQty, resolution: "cancelled", realized });
         } else {
-          filled.push({ ...o, filledQty: fillQty });
+          filled.push({ ...o, filledQty: fillQty, realized });
         }
       }
     });
@@ -2380,12 +2361,12 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
     }
     filled.forEach((o) => {
       const label = `${o.kind.toUpperCase()} ${o.side.toUpperCase()} ${o.filledQty} ${displayTicker(o.symbol)} @ ${fmtMoney(o.fillPrice)}`;
-      logTrade(label, o.side === "buy" ? -(o.fillPrice * o.filledQty) : o.fillPrice * o.filledQty);
+      logTrade(label, o.side === "buy" ? -(o.fillPrice * o.filledQty) : o.fillPrice * o.filledQty, o.side === "sell" ? o.realized : null);
       showToast(`${o.kind === "limit" ? "Limit" : "Stop"} order filled: ${o.side} ${o.filledQty} ${displayTicker(o.symbol)}`, o.side === "buy" ? "bull" : "bear");
     });
     partial.forEach((o) => {
       const label = `${o.kind.toUpperCase()} ${o.side.toUpperCase()} ${o.filledQty} ${displayTicker(o.symbol)} @ ${fmtMoney(o.fillPrice)} (partial)`;
-      logTrade(label, o.side === "buy" ? -(o.fillPrice * o.filledQty) : o.fillPrice * o.filledQty);
+      logTrade(label, o.side === "buy" ? -(o.fillPrice * o.filledQty) : o.fillPrice * o.filledQty, o.side === "sell" ? o.realized : null);
       if (o.resolution === "requeued") {
         showToast(`Partial fill: ${o.filledQty}/${o.qty} ${displayTicker(o.symbol)} — ${o.remainingQty} still pending`, "bull");
       } else {
@@ -2521,6 +2502,20 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
   }, 0);
   const equity = cash + stockMktValue + optionMktValue;
   const dayPnl = equity - STARTING_CASH;
+  // Unrealized = open positions marked to market; Realized = everything already booked (Total - Unrealized).
+  const stockUnrealized = stockPositions.reduce((sum, p) => sum + ((quotes[p.symbol]?.price ?? 0) - p.avgPrice) * p.qty, 0);
+  const optionUnrealized = optionPositions.reduce((sum, p) => {
+    const spot = quotes[p.symbol]?.price ?? 0;
+    const symMeta = allInstruments.find((s) => s.symbol === p.symbol);
+    const pT = (p.expiry - nowMs()) / (365 * 24 * 3600 * 1000);
+    const sigma = symMeta.iv * (1 + 0.15 * Math.abs(p.strike - spot) / spot);
+    const { price } = blackScholes(spot, p.strike, pT, RISK_FREE, sigma, p.type);
+    return sum + (isShort(p) ? p.avgPremium - price : price - p.avgPremium) * posMultiplier(p) * p.qty;
+  }, 0);
+  const unrealizedPnl = stockUnrealized + optionUnrealized;
+  const realizedPnl = dayPnl - unrealizedPnl;
+  // Don't show P&L from the hard-coded starting prices; wait until every held symbol has a live quote.
+  const pricesReady = [...stockPositions, ...optionPositions].every((p) => quotes[p.symbol]?.live);
 
   const allocationItems = useMemo(() => {
     const items = [];
@@ -2550,8 +2545,8 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
     setToast({ msg, kind });
     setTimeout(() => setToast(null), 2600);
   };
-  const logTrade = (label, amount) => {
-    setTrades((prev) => [{ id: uid(), time: new Date(nowMs()), label, amount }, ...prev].slice(0, 200));
+  const logTrade = (label, amount, realized = null) => {
+    setTrades((prev) => [{ id: uid(), time: new Date(nowMs()), label, amount, realized }, ...prev].slice(0, 200));
   };
 
   const startReplay = async () => {
@@ -2661,7 +2656,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
       if (qty > held) return showToast(`Only ${held} shares held`, "bear");
       setCash((c) => c + cost);
       setStockPositions((prev) => prev.map((p) => (p.symbol === selected ? { ...p, qty: p.qty - qty } : p)).filter((p) => p.qty > 0));
-      logTrade(`SELL ${qty} ${displayTicker(selected)} @ ${fmtMoney(price)}`, cost);
+      logTrade(`SELL ${qty} ${displayTicker(selected)} @ ${fmtMoney(price)}`, cost, (price - existing.avgPrice) * qty);
       showToast(`Sold ${qty} ${displayTicker(selected)}`, "bear");
     }
   };
@@ -2740,9 +2735,9 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
     if (!isPro) return setUpgradeModalOpen(true);
     if (trades.length === 0) return showToast("No trades to export", "bear");
     const escapeCell = (v) => `"${String(v).replace(/"/g, '""')}"`;
-    const header = "Time,Trade,Cash Impact\n";
+    const header = "Time,Trade,Cash Impact,Realized P&L\n";
     const rows = trades
-      .map((t) => `${t.time.toISOString()},${escapeCell(t.label)},${t.amount.toFixed(2)}`)
+      .map((t) => `${t.time.toISOString()},${escapeCell(t.label)},${t.amount.toFixed(2)},${t.realized == null ? "" : t.realized.toFixed(2)}`)
       .join("\n");
     const csv = header + rows;
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -2796,7 +2791,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
       if (qty > held) return showToast(held ? `Only ${held} lot${held > 1 ? "s" : ""} held — use Sell to Open to go short` : "You don't hold this option — use Sell to Open to go short", "bear");
       setCash((c) => c + premiumTotal);
       setOptionPositions((prev) => prev.map((p) => (longKey(p) ? { ...p, qty: p.qty - qty } : p)).filter((p) => p.qty > 0));
-      logTrade(`STC ${plural} ${label} @ ${fmtMoney(price)}`, premiumTotal);
+      logTrade(`STC ${plural} ${label} @ ${fmtMoney(price)}`, premiumTotal, (price - existing.avgPremium) * lot * qty);
       showToast(`Sold ${plural} ${label}`, "bear");
     } else if (mode === "short") {
       const marginNeeded = shortMarginPerLot(spot, ticket.strike, ticket.type, lot) * qty;
@@ -2821,7 +2816,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
       if (premiumTotal > cash + release) return showToast("Insufficient funds to buy back", "bear");
       setCash((c) => c + release - premiumTotal);
       setOptionPositions((prev) => prev.map((p) => (shortKey(p) ? { ...p, qty: p.qty - qty, margin: (p.margin || 0) - release } : p)).filter((p) => p.qty > 0));
-      logTrade(`BTC ${plural} ${label} @ ${fmtMoney(price)}`, -premiumTotal);
+      logTrade(`BTC ${plural} ${label} @ ${fmtMoney(price)}`, -premiumTotal, (existing.avgPremium - price) * lot * qty);
       showToast(`Covered ${plural} ${label}`, "bull");
     }
     setTicket(null);
@@ -2837,7 +2832,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
     const short = isShort(pos);
     setCash((c) => c + (short ? (pos.margin || 0) - total : total));
     setOptionPositions((prev) => prev.filter((p) => p.id !== pos.id));
-    logTrade(`${short ? "BTC" : "STC"} ${pos.qty}x ${pos.type.toUpperCase()} ${displayTicker(pos.symbol)} ${pos.strike} @ ${fmtMoney(price)}`, short ? -total : total);
+    logTrade(`${short ? "BTC" : "STC"} ${pos.qty}x ${pos.type.toUpperCase()} ${displayTicker(pos.symbol)} ${pos.strike} @ ${fmtMoney(price)}`, short ? -total : total, (short ? pos.avgPremium - price : price - pos.avgPremium) * posMultiplier(pos) * pos.qty);
     showToast("Position closed", "bear");
   };
 
@@ -2846,7 +2841,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
     const total = price * pos.qty;
     setCash((c) => c + total);
     setStockPositions((prev) => prev.filter((p) => p.id !== pos.id));
-    logTrade(`SELL ${pos.qty} ${displayTicker(pos.symbol)} @ ${fmtMoney(price)}`, total);
+    logTrade(`SELL ${pos.qty} ${displayTicker(pos.symbol)} @ ${fmtMoney(price)}`, total, (price - pos.avgPrice) * pos.qty);
     showToast("Position closed", "bear");
   };
 
@@ -2896,8 +2891,10 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
         <div className="stats">
           {replayActive && <span className="replayBadge">REPLAY</span>}
           <Stat label="Cash" value={fmtMoney(cash, 0)} />
-          <Stat label="Equity" value={fmtMoney(equity, 0)} pulse={pulse} />
-          <Stat label="Total P&L" value={fmtMoney(dayPnl, 0)} tone={dayPnl >= 0 ? "bull" : "bear"} />
+          <Stat label="Equity" value={pricesReady ? fmtMoney(equity, 0) : "Loading…"} pulse={pulse} />
+          <Stat label="Total P&L" value={pricesReady ? fmtMoney(dayPnl, 0) : "Loading…"} tone={pricesReady ? (dayPnl >= 0 ? "bull" : "bear") : ""} />
+          <Stat label="Realized" value={pricesReady ? fmtMoney(realizedPnl, 0) : "…"} tone={pricesReady ? (realizedPnl >= 0 ? "bull" : "bear") : ""} />
+          <Stat label="Unrealized" value={pricesReady ? fmtMoney(unrealizedPnl, 0) : "…"} tone={pricesReady ? (unrealizedPnl >= 0 ? "bull" : "bear") : ""} />
         </div>
         <div className="topbarActions">
           <div className="userBadge">
@@ -3511,13 +3508,14 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                 <div className="empty">No trades yet. Your fills will show up here.</div>
               ) : (
                 <table className="posTable">
-                  <thead><tr><th>Time</th><th>Trade</th><th>Cash Impact</th></tr></thead>
+                  <thead><tr><th>Time</th><th>Trade</th><th>Cash Impact</th><th>Realized P&amp;L</th></tr></thead>
                   <tbody>
                     {trades.map((t) => (
                       <tr key={t.id}>
                         <td className="mono dim">{t.time.toLocaleTimeString()}</td>
                         <td className="mono">{t.label}</td>
-                        <td className={`mono ${t.amount >= 0 ? "bull" : "bear"}`}>{fmtMoney(t.amount)}</td>
+                        <td className="mono">{fmtMoney(t.amount)}</td>
+                        <td className={`mono ${t.realized == null ? "dim" : t.realized >= 0 ? "bull" : "bear"}`}>{t.realized == null ? "—" : fmtMoney(t.realized)}</td>
                       </tr>
                     ))}
                   </tbody>
