@@ -115,7 +115,7 @@ function normCDF(x) { return 0.5 * (1 + erf(x / Math.sqrt(2))); }
 function phi(x) { return Math.exp(-x * x / 2) / Math.sqrt(2 * Math.PI); }
 
 function blackScholes(S, K, T, r, sigma, type) {
-  T = Math.max(T, 1 / (365 * 24));
+  T = Math.max(T, 1 / (365 * 24 * 60)); // floor at 1 minute so expiry-day premiums keep decaying to the close
   const d1 = (Math.log(S / K) + (r + (sigma * sigma) / 2) * T) / (sigma * Math.sqrt(T));
   const d2 = d1 - sigma * Math.sqrt(T);
   let price, delta, theta;
@@ -133,16 +133,33 @@ function blackScholes(S, K, T, r, sigma, type) {
   return { price: Math.max(price, 0.05), delta, gamma, theta, vega };
 }
 
-function nextThursdays(n, base = null) {
+// Option expiries. NSE (NIFTY, BANKNIFTY, NSE stocks) expire on Tuesday; BSE (SENSEX, BSE stocks) on Thursday.
+// BANKNIFTY and stock options are monthly only (last Tuesday/Thursday of the month).
+// If the expiry day is a holiday, expiry moves to the previous trading day. Expiry time is 3:30 PM IST.
+const EXPIRY_RULES = {
+  "^NSEI": { weekday: 2, weekly: true, step: 50 },
+  "^NSEBANK": { weekday: 2, weekly: false, step: 100 },
+  "^BSESN": { weekday: 4, weekly: true, step: 100 },
+};
+const IST_MS = 19800000;
+const expiryRuleFor = (symbol) => EXPIRY_RULES[symbol] ?? { weekday: symbol.endsWith(".BO") ? 4 : 2, weekly: false };
+function optionExpiries(symbol, n = 4, base = null) {
+  const rule = expiryRuleFor(symbol);
+  const now = base ?? Date.now();
+  const ist = new Date(now + IST_MS); // IST wall clock, read with UTC getters
+  const day = new Date(Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), ist.getUTCDate()));
   const out = [];
-  let d = base ? new Date(base) : new Date();
-  d.setHours(15, 30, 0, 0);
-  const day = d.getDay();
-  let diff = (4 - day + 7) % 7;
-  d.setDate(d.getDate() + diff);
-  for (let i = 0; i < n; i++) {
-    out.push(new Date(d));
-    d.setDate(d.getDate() + 7);
+  for (let i = 0; i < 200 && out.length < n; i++, day.setUTCDate(day.getUTCDate() + 1)) {
+    if (day.getUTCDay() !== rule.weekday) continue;
+    if (!rule.weekly) {
+      const next = new Date(day);
+      next.setUTCDate(next.getUTCDate() + 7);
+      if (next.getUTCMonth() === day.getUTCMonth()) continue; // not the last one of the month
+    }
+    const e = new Date(day);
+    while (e.getUTCDay() === 0 || e.getUTCDay() === 6 || NSE_HOLIDAYS[e.toISOString().slice(0, 10)]) e.setUTCDate(e.getUTCDate() - 1);
+    const at = Date.UTC(e.getUTCFullYear(), e.getUTCMonth(), e.getUTCDate(), 10, 0); // 3:30 PM IST = 10:00 UTC
+    if (at > now && !out.some((x) => x.getTime() === at)) out.push(new Date(at));
   }
   return out;
 }
@@ -154,8 +171,7 @@ function strikeStep(spot) {
   if (spot > 200) return 10;
   return 5;
 }
-function strikesAround(spot, count = 9) {
-  const step = strikeStep(spot);
+function strikesAround(spot, count = 9, step = strikeStep(spot)) {
   const center = Math.round(spot / step) * step;
   const half = Math.floor(count / 2);
   const out = [];
@@ -833,7 +849,7 @@ function MACDChart({ data, syncGroupRef }) {
 const fmtMoney = (n, d = 2) =>
   (n < 0 ? "-₹" : "₹") + Math.abs(n).toLocaleString("en-IN", { minimumFractionDigits: d, maximumFractionDigits: d });
 const fmtPct = (n) => (n >= 0 ? "+" : "") + n.toFixed(2) + "%";
-const fmtDate = (d) => d.toLocaleDateString("en-IN", { month: "short", day: "numeric" });
+const fmtDate = (d) => d.toLocaleDateString("en-IN", { month: "short", day: "numeric", timeZone: "Asia/Kolkata" });
 const uid = () => Math.random().toString(36).slice(2, 10);
 
 const SUPABASE_URL = "https://qfzepvorvvajqpnfwceq.supabase.co";
@@ -1935,7 +1951,25 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
   const [remoteResults, setRemoteResults] = useState([]);
   const [searchingRemote, setSearchingRemote] = useState(false);
 
-  const allInstruments = useMemo(() => [...INSTRUMENTS, ...customInstruments], [customInstruments]);
+  // Index option IV follows live India VIX (instead of a fixed 13%). Falls back to the fixed values if the fetch fails.
+  const [indiaVix, setIndiaVix] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    const pull = async () => {
+      try {
+        const r = await fetchYahoo("^INDIAVIX");
+        if (!cancelled && r.price > 0) setIndiaVix(r.price);
+      } catch { /* keep the last value */ }
+    };
+    pull();
+    const iv = setInterval(pull, 60000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, []);
+  const VIX_SCALE = { "^NSEI": 1, "^BSESN": 1, "^NSEBANK": 1.2 };
+  const allInstruments = useMemo(
+    () => [...INSTRUMENTS, ...customInstruments].map((s) => (indiaVix && VIX_SCALE[s.symbol] ? { ...s, iv: (indiaVix / 100) * VIX_SCALE[s.symbol] } : s)),
+    [customInstruments, indiaVix]
+  );
   const allInstrumentsRef = useRef(allInstruments);
   useEffect(() => { allInstrumentsRef.current = allInstruments; }, [allInstruments]);
 
@@ -2082,7 +2116,11 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
   const todayISO = new Date().toISOString().slice(0, 10);
   const thirtyDaysAgoISO = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString().slice(0, 10);
 
-  const expiries = useMemo(() => nextThursdays(4, replayActive && replayData ? replayData.dayStart : null), [replayActive, replayData]);
+  const expiries = useMemo(
+    () => optionExpiries(selected || "^NSEI", 4, replayActive && replayData ? replayData.dayStart : null),
+    [selected, replayActive, replayData]
+  );
+  useEffect(() => { setExpiryIdx(0); }, [selected]);
   const quotesRef = useRef(quotes);
   useEffect(() => { quotesRef.current = quotes; }, [quotes]);
   const cashRef = useRef(cash);
@@ -2840,8 +2878,9 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
     return matchesExchange && matchesSearch;
   });
 
-  const currentExpiry = expiries[expiryIdx];
-  const chainStrikes = strikesAround(q?.price ?? meta.fallback);
+  const currentExpiry = expiries[expiryIdx] ?? expiries[0];
+  const chainStep = EXPIRY_RULES[viewSym]?.step ?? strikeStep(q?.price ?? meta.fallback);
+  const chainStrikes = strikesAround(q?.price ?? meta.fallback, 9, chainStep);
   const T = currentExpiry ? (currentExpiry.getTime() - nowMs()) / (365 * 24 * 3600 * 1000) : 0;
 
   return (
@@ -3246,7 +3285,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                       const sigma = meta.iv * (1 + 0.15 * Math.abs(strike - spot) / spot);
                       const call = blackScholes(spot, strike, T, RISK_FREE, sigma, "call");
                       const put = blackScholes(spot, strike, T, RISK_FREE, sigma, "put");
-                      const isATM = Math.abs(strike - spot) < strikeStep(spot) / 2;
+                      const isATM = Math.abs(strike - spot) < chainStep / 2;
                       const callITM = strike < spot;
                       const putITM = strike > spot;
                       return (
@@ -3268,7 +3307,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                   </tbody>
                 </table>
               </div>
-              <div className="chainNote">Premiums &amp; Greeks are modeled live from the underlying price via Black-Scholes — not a live exchange options feed. Quantities are in exchange lots (NIFTY 65, BANKNIFTY 30, SENSEX 20). You can buy or sell (short) options; selling blocks an estimated margin from your cash.</div>
+              <div className="chainNote">Premiums &amp; Greeks are modeled live from the underlying price via Black-Scholes — not a live exchange options feed. Index IV follows India VIX{indiaVix ? ` (now ${indiaVix.toFixed(2)})` : ""}, so premiums are close to, but not exactly, market prices. Quantities are in exchange lots (NIFTY 65, BANKNIFTY 30, SENSEX 20). You can buy or sell (short) options; selling blocks an estimated margin from your cash.</div>
               {!marketStatus.isOpen && (
                 <div className="chainNote" style={{ color: "var(--bear)", fontWeight: 600 }}>Market Closed — you can browse the chain, but new orders are disabled until 9:15 AM Mon–Fri.</div>
               )}
