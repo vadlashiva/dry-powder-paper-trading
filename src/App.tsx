@@ -4819,6 +4819,27 @@ html, body { overflow-x: clip; }
 .landingWrap .landingFooterLinks a { font-size: 14px; color: #E3E9F4; }
 .landingWrap .landingFooterNote { font-size: 13px; color: #D2DBEB; line-height: 1.6; }
 .landingWrap .landingEyebrow { font-size: 12px; }
+/* ---- light content cards with black text on the blue landing background ---- */
+.landingWrap .whoForCard, .landingWrap .landingFeatureCard, .landingWrap .mistakeRow, .landingWrap .faqItem, .landingWrap .realityBand {
+  background: #FFFFFF !important; color: #12151C !important;
+  border-left: 1px solid #E3E7EF !important; border-right: 1px solid #E3E7EF !important; border-bottom: 1px solid #E3E7EF !important;
+  box-shadow: 0 10px 28px rgba(4, 14, 38, 0.22);
+}
+.landingWrap .whoForCard, .landingWrap .faqItem, .landingWrap .mistakeRow { border-top: 1px solid #E3E7EF !important; }
+.landingWrap .realityBand { border-left: 5px solid #E89A00 !important; border-top: 1px solid #E3E7EF !important; }
+.landingWrap .faqItem { border-radius: 12px; padding: 18px 20px !important; }
+.landingWrap .whoForCard h3, .landingWrap .landingFeatureCard h3, .landingWrap .mistakeRow h3, .landingWrap .faqItem h3, .landingWrap .realityBand h2 { color: #0B1220 !important; }
+.landingWrap .whoForCard p, .landingWrap .whoForCard .dim, .landingWrap .landingFeatureCard p, .landingWrap .landingFeatureCard .dim,
+.landingWrap .mistakeRow p, .landingWrap .mistakeRow .dim, .landingWrap .faqItem p, .landingWrap .faqItem .dim, .landingWrap .realityBand p, .landingWrap .realityBand .dim {
+  color: #1F2533 !important;
+}
+.landingWrap .mistakeCol { background: #F4F6FA !important; border: 1px solid #E3E7EF !important; }
+.landingWrap .mistakeRow .bull, .landingWrap .whoForCard .whoForIcon { color: #08865B !important; }
+.landingWrap .mistakeRow .bear { color: #C8213E !important; }
+.landingWrap .whoForIcon { background: #E6F6EF !important; }
+.landingWrap .realityNum { color: #C77700 !important; }
+.landingWrap .realitySrc { color: #9A5B00 !important; }
+.landingWrap .whoForCard:hover, .landingWrap .landingFeatureCard:hover { box-shadow: 0 14px 34px rgba(4, 14, 38, 0.3); }
 
 .authBackBtn { position: absolute; top: 18px; left: 18px; background: none; border: none; color: var(--text-dim); font-size: 12.5px; cursor: pointer; padding: 6px 4px; }
 .authBackBtn:hover { color: var(--text); }
