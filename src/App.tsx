@@ -1578,9 +1578,8 @@ function LandingPage({ themeIdx, onEnter }) {
       <section className="realityBand">
         <div className="realityNum" aria-hidden="true">🏹</div>
         <div className="realityCopy">
-          <h2>Arjuna didn't become the greatest archer on the battlefield. He became it in practice.</h2>
-          <p className="dim">He practised until he could hit the mark in the dark, and when Drona asked what he saw, he answered: only the bird's eye. Wealth in the market is built the same way — thousands of disciplined repetitions, one clear target, no distractions. Do your thousand practice trades here, with ₹0 at risk, so that when real money is on the line, your aim is already steady.</p>
-          <span className="realitySrc">Practise like Arjuna. Trade like you've done it a thousand times.</span>
+          <h2>Arjuna's secret wasn't talent. It was practice.</h2>
+          <p className="dim">Practise in the dark here — ₹0 at risk — so you strike true when it's real.</p>
         </div>
       </section>
 
