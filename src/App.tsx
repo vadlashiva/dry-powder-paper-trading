@@ -1155,6 +1155,8 @@ const LANDING_FEATURES = [
   { icon: Activity, title: "Live Market Data", desc: "Real NSE & BSE prices, updated continuously during market hours — not delayed, not simulated ticks." },
   { icon: Layers, title: "Options Chain & Greeks", desc: "Live Black-Scholes pricing with Delta, Gamma, Theta, and Vega across every strike and expiry." },
   { icon: LineChart, title: "Charts & Indicators", desc: "Candlestick and line charts with MA, RSI, and MACD, across five timeframes." },
+  { icon: TrendingDown, title: "Option Writing, with Margin", desc: "Sell calls and puts the way real writers do — premium credited, margin blocked — and see why the risk on that side is so different." },
+  { icon: Crosshair, title: "Stop-Losses on Every Trade", desc: "Stop orders on stocks and an automatic stop-loss on option positions, so protecting a trade becomes a reflex, not an afterthought." },
   { icon: Bell, title: "Price Alerts", desc: "Get notified the moment a stock crosses the price you're watching for." },
   { icon: Download, title: "Trade History Export", desc: "Download your full trade log as a CSV whenever you want to review your performance." },
 ];
@@ -1193,6 +1195,18 @@ const CANDLE_BASICS = [
   { icon: LineChart, title: "One candle = one timeframe", desc: "Switch between 1m, 5m, 15m, 1H, and 1D — each candle then represents that much time, from a minute to a full trading day." },
 ];
 
+const HOW_STEPS = [
+  { n: "1", title: "Open a free account", desc: "A username and mobile number, or Google. You're in with ₹10,00,000 of practice money in about a minute." },
+  { n: "2", title: "Make your first trade", desc: "Buy a stock from the watchlist, or open NIFTY's options chain and pick a strike. Set the stop-loss before you click." },
+  { n: "3", title: "Review, then repeat", desc: "History records every exit and its realised P&L. Spot the habits that cost you, fix one, and trade again — or rerun a past day in Replay." },
+];
+
+const GUIDE_LINKS = [
+  { label: "How to use Winbannu", url: "/how-to-use.html" },
+  { label: "Paper trading in India", url: "/paper-trading-india.html" },
+  { label: "How to read an options chain", url: "/how-to-read-options-chain.html" },
+];
+
 const LEARN_LINKS = [
   { label: "NSE India (official)", url: "https://www.nseindia.com" },
   { label: "NSE: Candlestick & Chart Reading Module", url: "https://www.nseindia.com/static/learn/self-study-ncfm-modules-intermediate-technical-analysis-module" },
@@ -1205,6 +1219,7 @@ const FAQ_ITEMS = [
   { q: "Is the market data live or delayed?", a: "Live. Winbannu pulls real NSE & BSE prices during market hours — not a delayed feed." },
   { q: "Do I need a broker or demat account?", a: "No. Winbannu isn't a broker — just sign up with Google and a phone number, and you're trading virtual capital immediately." },
   { q: "What is Replay Mode?", a: "Pick any weekday from the last 30 days and Winbannu replays that day's real price action candle by candle, with its own separate ₹10,00,000 balance — so practicing in Replay never touches your live portfolio." },
+  { q: "Do option prices match the exchange exactly?", a: "Not exactly. Premiums are worked out from the live index or stock price with the Black-Scholes model, so they move realistically with the market but won't tick-for-tick match NSE's option quotes." },
   { q: "Is Winbannu free?", a: "Every new account gets a full 7-day Pro trial, no card required. After that, core paper trading stays free — Pro features like the options chain, alerts, and CSV export need an active subscription." },
 ];
 
@@ -1501,6 +1516,9 @@ function LandingPage({ themeIdx, onEnter }) {
             WINBANNU is a paper trading terminal for Indian stocks, options, and indices. Trade with
             ₹10,00,000 in virtual cash against live market data — build real skill before you risk real money.
           </p>
+          <div className="heroTrust heroReveal heroReveal-3">
+            <span>No demat account</span><span>No KYC</span><span>No real money</span>
+          </div>
           <div className="landingHeroBtns heroReveal heroReveal-4">
             <button className="btn btnBull landingCta" onClick={() => onEnter("register")}><Sparkles size={15} /> Get Started Free</button>
             <button className="btn btnGhost landingCta" onClick={() => onEnter("login")}>Log In</button>
@@ -1539,6 +1557,15 @@ function LandingPage({ themeIdx, onEnter }) {
         <div className="landingStatItem">
           <span className="landingStatNum">7 Days</span>
           <span className="landingStatLabel">Full Pro trial, free</span>
+        </div>
+      </section>
+
+      <section className="realityBand">
+        <div className="realityNum">9 in 10</div>
+        <div className="realityCopy">
+          <h2>Most people learn F&amp;O with their savings. You don't have to.</h2>
+          <p className="dim">A SEBI study of individual equity F&amp;O traders found about 93% made losses between FY22 and FY24. Losing ₹50,000 of practice money on Winbannu costs nothing — and teaches the same lesson.</p>
+          <a className="realitySrc" href="https://www.sebi.gov.in/media-and-notifications/press-releases/sep-2024/updated-sebi-study-reveals-93-of-individual-traders-incurred-losses-in-equity-fando-between-fy22-and-fy24-aggregate-losses-exceed-1-8-lakh-crores-over-three-years_86906.html" target="_blank" rel="noopener noreferrer">Source: SEBI, September 2024 →</a>
         </div>
       </section>
 
@@ -1591,6 +1618,20 @@ function LandingPage({ themeIdx, onEnter }) {
         </div>
       </section>
 
+      <section className="howSteps">
+        <h2 className="landingH2">From sign-up to first trade in three steps</h2>
+        <div className="howStepsRow">
+          {HOW_STEPS.map((st) => (
+            <div key={st.n} className="howStep whoForCard">
+              <span className="howStepNum">{st.n}</span>
+              <h3>{st.title}</h3>
+              <p className="dim">{st.desc}</p>
+            </div>
+          ))}
+        </div>
+        <a className="howStepsLink" href="/how-to-use.html">Read the full step-by-step guide →</a>
+      </section>
+
       <section className="mistakesSection">
         <h2 className="landingH2">Mistakes Are Part of Learning to Trade.</h2>
         <p className="dim mistakesIntro">They don't have to be expensive ones.</p>
@@ -1626,6 +1667,11 @@ function LandingPage({ themeIdx, onEnter }) {
           ))}
         </div>
         <div className="learnLinks">
+          {GUIDE_LINKS.map((l) => (
+            <a key={l.url} href={l.url} className="btn btnBull landingCta learnLinkBtn">{l.label} →</a>
+          ))}
+        </div>
+        <div className="learnLinks" style={{ marginTop: "12px" }}>
           {LEARN_LINKS.map((l) => (
             <a key={l.url} href={l.url} target="_blank" rel="noopener noreferrer" className="btn btnGhost landingCta learnLinkBtn">{l.label} →</a>
           ))}
@@ -1657,11 +1703,14 @@ function LandingPage({ themeIdx, onEnter }) {
           <span>WINBANNU</span>
         </div>
         <div className="landingFooterLinks">
+          <a href="/how-to-use.html">How to use</a>
+          <a href="/paper-trading-india.html">Paper trading in India</a>
+          <a href="/how-to-read-options-chain.html">How to read an options chain</a>
           <a href="/contact.html">Contact</a>
           <a href="/privacy.html">Privacy</a>
           <a href="/terms.html">Terms</a>
         </div>
-        <div className="dim landingFooterNote">Paper trading only — no real money or securities are ever traded.</div>
+        <div className="dim landingFooterNote">Winbannu is a simulator for learning. No real money or securities are ever traded, virtual balances have no cash value, and nothing here is investment advice. Winbannu is not registered with SEBI and is not a broker.</div>
       </footer>
     </div>
   );
@@ -4727,7 +4776,25 @@ const CSS = `
 }
 
 .landingFooter { border-top: 1px solid rgba(255,255,255,0.14); padding: 28px 40px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; }
-.landingFooterLinks { display: flex; gap: 20px; }
+.landingFooterLinks { display: flex; gap: 20px; flex-wrap: wrap; }
+.heroTrust { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: -12px 0 24px; font-size: 13px; color: var(--text-dim); }
+.heroTrust span::before { content: "✓"; color: var(--bull); font-weight: 700; margin-right: 6px; }
+.realityBand { max-width: 1000px; margin: 10px auto 40px; padding: 26px 30px; display: flex; align-items: center; gap: 30px; border: 1px solid rgba(255,255,255,0.1); border-left: 4px solid var(--bear); border-radius: 14px; background: rgba(255,255,255,0.03); position: relative; z-index: 1; }
+.realityNum { font-family: 'Instrument Sans', sans-serif; font-weight: 700; font-size: 54px; line-height: 1; color: var(--bear); white-space: nowrap; letter-spacing: -1px; }
+.realityCopy h2 { font-family: 'Instrument Sans', sans-serif; font-size: 20px; margin: 0 0 8px; }
+.realityCopy p { font-size: 14px; line-height: 1.6; margin: 0 0 8px; }
+.realitySrc { font-size: 12px; color: var(--text-dim); text-decoration: underline; text-underline-offset: 3px; }
+.howSteps { max-width: 1080px; margin: 0 auto; padding: 20px 40px 70px; text-align: center; position: relative; z-index: 1; }
+.howStepsRow { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; text-align: left; }
+.howStepNum { display: inline-flex; width: 30px; height: 30px; border-radius: 50%; align-items: center; justify-content: center; background: var(--bull); color: #06231A; font-weight: 700; font-family: 'Instrument Sans', sans-serif; margin-bottom: 10px; }
+.howStepsLink { display: inline-block; margin-top: 22px; color: var(--amber); font-size: 14px; font-weight: 600; text-decoration: none; }
+.howStepsLink:hover { text-decoration: underline; }
+@media (max-width: 760px) {
+  .realityBand { flex-direction: column; align-items: flex-start; gap: 10px; margin: 10px 16px 30px; padding: 20px; }
+  .realityNum { font-size: 40px; }
+  .howSteps { padding: 10px 16px 50px; }
+  .howStepsRow { grid-template-columns: 1fr; }
+}
 .landingFooterLinks a { color: var(--text-dim); font-size: 12.5px; text-decoration: none; }
 .landingFooterLinks a:hover { color: var(--text); }
 .landingFooterNote { font-size: 11.5px; width: 100%; text-align: center; order: 3; }

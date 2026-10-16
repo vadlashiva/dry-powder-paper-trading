@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en-IN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How to Use Winbannu – Paper Trading App Guide for NSE, BSE &amp; NIFTY Options</title>
+<meta name="description" content="Step-by-step guide to Winbannu paper trading: sign up, buy and sell NSE &amp; BSE stocks, place limit and stop-loss orders, trade NIFTY options from the options chain, set alerts and replay past market days.">
+<link rel="canonical" href="https://winbannu.com/how-to-use.html">
+<meta property="og:title" content="How to Use Winbannu – Paper Trading App Guide">
+<meta property="og:description" content="From your first trade to NIFTY options and stop-losses: a step-by-step guide to practising on Winbannu.">
+<meta property="og:url" content="https://winbannu.com/how-to-use.html">
+<meta property="og:type" content="article">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "HowTo",
+  "name": "How to paper trade on Winbannu",
+  "description": "Sign up, place your first stock trade, use limit and stop-loss orders, and trade NIFTY options with virtual money on Winbannu.",
+  "totalTime": "PT10M",
+  "estimatedCost": { "@type": "MonetaryAmount", "currency": "INR", "value": "0" },
+  "step": [
+    { "@type": "HowToStep", "name": "Create a free account", "text": "Open winbannu.com, click Start your free trial and register with a username, mobile number and password, or sign in with Google. You start with ₹10,00,000 of virtual cash." },
+    { "@type": "HowToStep", "name": "Pick a stock", "text": "Choose a stock from the watchlist on the left, or search for any NSE or BSE symbol." },
+    { "@type": "HowToStep", "name": "Place a market order", "text": "On the Chart & Trade tab, choose Market, enter a quantity and click Buy. The trade fills at the live price." },
+    { "@type": "HowToStep", "name": "Add a stop-loss", "text": "Open Positions and click Stop-Loss on your position, then click the price on the chart where you want to exit." },
+    { "@type": "HowToStep", "name": "Trade NIFTY options", "text": "Select NIFTY, open the Options Chain tab, click a premium, choose the number of lots and an optional stop-loss premium, then click Buy to Open or Sell to Open." },
+    { "@type": "HowToStep", "name": "Review your trades", "text": "Check Positions for open profit and loss and History for every closed trade." }
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    { "@type": "Question", "name": "When can I place trades on Winbannu?",
+      "acceptedAnswer": { "@type": "Answer", "text": "During Indian market hours, 9:15 AM to 3:30 PM IST, Monday to Friday, excluding NSE holidays. Outside those hours you can still study charts and use Replay to practise on a past trading day." } },
+    { "@type": "Question", "name": "Can I start over with fresh virtual money?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes. The Reset button at the top resets your account to ₹10,00,000 and clears your positions, orders and history." } },
+    { "@type": "Question", "name": "What does Pro include?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Pro adds limit and stop-loss orders, RSI, MACD and every chart timeframe, the options chain with live Greeks, search for any NSE or BSE stock, price alerts, the News tab and CSV export of your trade history. New accounts get every Pro feature free for 7 days." } },
+    { "@type": "Question", "name": "Are option prices on Winbannu live exchange quotes?",
+      "acceptedAnswer": { "@type": "Answer", "text": "No. Option premiums are calculated from the live index price using the Black-Scholes model, so they behave realistically but will not match the exchange's option quotes exactly." } }
+  ]
+}
+</script>
+<style>
+:root{
+  --paper:#F6F7FA;
+  --ink:#141820;
+  --ink-soft:#4A5263;
+  --navy:#0C2354;
+  --navy-2:#163A86;
+  --mint:#0A9C6B;
+  --mint-bright:#14E8A0;
+  --loss:#C23B4E;
+  --rule:#DDE1E9;
+  --card:#FFFFFF;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --paper:#0D111A; --ink:#E8ECF4; --ink-soft:#A3ACBE; --navy:#081A40; --navy-2:#12306E;
+    --mint:#3FD9A3; --loss:#FF7088; --rule:#262E40; --card:#141A26;
+  }
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:"Source Serif 4",Georgia,"Times New Roman",serif;font-size:1.125rem;line-height:1.7}
+a{color:var(--mint);text-underline-offset:3px}
+a:focus-visible,.cta:focus-visible{outline:3px solid var(--mint-bright);outline-offset:3px;border-radius:4px}
+
+.site{background:var(--navy);color:#fff}
+.site-inner{max-width:68rem;margin:0 auto;padding:1rem 1.25rem;display:flex;align-items:center;justify-content:space-between;gap:1rem}
+.brand{font-family:"Instrument Sans",system-ui,sans-serif;font-weight:700;font-size:1.1rem;letter-spacing:.02em;color:#fff;text-decoration:none}
+.brand span{color:#FFB020}
+.site-link{font-family:"Instrument Sans",system-ui,sans-serif;font-weight:600;font-size:.95rem;color:#fff;background:rgba(255,255,255,.12);padding:.5rem .9rem;border-radius:8px;text-decoration:none}
+
+.hero{background:linear-gradient(180deg,var(--navy) 0%,var(--navy-2) 100%);color:#fff;padding:3.5rem 1.25rem 4.5rem}
+.hero-inner{max-width:44rem;margin:0 auto}
+h1{font-family:"Instrument Sans",system-ui,sans-serif;font-weight:700;font-size:clamp(2rem,5vw,3.1rem);line-height:1.12;letter-spacing:-.015em;margin:0 0 1.25rem}
+.lede{font-size:1.25rem;line-height:1.6;color:#D6DEEF;margin:0}
+.updated{margin-top:1.5rem;font-family:"Instrument Sans",system-ui,sans-serif;font-size:.9rem;color:#A9B6D3}
+
+main{max-width:44rem;margin:0 auto;padding:0 1.25rem 4rem}
+article{margin-top:-2.25rem;background:var(--card);border:1px solid var(--rule);border-radius:14px;padding:2.25rem clamp(1.25rem,4vw,2.75rem)}
+h2{font-family:"Instrument Sans",system-ui,sans-serif;font-weight:700;font-size:1.55rem;line-height:1.25;letter-spacing:-.01em;margin:2.75rem 0 .75rem}
+h2:first-child{margin-top:0}
+h3{font-family:"Instrument Sans",system-ui,sans-serif;font-weight:600;font-size:1.15rem;margin:1.75rem 0 .4rem}
+p{margin:0 0 1.1rem}
+ul,ol{padding-left:1.4rem;margin:0 0 1.2rem}
+li{margin-bottom:.5rem}
+strong{font-weight:600}
+
+/* on-page contents */
+.toc{margin:0 0 2.25rem;padding:1.1rem 1.25rem;border:1px solid var(--rule);border-radius:10px;background:var(--paper);font-family:"Instrument Sans",system-ui,sans-serif;font-size:1rem}
+.toc b{display:block;margin-bottom:.4rem}
+.toc ol{margin:0;padding-left:1.3rem}
+.toc li{margin-bottom:.25rem}
+
+/* numbered steps, each one a "tab" in the app */
+.step{display:grid;grid-template-columns:2.4rem 1fr;gap:0 1rem;margin:1.5rem 0}
+.step .n{width:2.4rem;height:2.4rem;border-radius:50%;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;font-family:"Instrument Sans",system-ui,sans-serif;font-weight:700;font-size:1.05rem}
+.step h3{margin:.3rem 0 .35rem}
+.step p:last-child,.step ul:last-child{margin-bottom:0}
+
+.ui{font-family:"Instrument Sans",system-ui,sans-serif;font-weight:600;font-size:.95em;background:var(--paper);border:1px solid var(--rule);border-radius:6px;padding:.05rem .4rem;white-space:nowrap}
+
+.tabs{width:100%;border-collapse:collapse;margin:1rem 0 1.5rem;font-size:1rem}
+.tabs th,.tabs td{text-align:left;vertical-align:top;padding:.6rem .7rem;border-bottom:1px solid var(--rule)}
+.tabs th{font-family:"Instrument Sans",system-ui,sans-serif;font-size:.9rem;color:var(--ink-soft);font-weight:600}
+.tabs td:first-child{font-family:"Instrument Sans",system-ui,sans-serif;font-weight:600;white-space:nowrap}
+
+.callout{border-left:4px solid var(--mint);padding:.25rem 0 .25rem 1.1rem;margin:1.5rem 0;color:var(--ink-soft)}
+
+.start{margin:2.75rem 0 0;padding:1.75rem;border-radius:12px;background:var(--navy);color:#fff}
+.start h2{margin-top:0;color:#fff}
+.start p{color:#D6DEEF}
+.cta{display:inline-block;margin-top:.5rem;background:var(--mint-bright);color:#06231A;font-family:"Instrument Sans",system-ui,sans-serif;font-weight:700;font-size:1.05rem;padding:.85rem 1.4rem;border-radius:10px;text-decoration:none}
+
+.faq h3{margin-top:1.5rem}
+.disclaimer{margin-top:2.5rem;padding-top:1.25rem;border-top:1px solid var(--rule);font-size:.95rem;color:var(--ink-soft)}
+
+footer{max-width:44rem;margin:0 auto;padding:0 1.25rem 3rem;font-family:"Instrument Sans",system-ui,sans-serif;font-size:.92rem;color:var(--ink-soft);display:flex;gap:1.25rem;flex-wrap:wrap}
+footer a{color:var(--ink-soft)}
+
+@media (max-width:560px){
+  body{font-size:1.06rem}
+  .hero{padding:2.5rem 1.25rem 3.75rem}
+  .step{grid-template-columns:2rem 1fr;gap:0 .75rem}
+  .step .n{width:2rem;height:2rem;font-size:.95rem}
+  .tabs td:first-child{white-space:normal}
+}
+</style>
+</head>
+<body>
+
+<header class="site">
+  <div class="site-inner">
+    <a class="brand" href="/"><span>&#128293;</span> WINBANNU</a>
+    <a class="site-link" href="/">Open the trading terminal</a>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="hero-inner">
+    <h1>How to use Winbannu: a step-by-step paper trading guide</h1>
+    <p class="lede">Everything you need to go from a new account to your first stock trade, a stop-loss and a NIFTY options position, all with virtual money and live NSE and BSE prices.</p>
+    <p class="updated">Updated 16 October 2026</p>
+  </div>
+</section>
+
+<main>
+<article>
+
+<nav class="toc" aria-label="On this page">
+  <b>On this page</b>
+  <ol>
+    <li><a href="#start">Create your account</a></li>
+    <li><a href="#screen">Find your way around the screen</a></li>
+    <li><a href="#first-trade">Place your first stock trade</a></li>
+    <li><a href="#orders">Limit and stop-loss orders</a></li>
+    <li><a href="#options">Trade NIFTY options</a></li>
+    <li><a href="#charts">Charts, indicators and drawing tools</a></li>
+    <li><a href="#review">Track your positions and history</a></li>
+    <li><a href="#replay">Practise outside market hours with Replay</a></li>
+    <li><a href="#faq">Common questions</a></li>
+  </ol>
+</nav>
+
+<h2 id="start">1. Create your account</h2>
+<p>Go to <a href="/">winbannu.com</a> and click <span class="ui">Start your free trial</span>. Register with a username, your mobile number and a password, or sign in with Google. Each mobile number can hold one account.</p>
+<p>Every account starts with <strong>₹10,00,000 of virtual cash</strong> and <strong>7 days of every Pro feature free</strong>. No card, broker or demat account is needed.</p>
+
+<h2 id="screen">2. Find your way around the screen</h2>
+<p>The <strong>watchlist</strong> on the left shows live prices for popular NSE and BSE stocks and the NIFTY, BANKNIFTY and SENSEX indices. Use the <span class="ui">ALL</span>, <span class="ui">NSE</span>, <span class="ui">BSE</span> and <span class="ui">Index</span> filters, or the search box to find any other listed stock. Click a symbol to load it.</p>
+<p>The selected symbol's tabs run across the middle of the screen:</p>
+<table class="tabs">
+  <thead><tr><th>Tab</th><th>What it's for</th></tr></thead>
+  <tbody>
+    <tr><td>Chart &amp; Trade</td><td>The price chart and the order panel for buying and selling stocks.</td></tr>
+    <tr><td>Indicators</td><td>Add moving averages, RSI, MACD, ATR and more to the chart.</td></tr>
+    <tr><td>Options Chain</td><td>Calls and puts for NIFTY, BANKNIFTY, SENSEX and stock options, with the Greeks.</td></tr>
+    <tr><td>Positions</td><td>Your open stock and option positions with live profit and loss.</td></tr>
+    <tr><td>Orders</td><td>Pending limit and stop orders, and stop-losses on your options.</td></tr>
+    <tr><td>Alerts</td><td>Get notified when a price crosses a level you choose.</td></tr>
+    <tr><td>News</td><td>Recent headlines for the selected stock.</td></tr>
+    <tr><td>History</td><td>Every trade you've made, with realised profit and loss.</td></tr>
+    <tr><td>Replay</td><td>Re-run a past trading day to practise when the market is closed.</td></tr>
+  </tbody>
+</table>
+<p>Along the top you'll find <span class="ui">Pop-out chart</span> to open the chart in its own window, <span class="ui">Day</span>/<span class="ui">Night</span> to switch themes, and <span class="ui">Reset</span> to start over with a fresh ₹10,00,000.</p>
+
+<h2 id="first-trade">3. Place your first stock trade</h2>
+<div class="step"><div class="n">1</div><div><h3>Pick a stock</h3><p>Click a large, liquid name such as Reliance, TCS or HDFC Bank in the watchlist.</p></div></div>
+<div class="step"><div class="n">2</div><div><h3>Choose Market and a quantity</h3><p>On <span class="ui">Chart &amp; Trade</span>, keep the order type on <span class="ui">Market</span> and enter how many shares to buy. The panel shows the estimated cost.</p></div></div>
+<div class="step"><div class="n">3</div><div><h3>Click Buy</h3><p>The order fills straight away at the live price, and the shares appear under <span class="ui">Positions</span>.</p></div></div>
+<div class="step"><div class="n">4</div><div><h3>Sell when you're done</h3><p>Click <span class="ui">Sell</span> on the same stock, or <span class="ui">Close</span> on its row in Positions.</p></div></div>
+<div class="callout">Trades can only be placed during market hours: 9:15 AM to 3:30 PM IST, Monday to Friday, excluding NSE holidays.</div>
+
+<h2 id="orders">4. Limit and stop-loss orders</h2>
+<p>Switch the order type in the trade panel:</p>
+<ul>
+  <li><strong>Limit</strong> buys at your price or lower, or sells at your price or higher. Use it to enter at a level you've planned instead of chasing the market.</li>
+  <li><strong>Stop</strong> turns into a market order once the price trades through your stop price. A sell stop below the current price is a stop-loss.</li>
+</ul>
+<p>To set a price, type it in, or click <strong>pick from chart</strong> and click the level on the chart. Pending orders show on the chart as lines and are listed in the <span class="ui">Orders</span> tab, where you can edit or cancel them. They fill automatically when the price is reached; you don't need to keep the tab open.</p>
+<p>The quickest way to protect a stock you already hold: open <span class="ui">Positions</span>, click <span class="ui">Stop-Loss</span> on its row, then click your exit price on the chart.</p>
+
+<h2 id="options">5. Trade NIFTY options</h2>
+<p>NIFTY can't be bought as a stock; you trade it through options.</p>
+<div class="step"><div class="n">1</div><div><h3>Open the options chain</h3><p>Select <strong>NIFTY</strong> in the watchlist and open the <span class="ui">Options Chain</span> tab. Calls are on the left and puts on the right, with strikes in the middle. Choose an expiry at the top.</p></div></div>
+<div class="step"><div class="n">2</div><div><h3>Click a premium</h3><p>This opens the order ticket with the premium, Delta, Gamma, Theta, Vega and IV for that contract.</p></div></div>
+<div class="step"><div class="n">3</div><div><h3>Choose lots and a stop-loss</h3><p>Options trade in lots. One NIFTY lot is 65 units, so a ₹100 premium costs ₹6,500 per lot. Optionally enter a <strong>stop-loss premium</strong>: the ticket shows the most you'd lose if it's hit.</p></div></div>
+<div class="step"><div class="n">4</div><div><h3>Buy or sell to open</h3><ul>
+  <li><span class="ui">Buy to Open</span> buys the option. Your maximum loss is the premium you pay.</li>
+  <li><span class="ui">Sell to Open</span> writes (shorts) the option. You receive the premium but margin is blocked, and losses can be much larger than the premium.</li>
+</ul></div></div>
+<p>To exit, use <span class="ui">Sell to Close</span> or <span class="ui">Buy to Close</span> in the ticket, or <span class="ui">Close</span>/<span class="ui">Cover</span> in Positions. You can add or change a stop-loss later with the <span class="ui">Stop-Loss</span> button on the option's row in Positions; the position closes automatically when the premium reaches it.</p>
+<p>New to option chains? Read <a href="/how-to-read-options-chain.html">how to read an options chain, with a NIFTY example</a>.</p>
+
+<h2 id="charts">6. Charts, indicators and drawing tools</h2>
+<ul>
+  <li>Switch timeframes with <span class="ui">1m</span>, <span class="ui">5m</span>, <span class="ui">15m</span>, <span class="ui">1H</span> and <span class="ui">1D</span>, and change between candles and a line.</li>
+  <li>Scroll or pinch to zoom, drag to pan, and click <span class="ui">Fit</span> to reset. Hover over a candle to see its open, high, low and close.</li>
+  <li>Draw on the chart with <span class="ui">H-Line</span>, <span class="ui">V-Line</span> and <span class="ui">Trend</span>; remove drawings with <span class="ui">Erase</span>.</li>
+  <li>Add moving averages, RSI, MACD, ATR and other studies from <span class="ui">Indicators</span>.</li>
+</ul>
+
+<h2 id="review">7. Track your positions and history</h2>
+<p><span class="ui">Positions</span> shows each holding's average cost, last price, market value and live profit or loss, plus any stop-loss you've set. <span class="ui">History</span> lists every trade, including stop-losses that were hit, with realised profit or loss. Review it every week: it's the honest record of whether your approach works.</p>
+<p>Want price notifications? In <span class="ui">Alerts</span>, set a target price and Winbannu tells you when it's crossed.</p>
+
+<h2 id="replay">8. Practise outside market hours with Replay</h2>
+<p>Open <span class="ui">Replay</span>, pick any day from the last 30 days and click <span class="ui">Start replay</span>. The whole terminal goes back to that day's 9:15 AM open: prices, charts, indicators and the options chain all move as they did. You get a separate ₹10,00,000 practice balance, so your real portfolio isn't touched. Use Play, Pause and the speed buttons to control the clock.</p>
+
+<div class="start">
+  <h2>Ready to place your first practice trade?</h2>
+  <p>₹10,00,000 of virtual cash, live NSE and BSE prices and a 7-day free trial of every Pro feature.</p>
+  <a class="cta" href="/">Open Winbannu</a>
+</div>
+
+<section class="faq" id="faq">
+<h2>Common questions</h2>
+<h3>Why can't I place a trade?</h3>
+<p>Orders only go through during market hours (9:15 AM to 3:30 PM IST, Monday to Friday). You also need enough virtual cash, or margin for option selling. Outside market hours, try Replay.</p>
+<h3>Can I start over?</h3>
+<p>Yes. Click <span class="ui">Reset</span> at the top to go back to ₹10,00,000. This clears your positions, orders and history.</p>
+<h3>What does Pro include?</h3>
+<p>Limit and stop-loss orders, RSI, MACD and every chart timeframe, the options chain with live Greeks, search for any NSE or BSE stock, price alerts, the News tab and CSV export of your trades. Every new account gets all of it free for 7 days.</p>
+<h3>Are option prices the same as on the exchange?</h3>
+<p>They're calculated from the live index price with the Black-Scholes model, so they move realistically but won't exactly match the exchange's option quotes.</p>
+<h3>Where can I learn more about paper trading?</h3>
+<p>Read <a href="/paper-trading-india.html">paper trading in India: how to practise without risking money</a>.</p>
+</section>
+
+<p class="disclaimer">Winbannu is a paper trading simulator for learning. No real money or securities are ever traded, and nothing here is investment advice.</p>
+
+</article>
+</main>
+
+<footer>
+  <a href="/">Winbannu</a>
+  <a href="/paper-trading-india.html">Paper trading in India</a>
+  <a href="/how-to-read-options-chain.html">How to read an options chain</a>
+  <a href="/contact.html">Contact</a>
+  <a href="/privacy.html">Privacy</a>
+  <a href="/terms.html">Terms</a>
+</footer>
+
+</body>
+</html>
