@@ -1492,7 +1492,7 @@ function LandingPage({ themeIdx, onEnter }) {
   }, []);
 
   return (
-    <div className="landingWrap" style={THEMES[themeIdx].vars}>
+    <div className="landingWrap" style={THEMES[0].vars /* landing is always on the dark-blue background, so always use the dark palette */}>
       <style>{CSS}</style>
 
       <LiveTicker />
