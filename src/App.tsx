@@ -1502,6 +1502,21 @@ function LandingPage({ themeIdx, onEnter }) {
           <Flame size={22} className="brandIcon" />
           <span>WINBANNU</span>
         </div>
+        <nav className="landingMenu" aria-label="Main">
+          <a href="#features">Features</a>
+          <a href="#how-it-works">How it works</a>
+          <a href="#replay">Replay</a>
+          <details className="landingMenuDrop">
+            <summary>Guides</summary>
+            <div className="landingMenuPanel">
+              <a href="/how-to-use.html">How to use Winbannu</a>
+              <a href="/paper-trading-india.html">Paper trading in India</a>
+              <a href="/how-to-read-options-chain.html">How to read an options chain</a>
+            </div>
+          </details>
+          <a href="#faq">FAQ</a>
+          <a href="/contact.html">Contact</a>
+        </nav>
         <div className="landingNavActions">
           <button className="btn btnGhost landingNavBtn" onClick={() => onEnter("login")}>Log In</button>
           <button className="btn btnBull landingNavBtn" onClick={() => onEnter("register")}>Get Started Free</button>
@@ -1584,7 +1599,7 @@ function LandingPage({ themeIdx, onEnter }) {
         </div>
       </section>
 
-      <section className="replaySpotlight">
+      <section className="replaySpotlight" id="replay">
         <div className="replaySpotlightCopy">
           <div className="landingEyebrow">REPLAY MODE</div>
           <h2 className="landingH2" style={{ textAlign: "left", margin: "0 0 14px" }}>Practice Against a Real Day, Not a Guess.</h2>
@@ -1602,7 +1617,7 @@ function LandingPage({ themeIdx, onEnter }) {
         <ReplaySpotlight />
       </section>
 
-      <section className="landingFeatures">
+      <section className="landingFeatures" id="features">
         <h2 className="landingH2">Everything you need to learn the market</h2>
         <div className="landingFeatureGrid">
           {LANDING_FEATURES.map((f, i) => {
@@ -1618,7 +1633,7 @@ function LandingPage({ themeIdx, onEnter }) {
         </div>
       </section>
 
-      <section className="howSteps">
+      <section className="howSteps" id="how-it-works">
         <h2 className="landingH2">From sign-up to first trade in three steps</h2>
         <div className="howStepsRow">
           {HOW_STEPS.map((st) => (
@@ -1678,7 +1693,7 @@ function LandingPage({ themeIdx, onEnter }) {
         </div>
       </section>
 
-      <section className="landingFaq">
+      <section className="landingFaq" id="faq">
         <h2 className="landingH2">Questions? Here's What People Usually Ask.</h2>
         <div className="faqList">
           {FAQ_ITEMS.map((f) => (
@@ -4719,6 +4734,29 @@ const CSS = `
 .landingWrap .landingFooterNote { color: #D2DBEB !important; }
 .landingNav { display: flex; align-items: center; justify-content: space-between; padding: 20px 40px; border-bottom: 1px solid rgba(255,255,255,0.14); flex-wrap: wrap; gap: 12px; position: relative; z-index: 1; }
 .landingNavActions { display: flex; align-items: center; gap: 10px; }
+.landingWrap .landingNav { z-index: 30; }
+html { scroll-behavior: smooth; }
+#features, #how-it-works, #replay, #faq { scroll-margin-top: 20px; }
+.landingMenu { display: flex; align-items: center; gap: 26px; font-family: 'Instrument Sans', sans-serif; font-size: 15px; font-weight: 600; }
+.landingMenu > a, .landingMenuDrop > summary { color: #E3E9F4; text-decoration: none; cursor: pointer; padding: 6px 0; border-bottom: 2px solid transparent; transition: color 0.15s ease, border-color 0.15s ease; }
+.landingMenu > a:hover, .landingMenuDrop > summary:hover, .landingMenuDrop[open] > summary { color: #FFFFFF; border-bottom-color: var(--amber); }
+.landingMenuDrop { position: relative; }
+.landingMenuDrop > summary { list-style: none; display: inline-flex; align-items: center; gap: 6px; }
+.landingMenuDrop > summary::-webkit-details-marker { display: none; }
+.landingMenuDrop > summary::after { content: ""; width: 7px; height: 7px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: translateY(-2px) rotate(45deg); transition: transform 0.15s ease; }
+.landingMenuDrop[open] > summary::after { transform: translateY(1px) rotate(-135deg); }
+.landingMenuPanel { position: absolute; top: calc(100% + 10px); left: -14px; min-width: 250px; background: #FFFFFF; border-radius: 12px; box-shadow: 0 16px 40px rgba(4, 14, 38, 0.35); padding: 8px; display: flex; flex-direction: column; z-index: 20; }
+.landingMenuPanel a { color: #12151C; text-decoration: none; font-size: 14.5px; font-weight: 600; padding: 10px 12px; border-radius: 8px; }
+.landingMenuPanel a:hover { background: #F1F4F9; }
+@media (max-width: 980px) {
+  .landingMenu { order: 3; width: 100%; gap: 6px 20px; flex-wrap: wrap; font-size: 14px; padding-top: 4px; }
+}
+@media (max-width: 560px) {
+  .landingMenu { overflow-x: auto; flex-wrap: nowrap; white-space: nowrap; scrollbar-width: none; padding-bottom: 2px; }
+  .landingMenu::-webkit-scrollbar { display: none; }
+  .landingMenuDrop { position: static; }
+  .landingMenuPanel { left: 16px; right: 16px; min-width: 0; position: absolute; }
+}
 .landingNavBtn { flex: none; padding: 9px 16px; }
 
 .landingHero {
