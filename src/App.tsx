@@ -4177,7 +4177,7 @@ const CSS = `
 .lwChartPicking { cursor: crosshair; }
 .lwWrap { position: relative; }
 .lwChart { width: 100%; }
-.lwLegend { position: absolute; top: 4px; left: 4px; z-index: 5; font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums; letter-spacing: 0.2px; color: var(--text-dim); background: rgba(18,23,34,0.75); padding: 3px 9px; border-radius: 6px; pointer-events: none; }
+.lwLegend { position: absolute; top: 4px; left: 4px; z-index: 5; font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums; letter-spacing: 0.2px; color: var(--text); background: color-mix(in srgb, var(--surface) 88%, transparent); border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.12); padding: 3px 9px; border-radius: 6px; pointer-events: none; }
 .lwLegend:empty { display: none; }
 .drawToolbar { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
 .drawToolBtn { background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim); padding: 5px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease; }
