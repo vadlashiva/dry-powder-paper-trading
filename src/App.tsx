@@ -4704,19 +4704,19 @@ const CSS = `
   background-repeat: no-repeat;
   color: #E7ECF6 !important;
 }
-.landingWrap .dim { color: #A9B4C9 !important; }
-.landingWrap .landingSub { color: #C7D0E2 !important; }
+.landingWrap .dim { color: #D2DBEB !important; }
+.landingWrap .landingSub { color: #E3E9F4 !important; }
 .landingWrap .landingHeroCard,
 .landingWrap .landingFeatureCard {
   color: var(--text);
 }
 .landingWrap .landingHeroCard .dim,
 .landingWrap .landingFeatureCard .dim {
-  color: var(--text-dim) !important;
+  color: #D2DBEB !important;
 }
-.landingWrap .landingFooterLinks a { color: #C7D0E2 !important; }
+.landingWrap .landingFooterLinks a { color: #E3E9F4 !important; }
 .landingWrap .landingFooterLinks a:hover { color: #FFFFFF !important; }
-.landingWrap .landingFooterNote { color: #A9B4C9 !important; }
+.landingWrap .landingFooterNote { color: #D2DBEB !important; }
 .landingNav { display: flex; align-items: center; justify-content: space-between; padding: 20px 40px; border-bottom: 1px solid rgba(255,255,255,0.14); flex-wrap: wrap; gap: 12px; position: relative; z-index: 1; }
 .landingNavActions { display: flex; align-items: center; gap: 10px; }
 .landingNavBtn { flex: none; padding: 9px 16px; }
@@ -4798,6 +4798,27 @@ const CSS = `
 .landingFooterLinks a { color: var(--text-dim); font-size: 12.5px; text-decoration: none; }
 .landingFooterLinks a:hover { color: var(--text); }
 .landingFooterNote { font-size: 11.5px; width: 100%; text-align: center; order: 3; }
+/* ---- landing readability: light secondary text, larger sizes, darker card backing on the bright blue ---- */
+.landingWrap { --text-dim: #D2DBEB; overflow-x: clip; }
+html, body { overflow-x: clip; }
+.landingWrap .dim { color: #D2DBEB; }
+.landingWrap .landingSub { color: #E3E9F4; font-size: 17px; }
+.landingWrap .heroTrust { color: #E3E9F4; font-size: 14px; }
+.landingWrap .whoForCard, .landingWrap .mistakeCol, .landingWrap .faqItem, .landingWrap .realityBand, .landingWrap .moversCard { background: rgba(4, 14, 38, 0.55); border-color: rgba(255,255,255,0.14); }
+.landingWrap .whoForCard h3, .landingWrap .landingFeatureCard h3 { font-size: 16px; color: #FFFFFF; }
+.landingWrap .whoForCard p, .landingWrap .landingFeatureCard p, .landingWrap .mistakeCol p { font-size: 14.5px; line-height: 1.6; color: #D2DBEB; }
+.landingWrap .faqItem h3 { font-size: 16px; color: #FFFFFF; }
+.landingWrap .faqItem p { font-size: 14.5px; color: #D2DBEB; }
+.landingWrap .mistakesIntro { font-size: 16px; color: #E3E9F4; }
+.landingWrap .mistakeColLabel { font-size: 12px; }
+.landingWrap .landingStatLabel { font-size: 13px; color: #D2DBEB; }
+.landingWrap .moverRow { font-size: 14px; }
+.landingWrap .realityCopy p { font-size: 15.5px; color: #E3E9F4; }
+.landingWrap .realityCopy h2 { font-size: 22px; color: #FFFFFF; }
+.landingWrap .landingTrialSub { font-size: 15px; color: #E3E9F4; }
+.landingWrap .landingFooterLinks a { font-size: 14px; color: #E3E9F4; }
+.landingWrap .landingFooterNote { font-size: 13px; color: #D2DBEB; line-height: 1.6; }
+.landingWrap .landingEyebrow { font-size: 12px; }
 
 .authBackBtn { position: absolute; top: 18px; left: 18px; background: none; border: none; color: var(--text-dim); font-size: 12.5px; cursor: pointer; padding: 6px 4px; }
 .authBackBtn:hover { color: var(--text); }
