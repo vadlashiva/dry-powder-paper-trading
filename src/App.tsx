@@ -114,6 +114,18 @@ function erf(x) {
 function normCDF(x) { return 0.5 * (1 + erf(x / Math.sqrt(2))); }
 function phi(x) { return Math.exp(-x * x / 2) / Math.sqrt(2 * Math.PI); }
 
+// Current model premium for an option position/contract (same pricing used everywhere else in the app).
+function optionPremiumNow(pos, quotes, instruments) {
+  const spot = quotes[pos.symbol]?.price;
+  const symMeta = instruments.find((s) => s.symbol === pos.symbol);
+  if (!spot || !symMeta) return null;
+  const T = (pos.expiry - nowMs()) / (365 * 24 * 3600 * 1000);
+  const sigma = symMeta.iv * (1 + 0.15 * Math.abs(pos.strike - spot) / spot);
+  return blackScholes(spot, pos.strike, T, RISK_FREE, sigma, pos.type).price;
+}
+// A stop-loss on a long option fires when premium falls to/below it; on a short option, when premium rises to/above it.
+const stopLossHit = (pos, premium) => (isShort(pos) ? premium >= pos.stopLoss : premium <= pos.stopLoss);
+
 function blackScholes(S, K, T, r, sigma, type) {
   T = Math.max(T, 1 / (365 * 24 * 60)); // floor at 1 minute so expiry-day premiums keep decaying to the close
   const d1 = (Math.log(S / K) + (r + (sigma * sigma) / 2) * T) / (sigma * Math.sqrt(T));
@@ -2005,6 +2017,8 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
   const [editingOrder, setEditingOrder] = useState(null);
   const [editQty, setEditQty] = useState(1);
   const [editPrice, setEditPrice] = useState("");
+  const [slEditing, setSlEditing] = useState(null); // option position whose stop-loss is being set
+  const [slInput, setSlInput] = useState("");
   const [pickingPriceFromChart, setPickingPriceFromChart] = useState(false);
   const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
@@ -2754,7 +2768,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
 
   const openTicket = (type, strike, expiry) => setTicket({ symbol: selected, type, strike, expiry: expiry.getTime() });
 
-  const placeOptionOrder = (mode, qty) => {
+  const placeOptionOrder = (mode, qty, stopLoss = null) => {
     if (!marketStatus.isOpen) { showToast("Market is closed — orders can only be placed 9:15 AM–3:30 PM, Mon–Fri", "bear"); setTicket(null); return; }
     if (!ticket || qty <= 0) return;
     const spot = quotes[ticket.symbol]?.price ?? 0;
@@ -2779,12 +2793,12 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
         if (existing) {
           const totalQty = existing.qty + qty;
           const avgPremium = (existing.avgPremium * existing.qty + price * qty) / totalQty;
-          return prev.map((p) => (longKey(p) ? { ...p, qty: totalQty, avgPremium } : p));
+          return prev.map((p) => (longKey(p) ? { ...p, qty: totalQty, avgPremium, stopLoss: stopLoss ?? p.stopLoss ?? null } : p));
         }
-        return [...prev, { id: uid(), symbol: ticket.symbol, type: ticket.type, strike: ticket.strike, expiry: ticket.expiry, qty, avgPremium: price, lotBased: true, side: "long" }];
+        return [...prev, { id: uid(), symbol: ticket.symbol, type: ticket.type, strike: ticket.strike, expiry: ticket.expiry, qty, avgPremium: price, lotBased: true, side: "long", stopLoss }];
       });
       logTrade(`BTO ${plural} ${label} @ ${fmtMoney(price)}`, -premiumTotal);
-      showToast(`Bought ${plural} ${label}`, "bull");
+      showToast(`Bought ${plural} ${label}${stopLoss ? ` · SL ${fmtMoney(stopLoss)}` : ""}`, "bull");
     } else if (mode === "sell") {
       const existing = optionPositions.find(longKey);
       const held = existing?.qty ?? 0;
@@ -2802,12 +2816,12 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
         if (existing) {
           const totalQty = existing.qty + qty;
           const avgPremium = (existing.avgPremium * existing.qty + price * qty) / totalQty;
-          return prev.map((p) => (shortKey(p) ? { ...p, qty: totalQty, avgPremium, margin: (p.margin || 0) + marginNeeded } : p));
+          return prev.map((p) => (shortKey(p) ? { ...p, qty: totalQty, avgPremium, margin: (p.margin || 0) + marginNeeded, stopLoss: stopLoss ?? p.stopLoss ?? null } : p));
         }
-        return [...prev, { id: uid(), symbol: ticket.symbol, type: ticket.type, strike: ticket.strike, expiry: ticket.expiry, qty, avgPremium: price, lotBased: true, side: "short", margin: marginNeeded }];
+        return [...prev, { id: uid(), symbol: ticket.symbol, type: ticket.type, strike: ticket.strike, expiry: ticket.expiry, qty, avgPremium: price, lotBased: true, side: "short", margin: marginNeeded, stopLoss }];
       });
       logTrade(`STO ${plural} ${label} @ ${fmtMoney(price)} (margin ${fmtMoney(marginNeeded, 0)} blocked)`, premiumTotal);
-      showToast(`Shorted ${plural} ${label} — margin ${fmtMoney(marginNeeded, 0)} blocked`, "bear");
+      showToast(`Shorted ${plural} ${label} — margin ${fmtMoney(marginNeeded, 0)} blocked${stopLoss ? ` · SL ${fmtMoney(stopLoss)}` : ""}`, "bear");
     } else if (mode === "cover") {
       const existing = optionPositions.find(shortKey);
       const held = existing?.qty ?? 0;
@@ -2822,19 +2836,57 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
     setTicket(null);
   };
 
-  const closeOptionPosition = (pos) => {
+  const closeOptionPosition = (pos, atPrice = null, reason = null) => {
     const spot = quotes[pos.symbol]?.price ?? 0;
     const symMeta = allInstruments.find((s) => s.symbol === pos.symbol);
     const T = (pos.expiry - nowMs()) / (365 * 24 * 3600 * 1000);
     const sigma = symMeta.iv * (1 + 0.15 * Math.abs(pos.strike - spot) / spot);
-    const { price } = blackScholes(spot, pos.strike, T, RISK_FREE, sigma, pos.type);
+    const price = atPrice ?? blackScholes(spot, pos.strike, T, RISK_FREE, sigma, pos.type).price;
     const total = price * posMultiplier(pos) * pos.qty;
     const short = isShort(pos);
     setCash((c) => c + (short ? (pos.margin || 0) - total : total));
     setOptionPositions((prev) => prev.filter((p) => p.id !== pos.id));
-    logTrade(`${short ? "BTC" : "STC"} ${pos.qty}x ${pos.type.toUpperCase()} ${displayTicker(pos.symbol)} ${pos.strike} @ ${fmtMoney(price)}`, short ? -total : total, (short ? pos.avgPremium - price : price - pos.avgPremium) * posMultiplier(pos) * pos.qty);
-    showToast("Position closed", "bear");
+    logTrade(`${reason ? `${reason} ` : ""}${short ? "BTC" : "STC"} ${pos.qty}x ${pos.type.toUpperCase()} ${displayTicker(pos.symbol)} ${pos.strike} @ ${fmtMoney(price)}`, short ? -total : total, (short ? pos.avgPremium - price : price - pos.avgPremium) * posMultiplier(pos) * pos.qty);
+    showToast(reason ? `${reason}: ${pos.type === "call" ? "C" : "P"} ${displayTicker(pos.symbol)} ${pos.strike} closed @ ${fmtMoney(price)}` : "Position closed", "bear");
   };
+
+  // ---- option stop-losses ----
+  const openStopLossEditor = (pos) => {
+    if (!isPro) { setUpgradeModalOpen(true); return; }
+    const now = optionPremiumNow(pos, quotes, allInstruments) ?? pos.avgPremium;
+    // default suggestion: 30% against the entry premium
+    const suggested = pos.stopLoss ?? (isShort(pos) ? pos.avgPremium * 1.3 : pos.avgPremium * 0.7);
+    setSlInput(String(+suggested.toFixed(2)));
+    setSlEditing({ ...pos, nowPremium: now });
+  };
+  const saveStopLoss = () => {
+    const v = parseFloat(slInput);
+    if (!v || v <= 0) return showToast("Enter a valid stop-loss premium", "bear");
+    const now = slEditing.nowPremium;
+    if (now != null && (isShort(slEditing) ? v <= now : v >= now)) {
+      return showToast(isShort(slEditing) ? `For a short option the stop-loss must be above the current premium (${fmtMoney(now)})` : `Stop-loss must be below the current premium (${fmtMoney(now)})`, "bear");
+    }
+    setOptionPositions((prev) => prev.map((p) => (p.id === slEditing.id ? { ...p, stopLoss: +v.toFixed(2) } : p)));
+    setSlEditing(null);
+    showToast(`Stop-loss set at ${fmtMoney(v)}`, "bull");
+  };
+  const removeStopLoss = (id) => {
+    setOptionPositions((prev) => prev.map((p) => (p.id === id ? { ...p, stopLoss: null } : p)));
+    setSlEditing(null);
+    showToast("Stop-loss removed", "bear");
+  };
+
+  // Close any option position whose stop-loss has been hit, each time prices update.
+  const slFiredRef = useRef(new Set());
+  useEffect(() => {
+    optionPositions.forEach((p) => {
+      if (!p.stopLoss || slFiredRef.current.has(p.id)) return;
+      const prem = optionPremiumNow(p, quotes, allInstruments);
+      if (prem == null || !stopLossHit(p, prem)) return;
+      slFiredRef.current.add(p.id);
+      closeOptionPosition(p, prem, "SL hit");
+    });
+  }, [quotes]);
 
   const closeStockPosition = (pos) => {
     const price = quotes[pos.symbol]?.price ?? 0;
@@ -3388,9 +3440,10 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                           <td className="mono">{fmtMoney(p.avgPremium)}</td>
                           <td className="mono">{fmtMoney(price)}</td>
                           <td className="mono">{fmtMoney(mv)}</td>
-                          <td className={`mono ${pnl >= 0 ? "bull" : "bear"}`}>{fmtMoney(pnl)}</td>
+                          <td className={`mono ${pnl >= 0 ? "bull" : "bear"}`}>{fmtMoney(pnl)}{p.stopLoss ? <div className="slTag">SL {fmtMoney(p.stopLoss)}</div> : null}</td>
                           <td className="orderRowActions">
                             <button className="closeBtn" onClick={() => { setSelected(p.symbol); setTab("trade"); }}><LineChart size={12} /> Chart</button>
+                            <button className="closeBtn" onClick={() => openStopLossEditor(p)}><Crosshair size={12} /> {p.stopLoss ? "Edit SL" : "Stop-Loss"}</button>
                             <button className="closeBtn" onClick={() => closeOptionPosition(p)}>{short ? "Cover" : "Close"}</button>
                           </td>
                         </tr>
@@ -3405,7 +3458,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
           {tab === "orders" && (
             <div className="ordersWrap">
               {pendingOrders.length === 0 ? (
-                <div className="empty">No pending orders. Place a limit or stop order from the Chart &amp; Trade tab.</div>
+                <div className="empty">No pending stock orders. Place a limit or stop order from the Chart &amp; Trade tab. For options, set a stop-loss from the Positions tab or the option ticket.</div>
               ) : (
                 <table className="posTable">
                   <thead><tr><th>Symbol</th><th>Side</th><th>Type</th><th>Qty</th><th>Price</th><th>Placed</th><th></th></tr></thead>
@@ -3426,6 +3479,33 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                     ))}
                   </tbody>
                 </table>
+              )}
+              {optionPositions.some((p) => p.stopLoss) && (
+                <>
+                  <h3 className="mt">Option Stop-Losses</h3>
+                  <table className="posTable">
+                    <thead><tr><th>Contract</th><th>Side</th><th>Lots</th><th>Entry</th><th>Now</th><th>Stop-Loss</th><th></th></tr></thead>
+                    <tbody>
+                      {optionPositions.filter((p) => p.stopLoss).map((p) => {
+                        const now = optionPremiumNow(p, quotes, allInstruments);
+                        return (
+                          <tr key={p.id}>
+                            <td className="mono">{p.type === "call" ? "C" : "P"} {displayTicker(p.symbol)} {p.strike} {fmtDate(new Date(p.expiry))}</td>
+                            <td className={`mono ${isShort(p) ? "bear" : "bull"}`}>{isShort(p) ? "SHORT" : "LONG"}</td>
+                            <td className="mono">{p.qty}</td>
+                            <td className="mono">{fmtMoney(p.avgPremium)}</td>
+                            <td className="mono">{now != null ? fmtMoney(now) : "—"}</td>
+                            <td className="mono bear">{fmtMoney(p.stopLoss)}</td>
+                            <td className="orderRowActions">
+                              <button className="closeBtn" onClick={() => openStopLossEditor(p)}>Edit</button>
+                              <button className="closeBtn" onClick={() => removeStopLoss(p.id)}><Trash2 size={12} /></button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </>
               )}
               <div className="dim ordersHint">Orders are checked against live prices as they update and fill automatically — no need to keep this tab open.</div>
             </div>
@@ -3562,9 +3642,34 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
           onClose={() => setTicket(null)}
           onSubmit={placeOptionOrder}
           marketOpen={marketStatus.isOpen}
+          isPro={isPro}
+          onUpgrade={() => setUpgradeModalOpen(true)}
           heldQty={optionPositions.find((p) => p.symbol === ticket.symbol && p.type === ticket.type && p.strike === ticket.strike && p.expiry === ticket.expiry && p.lotBased && !isShort(p))?.qty ?? 0}
           shortQty={optionPositions.find((p) => p.symbol === ticket.symbol && p.type === ticket.type && p.strike === ticket.strike && p.expiry === ticket.expiry && p.lotBased && isShort(p))?.qty ?? 0}
         />
+      )}
+
+      {slEditing && (
+        <div className="modalOverlay" onClick={() => setSlEditing(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Stop-Loss</h3>
+            <p className="mono">{isShort(slEditing) ? "SHORT " : ""}{slEditing.type === "call" ? "C" : "P"} {displayTicker(slEditing.symbol)} {slEditing.strike} {fmtDate(new Date(slEditing.expiry))} · {slEditing.qty} lot{slEditing.qty > 1 ? "s" : ""}</p>
+            <div className="orderHint dim mono">Entry {fmtMoney(slEditing.avgPremium)} · Now {slEditing.nowPremium != null ? fmtMoney(slEditing.nowPremium) : "—"}</div>
+            <div className="orderRow">
+              <label>Stop-loss premium</label>
+              <input type="number" min="0" step="0.05" className="qtyInput mono" value={slInput} onChange={(e) => setSlInput(e.target.value)} autoFocus />
+            </div>
+            {parseFloat(slInput) > 0 && (
+              <div className="orderEst mono">Loss if hit ≈ <span className="bear">{fmtMoney(Math.abs((isShort(slEditing) ? parseFloat(slInput) - slEditing.avgPremium : slEditing.avgPremium - parseFloat(slInput)) * posMultiplier(slEditing) * slEditing.qty))}</span></div>
+            )}
+            <div className="orderHint dim">{isShort(slEditing) ? "The whole position is bought back automatically if the premium rises to this level." : "The whole position is sold automatically if the premium falls to this level."}</div>
+            <div className="modalBtns">
+              {slEditing.stopLoss ? <button className="btn btnGhost" onClick={() => removeStopLoss(slEditing.id)}>Remove</button> : null}
+              <button className="btn btnGhost" onClick={() => setSlEditing(null)}>Cancel</button>
+              <button className="btn btnBull" onClick={saveStopLoss}>Save</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {editingOrder && (
@@ -3649,8 +3754,11 @@ function ProLockPanel({ title, description, onUpgrade }) {
   );
 }
 
-function OptionTicket({ ticket, quotes, instruments, onClose, onSubmit, heldQty, shortQty, marketOpen }) {
+function OptionTicket({ ticket, quotes, instruments, onClose, onSubmit, heldQty, shortQty, marketOpen, isPro, onUpgrade }) {
   const [qty, setQty] = useState(1);
+  const [sl, setSl] = useState("");
+  const [slErr, setSlErr] = useState("");
+  const alertSl = (msg) => setSlErr(msg);
   const spot = quotes[ticket.symbol]?.price ?? 0;
   const symMeta = instruments.find((s) => s.symbol === ticket.symbol);
   const T = (ticket.expiry - nowMs()) / (365 * 24 * 3600 * 1000);
@@ -3687,14 +3795,39 @@ function OptionTicket({ ticket, quotes, instruments, onClose, onSubmit, heldQty,
         <div className="orderEst mono">Premium ({qty * lot} units): <span>{fmtMoney(greeks.price * lot * qty)}</span></div>
         <div className="orderHint dim mono" style={{ marginTop: "-8px" }}>Long: {heldQty} lot{heldQty === 1 ? "" : "s"} · Short: {shortQty} lot{shortQty === 1 ? "" : "s"} · Margin to short ≈ {fmtMoney(marginEst, 0)}</div>
 
+        <div className="orderRow">
+          <label>Stop-loss premium <span className="dim">(optional)</span></label>
+          {isPro ? (
+            <input type="number" min="0" step="0.05" className="qtyInput mono" placeholder={`e.g. ${(greeks.price * 0.7).toFixed(2)}`} value={sl} onChange={(e) => { setSl(e.target.value); setSlErr(""); }} />
+          ) : (
+            <button className="btn btnGhost" onClick={onUpgrade}><Lock size={12} /> Pro</button>
+          )}
+        </div>
+        {slErr && <div className="orderHint bear" style={{ marginTop: "-8px" }}>{slErr}</div>}
+        {(() => {
+          const v = parseFloat(sl);
+          if (!(v > 0)) return null;
+          const lossLong = (greeks.price - v) * lot * qty;
+          const lossShort = (v - greeks.price) * lot * qty;
+          return <div className="orderHint dim mono" style={{ marginTop: "-8px" }}>{v < greeks.price ? `Buy: auto-exit at ${fmtMoney(v)} · max loss ≈ ${fmtMoney(lossLong)}` : `Sell to Open: auto-exit at ${fmtMoney(v)} · max loss ≈ ${fmtMoney(lossShort)}`}</div>;
+        })()}
+
         <div className="ticketSection dim">Buy (long)</div>
         <div className="orderBtns">
-          <button className="btn btnBull" disabled={!marketOpen} onClick={() => onSubmit("buy", qty)}>Buy to Open</button>
+          <button className="btn btnBull" disabled={!marketOpen} onClick={() => {
+            const v = parseFloat(sl);
+            if (v > 0 && v >= greeks.price) return alertSl(`For a buy, stop-loss must be below the premium (${fmtMoney(greeks.price)})`);
+            onSubmit("buy", qty, v > 0 ? +v.toFixed(2) : null);
+          }}>Buy to Open</button>
           <button className="btn btnGhost" disabled={!marketOpen || heldQty === 0} onClick={() => onSubmit("sell", qty)}>Sell to Close</button>
         </div>
         <div className="ticketSection dim">Sell (short / option writing)</div>
         <div className="orderBtns">
-          <button className="btn btnBear" disabled={!marketOpen} onClick={() => onSubmit("short", qty)}>Sell to Open</button>
+          <button className="btn btnBear" disabled={!marketOpen} onClick={() => {
+            const v = parseFloat(sl);
+            if (v > 0 && v <= greeks.price) return alertSl(`For Sell to Open, stop-loss must be above the premium (${fmtMoney(greeks.price)})`);
+            onSubmit("short", qty, v > 0 ? +v.toFixed(2) : null);
+          }}>Sell to Open</button>
           <button className="btn btnGhost" disabled={!marketOpen || shortQty === 0} onClick={() => onSubmit("cover", qty)}>Buy to Close</button>
         </div>
         <div className="orderHint dim">Selling an option earns the premium upfront but blocks margin, and losses can be much larger than the premium if the market moves against you. Margin shown is a simplified estimate.</div>
@@ -4184,6 +4317,7 @@ const CSS = `
 .drawToolBtn:hover { color: var(--text); border-color: var(--accent); }
 .drawToolBtnActive { background: var(--accent); color: white; border-color: var(--accent); }
 .drawToolHint { font-size: 11px; margin-left: 4px; }
+.slTag { font-size: 10.5px; font-weight: 600; color: var(--text-dim); margin-top: 2px; letter-spacing: 0.2px; }
 .lwChartOuter { position: relative; }
 .lwDrawOverlay { position: absolute; top: 0; left: 0; pointer-events: none; }
 .lwChart a[href*="tradingview.com"] { display: none !important; }
