@@ -1561,11 +1561,11 @@ function LandingPage({ themeIdx, onEnter }) {
       </section>
 
       <section className="realityBand">
-        <div className="realityNum">9 in 10</div>
+        <div className="realityNum">₹0</div>
         <div className="realityCopy">
-          <h2>Most people learn F&amp;O with their savings. You don't have to.</h2>
-          <p className="dim">A SEBI study of individual equity F&amp;O traders found about 93% made losses between FY22 and FY24. Losing ₹50,000 of practice money on Winbannu costs nothing — and teaches the same lesson.</p>
-          <a className="realitySrc" href="https://www.sebi.gov.in/media-and-notifications/press-releases/sep-2024/updated-sebi-study-reveals-93-of-individual-traders-incurred-losses-in-equity-fando-between-fy22-and-fy24-aggregate-losses-exceed-1-8-lakh-crores-over-three-years_86906.html" target="_blank" rel="noopener noreferrer">Source: SEBI, September 2024 →</a>
+          <h2>Every trader pays for their lessons. Choose what you pay with.</h2>
+          <p className="dim">The market teaches patience, discipline and respect for risk — but it usually collects its fee from your savings. Here the fee is practice money. You keep the lesson, and your real capital stays exactly where it is.</p>
+          <span className="realitySrc">Learn the expensive lessons cheaply.</span>
         </div>
       </section>
 
@@ -4779,11 +4779,11 @@ const CSS = `
 .landingFooterLinks { display: flex; gap: 20px; flex-wrap: wrap; }
 .heroTrust { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: -12px 0 24px; font-size: 13px; color: var(--text-dim); }
 .heroTrust span::before { content: "✓"; color: var(--bull); font-weight: 700; margin-right: 6px; }
-.realityBand { max-width: 1000px; margin: 10px auto 40px; padding: 26px 30px; display: flex; align-items: center; gap: 30px; border: 1px solid rgba(255,255,255,0.1); border-left: 4px solid var(--bear); border-radius: 14px; background: rgba(255,255,255,0.03); position: relative; z-index: 1; }
-.realityNum { font-family: 'Instrument Sans', sans-serif; font-weight: 700; font-size: 54px; line-height: 1; color: var(--bear); white-space: nowrap; letter-spacing: -1px; }
+.realityBand { max-width: 1000px; margin: 10px auto 40px; padding: 26px 30px; display: flex; align-items: center; gap: 30px; border: 1px solid rgba(255,255,255,0.1); border-left: 4px solid var(--amber); border-radius: 14px; background: rgba(255,255,255,0.03); position: relative; z-index: 1; }
+.realityNum { font-family: 'Instrument Sans', sans-serif; font-weight: 700; font-size: 54px; line-height: 1; color: var(--amber); white-space: nowrap; letter-spacing: -1px; }
 .realityCopy h2 { font-family: 'Instrument Sans', sans-serif; font-size: 20px; margin: 0 0 8px; }
 .realityCopy p { font-size: 14px; line-height: 1.6; margin: 0 0 8px; }
-.realitySrc { font-size: 12px; color: var(--text-dim); text-decoration: underline; text-underline-offset: 3px; }
+.realitySrc { font-size: 13px; font-style: italic; color: var(--amber); }
 .howSteps { max-width: 1080px; margin: 0 auto; padding: 20px 40px 70px; text-align: center; position: relative; z-index: 1; }
 .howStepsRow { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; text-align: left; }
 .howStepNum { display: inline-flex; width: 30px; height: 30px; border-radius: 50%; align-items: center; justify-content: center; background: var(--bull); color: #06231A; font-weight: 700; font-family: 'Instrument Sans', sans-serif; margin-bottom: 10px; }
