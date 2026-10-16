@@ -4598,8 +4598,8 @@ const CSS = `
 
 .tickerTapeWrap { background: rgba(0,0,0,0.35); border-bottom: 1px solid rgba(255,255,255,0.08); overflow: hidden; white-space: nowrap; padding: 7px 0; position: relative; z-index: 1; }
 .tickerTape { display: inline-block; padding-left: 100%; animation: tickerScroll 32s linear infinite; }
-.tickerItem { display: inline-block; margin-right: 36px; font-size: 12px; color: var(--text-dim); }
-.tickerItem b { color: var(--text); font-weight: 600; margin-right: 4px; }
+.tickerItem { display: inline-block; margin-right: 36px; font-size: 13px; font-weight: 600; color: #F3F6FB; }
+.tickerItem b { color: #FFB020; font-weight: 700; margin-right: 6px; }
 @keyframes tickerScroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
 
 .heroLivePrice { display: flex; align-items: center; gap: 8px; font-size: 13px; background: var(--surface-2); border: 1px solid var(--border); padding: 8px 12px; border-radius: 8px; margin: 14px 0 4px; }
