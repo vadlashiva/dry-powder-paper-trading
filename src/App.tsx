@@ -1998,6 +1998,8 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
   const [replayRate, setReplayRate] = useState(5);
   const [replayBusy, setReplayBusy] = useState(false);
   const liveStashRef = useRef(null);
+  const replayDayRef = useRef("");
+  useEffect(() => { replayDayRef.current = replayDay; }, [replayDay]);
   SIM_NOW = replayActive ? replayClock : null;
   const marketStatus = replayActive && replayData
     ? { isOpen: replayClock >= replayData.dayStart && replayClock < replayData.dayEnd, label: replayClock >= replayData.dayEnd ? `Replay · session closed (${replayData.date})` : `Replay · ${fmtReplayTime(replayClock)}` }
@@ -2626,8 +2628,10 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
     setTrades((prev) => [{ id: uid(), time: new Date(nowMs()), label, amount, realized }, ...prev].slice(0, 200));
   };
 
-  const startReplay = async () => {
+  const startReplay = async (dayArg) => {
+    const replayDay = typeof dayArg === "string" ? dayArg : replayDayRef.current;
     if (!replayDay) return showToast("Pick a date first", "bear");
+    setReplayDay(replayDay);
     const wd = new Date(replayDay + "T12:00:00+05:30").getUTCDay();
     if (wd === 0 || wd === 6) return showToast("That's a weekend — pick a weekday", "bear");
     if (NSE_HOLIDAYS[replayDay]) return showToast(`${NSE_HOLIDAYS[replayDay]} was a market holiday — pick another day`, "bear");
@@ -2640,7 +2644,8 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
     if (!Object.keys(bySym).length) return showToast("No market data for that date — try a more recent weekday", "bear");
     const dayStart = Date.parse(replayDay + "T09:15:00+05:30");
     const dayEnd = Date.parse(replayDay + "T15:30:00+05:30");
-    liveStashRef.current = { cash, stockPositions, optionPositions, trades, pendingOrders, alerts, quotes };
+    // Restarting while already in replay keeps the original live stash — never stash the practice portfolio.
+    if (!replayActiveRef.current) liveStashRef.current = { cash, stockPositions, optionPositions, trades, pendingOrders, alerts, quotes };
     replayActiveRef.current = true;
     setCash(REPLAY_CASH); setStockPositions([]); setOptionPositions([]); setTrades([]); setPendingOrders([]); setAlerts([]);
     setReplayData({ date: replayDay, dayStart, dayEnd, bySym });
@@ -2651,6 +2656,18 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
     setTab("trade");
     showToast(`Replaying ${new Date(dayStart).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })} from the 9:15 AM open — trade as if it's live`, "bull");
   };
+
+  // Today's session if it has started (weekday, not a holiday, at least 15 min after the open); otherwise the last trading day.
+  const practiceDayISO = () => {
+    const ist = new Date(Date.now() + 19800000);
+    const iso = ist.toISOString().slice(0, 10);
+    const wd = ist.getUTCDay();
+    const mins = ist.getUTCHours() * 60 + ist.getUTCMinutes();
+    if (wd !== 0 && wd !== 6 && !NSE_HOLIDAYS[iso] && mins >= 9 * 60 + 30) return iso;
+    return lastTradingDayISO();
+  };
+  const practiceToday = () => startReplay(practiceDayISO());
+  const restartReplayDay = () => replayData && startReplay(replayData.date);
 
   const exitReplay = () => {
     const st = liveStashRef.current;
@@ -3047,6 +3064,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
             value={replayClock}
             onChange={(e) => setReplayClock(Number(e.target.value))}
           />
+          <button className="indToggle" onClick={restartReplayDay} disabled={replayBusy}>{replayBusy ? "Loading…" : "Restart from 9:15"}</button>
           <button className="indToggle" onClick={popOutChart}>Pop out chart</button>
           <button className="resetBtn replayExitBtn" onClick={exitReplay}>Exit replay</button>
         </div>
@@ -3167,6 +3185,14 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                   <div className="indToggles">
                     <button className={`indToggle ${activeIndicatorCount ? "indToggleActive" : ""}`} onClick={() => setTab("indicators")}>
                       <Layers size={11} /> Indicators{activeIndicatorCount ? ` (${activeIndicatorCount})` : ""}
+                    </button>
+                    <button
+                      className="indToggle practiceTodayBtn"
+                      title={replayActive ? "Reset the clock to 9:15 AM and start this day's practice over" : "Rewind today to the 9:15 AM open and practice it with a separate practice balance"}
+                      onClick={replayActive ? restartReplayDay : practiceToday}
+                      disabled={replayBusy}
+                    >
+                      <RotateCcw size={11} /> {replayBusy ? "Loading…" : replayActive ? "Restart day" : "Practice today"}
                     </button>
                     <button className="indToggle" title="Open a full-day chart in a new window" onClick={popOutChart}>
                       <Maximize2 size={11} /> Pop out
@@ -4364,6 +4390,9 @@ const CSS = `
 .indToggle:hover { color: var(--text); }
 .indDot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
 .indToggleActive { background: var(--amber); color: #241800; border-color: var(--amber); }
+.practiceTodayBtn { background: var(--accent); color: white; border-color: var(--accent); font-weight: 600; }
+.practiceTodayBtn:hover:not(:disabled) { filter: brightness(1.1); color: white; }
+.practiceTodayBtn:disabled { opacity: 0.6; cursor: wait; }
 .fitBtn { margin-left: 6px; padding-left: 12px; border-left: 1px solid var(--border); border-radius: 0 6px 6px 0; }
 .chartTypeBtn { margin-left: 6px; }
 .subChart { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 10px; }
