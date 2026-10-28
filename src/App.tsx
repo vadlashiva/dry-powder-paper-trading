@@ -3040,6 +3040,14 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
           <button className="resetBtn" onClick={popOutChart} title="Open a full-day chart in a new window"><Maximize2 size={14} /> Pop-out chart</button>
           <button className="themeBtn" onClick={cycleTheme} title="Change background theme"><span className="themeEmoji">{THEMES[themeIdx].emoji}</span> {THEMES[themeIdx].name}</button>
           <button className="resetBtn" onClick={() => setConfirmReset(true)}><RotateCcw size={14} /> Reset</button>
+          <button
+            className="resetBtn practiceTopBtn"
+            onClick={replayActive ? restartReplayDay : practiceToday}
+            disabled={replayBusy}
+            title={replayActive ? "Reset the clock to 9:15 AM and start this day's practice over" : "Rewind today to the 9:15 AM open and practice it with a separate practice balance"}
+          >
+            <Play size={14} /> {replayBusy ? "Loading…" : replayActive ? "Restart day" : "Practice today"}
+          </button>
           <button className="resetBtn" onClick={onLogout}><LogOut size={14} /> Log out</button>
         </div>
       </div>
@@ -4390,6 +4398,9 @@ const CSS = `
 .indToggle:hover { color: var(--text); }
 .indDot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
 .indToggleActive { background: var(--amber); color: #241800; border-color: var(--amber); }
+.practiceTopBtn { background: var(--accent); color: white; border-color: var(--accent); font-weight: 600; }
+.practiceTopBtn:hover:not(:disabled) { filter: brightness(1.1); color: white; border-color: var(--accent); }
+.practiceTopBtn:disabled { opacity: 0.6; cursor: wait; }
 .practiceTodayBtn { background: var(--accent); color: white; border-color: var(--accent); font-weight: 600; }
 .practiceTodayBtn:hover:not(:disabled) { filter: brightness(1.1); color: white; }
 .practiceTodayBtn:disabled { opacity: 0.6; cursor: wait; }
