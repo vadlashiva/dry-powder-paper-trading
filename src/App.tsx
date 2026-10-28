@@ -1433,6 +1433,77 @@ function MiniHeroChart() {
   return <div ref={containerRef} className="miniHeroChart" />;
 }
 
+// Draggable time-of-day scale for Replay: 9:15 → 3:30 with hour ticks. Times after the latest
+// available candle (today's session still in progress) are shaded and can't be selected.
+function ReplayTimeline({ dayStart, dayEnd, dataEnd, clock, onSeek, onScrubStart }) {
+  const trackRef = useRef(null);
+  const [hover, setHover] = useState(null);
+  const [dragging, setDragging] = useState(false);
+  const span = dayEnd - dayStart;
+  const pct = (t) => ((t - dayStart) / span) * 100;
+  const fmt = (t) => new Date(t).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "numeric", minute: "2-digit" });
+  const timeAt = (clientX) => {
+    const r = trackRef.current.getBoundingClientRect();
+    const f = Math.min(1, Math.max(0, (clientX - r.left) / r.width));
+    const t = dayStart + Math.round((f * span) / 60000) * 60000;
+    return Math.min(t, dataEnd);
+  };
+  const ticks = [dayStart];
+  for (let h = 10; h <= 15; h++) ticks.push(dayStart + ((h * 60) - (9 * 60 + 15)) * 60000);
+  ticks.push(dayEnd);
+  useEffect(() => {
+    if (!dragging) return;
+    const move = (e) => { const x = e.touches ? e.touches[0].clientX : e.clientX; onSeek(timeAt(x)); };
+    const up = () => setDragging(false);
+    window.addEventListener("mousemove", move); window.addEventListener("touchmove", move, { passive: true });
+    window.addEventListener("mouseup", up); window.addEventListener("touchend", up);
+    return () => { window.removeEventListener("mousemove", move); window.removeEventListener("touchmove", move); window.removeEventListener("mouseup", up); window.removeEventListener("touchend", up); };
+  }, [dragging, dataEnd]);
+  const start = (e) => {
+    const x = e.touches ? e.touches[0].clientX : e.clientX;
+    onScrubStart(); onSeek(timeAt(x)); setDragging(true);
+  };
+  const onKey = (e) => {
+    const step = e.shiftKey ? 15 * 60000 : 60000;
+    if (e.key === "ArrowLeft") { e.preventDefault(); onSeek(Math.max(dayStart, clock - step)); }
+    if (e.key === "ArrowRight") { e.preventDefault(); onSeek(Math.min(dataEnd, clock + step)); }
+  };
+  return (
+    <div className="rtl">
+      <div
+        className={`rtlTrack ${dragging ? "rtlDragging" : ""}`}
+        ref={trackRef}
+        role="slider"
+        tabIndex={0}
+        aria-label="Replay time of day"
+        aria-valuemin={dayStart}
+        aria-valuemax={dataEnd}
+        aria-valuenow={clock}
+        aria-valuetext={fmt(clock)}
+        onMouseDown={start}
+        onTouchStart={start}
+        onKeyDown={onKey}
+        onMouseMove={(e) => setHover(timeAt(e.clientX))}
+        onMouseLeave={() => setHover(null)}
+      >
+        <div className="rtlRail" />
+        <div className="rtlPlayed" style={{ width: `${pct(clock)}%` }} />
+        {dataEnd < dayEnd && <div className="rtlFuture" style={{ left: `${pct(dataEnd)}%` }} title="Not traded yet today" />}
+        {ticks.map((t) => <div key={t} className="rtlTick" style={{ left: `${pct(t)}%` }} />)}
+        {hover != null && !dragging && <div className="rtlHover mono" style={{ left: `${pct(hover)}%` }}>{fmt(hover)}</div>}
+        <div className="rtlThumb" style={{ left: `${pct(clock)}%` }}>
+          <span className="rtlThumbLabel mono">{fmt(clock)}</span>
+        </div>
+      </div>
+      <div className="rtlLabels">
+        {ticks.map((t) => (
+          <button key={t} className="rtlLabel mono" style={{ left: `${pct(t)}%` }} disabled={t > dataEnd} onClick={() => { onScrubStart(); onSeek(Math.min(t, dataEnd)); }}>{fmt(t)}</button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ReplaySpotlight() {
   const candles = useMemo(() => {
     let price = 1300;
@@ -2319,14 +2390,16 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
   // Replay: advance the simulated clock
   useEffect(() => {
     if (!replayActive || !replayRunning || !replayData) return;
-    const iv = setInterval(() => setReplayClock((c) => Math.min(c + 500 * replayRate, replayData.dayEnd)), 500);
+    const iv = setInterval(() => setReplayClock((c) => Math.min(c + 500 * replayRate, replayData.dataEnd)), 500);
     return () => clearInterval(iv);
   }, [replayActive, replayRunning, replayRate, replayData]);
 
   useEffect(() => {
-    if (replayActive && replayData && replayRunning && replayClock >= replayData.dayEnd) {
+    if (replayActive && replayData && replayRunning && replayClock >= replayData.dataEnd) {
       setReplayRunning(false);
-      showToast("Replay session closed at 3:30 PM — review Positions and History, then exit replay", "bull");
+      showToast(replayData.dataEnd < replayData.dayEnd
+        ? "You've caught up with the latest candle — drag the timeline back to practise an earlier part of the day"
+        : "Replay session closed at 3:30 PM — review Positions and History, then exit replay", "bull");
     }
   }, [replayClock, replayActive, replayData, replayRunning]);
 
@@ -2648,7 +2721,9 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
     if (!replayActiveRef.current) liveStashRef.current = { cash, stockPositions, optionPositions, trades, pendingOrders, alerts, quotes };
     replayActiveRef.current = true;
     setCash(REPLAY_CASH); setStockPositions([]); setOptionPositions([]); setTrades([]); setPendingOrders([]); setAlerts([]);
-    setReplayData({ date: replayDay, dayStart, dayEnd, bySym });
+    const lastCandle = Math.max(...Object.values(bySym).map((e) => e.candles[e.candles.length - 1].start));
+    const dataEnd = Math.min(dayEnd, lastCandle + REPLAY_CANDLE_MS);
+    setReplayData({ date: replayDay, dayStart, dayEnd, dataEnd, bySym });
     setReplayClock(dayStart);
     setReplayRunning(true);
     setReplayActive(true);
@@ -3056,25 +3131,23 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
         <div className="replayBar">
           <span className="replayBarTag">Replay</span>
           <span className="mono replayBarClock">{fmtReplayTime(replayClock)} IST</span>
-          <div className="replayProgress" aria-hidden="true"><div style={{ width: `${Math.min(100, ((replayClock - replayData.dayStart) / (replayData.dayEnd - replayData.dayStart)) * 100)}%` }} /></div>
-          <button className="indToggle" onClick={() => setReplayRunning((r) => !r)} disabled={replayClock >= replayData.dayEnd}>{replayRunning ? "Pause" : "Play"}</button>
+          <button className="indToggle" onClick={() => setReplayRunning((r) => !r)} disabled={replayClock >= replayData.dataEnd}>{replayRunning ? "Pause" : "Play"}</button>
           {[1, 5, 30, 60].map((r) => (
             <button key={r} className={`indToggle ${replayRate === r ? "indToggleActive" : ""}`} onClick={() => setReplayRate(r)}>{r}x</button>
           ))}
-          <button className="indToggle" onClick={() => setReplayClock((c) => Math.min(c + 15 * 60000, replayData.dayEnd))} disabled={replayClock >= replayData.dayEnd}>+15 min</button>
-          <input
-            type="range"
-            className="replaySlider"
-            aria-label="Replay time"
-            min={replayData.dayStart}
-            max={replayData.dayEnd}
-            step={60000}
-            value={replayClock}
-            onChange={(e) => setReplayClock(Number(e.target.value))}
-          />
+          <button className="indToggle" onClick={() => setReplayClock((c) => Math.max(c - 15 * 60000, replayData.dayStart))} disabled={replayClock <= replayData.dayStart}>−15 min</button>
+          <button className="indToggle" onClick={() => setReplayClock((c) => Math.min(c + 15 * 60000, replayData.dataEnd))} disabled={replayClock >= replayData.dataEnd}>+15 min</button>
           <button className="indToggle" onClick={restartReplayDay} disabled={replayBusy}>{replayBusy ? "Loading…" : "Restart from 9:15"}</button>
           <button className="indToggle" onClick={popOutChart}>Pop out chart</button>
           <button className="resetBtn replayExitBtn" onClick={exitReplay}>Exit replay</button>
+          <ReplayTimeline
+            dayStart={replayData.dayStart}
+            dayEnd={replayData.dayEnd}
+            dataEnd={replayData.dataEnd}
+            clock={replayClock}
+            onSeek={setReplayClock}
+            onScrubStart={() => setReplayRunning(false)}
+          />
         </div>
       )}
 
@@ -4496,6 +4569,25 @@ const CSS = `
 .replayExitBtn { margin-left: auto; }
 .replayTitle { margin: 0 0 12px; font-family: 'Instrument Sans'; font-size: 16px; }
 .replaySlider { flex: 2; min-width: 140px; accent-color: var(--amber); cursor: pointer; }
+.rtl { flex-basis: 100%; padding: 22px 10px 2px; user-select: none; }
+.rtlTrack { position: relative; height: 22px; cursor: pointer; outline: none; touch-action: none; }
+.rtlTrack:focus-visible .rtlThumb { box-shadow: 0 0 0 4px color-mix(in srgb, var(--amber) 40%, transparent); }
+.rtlRail, .rtlPlayed, .rtlFuture { position: absolute; top: 8px; height: 6px; border-radius: 999px; }
+.rtlRail { left: 0; right: 0; background: var(--surface-2); border: 1px solid var(--border); }
+.rtlPlayed { left: 0; background: var(--amber); }
+.rtlFuture { right: 0; background: repeating-linear-gradient(45deg, var(--border) 0 4px, transparent 4px 8px); cursor: not-allowed; }
+.rtlTick { position: absolute; top: 4px; width: 1px; height: 14px; background: var(--text-dim); opacity: 0.5; transform: translateX(-0.5px); }
+.rtlThumb { position: absolute; top: 2px; width: 18px; height: 18px; margin-left: -9px; border-radius: 50%; background: var(--amber); border: 3px solid var(--surface); box-shadow: 0 1px 4px rgba(0,0,0,0.35); }
+.rtlDragging .rtlThumb { transform: scale(1.15); }
+.rtlThumbLabel, .rtlHover { position: absolute; bottom: 22px; left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 4px; pointer-events: none; }
+.rtlThumbLabel { background: var(--amber); color: #241800; }
+.rtlHover { bottom: 22px; background: var(--surface); color: var(--text); border: 1px solid var(--border); margin-left: 0; }
+.rtlLabels { position: relative; height: 18px; margin-top: 2px; }
+.rtlLabel { position: absolute; transform: translateX(-50%); background: none; border: none; padding: 0 2px; font-size: 10px; color: var(--text-dim); cursor: pointer; }
+.rtlLabel:hover:not(:disabled) { color: var(--text); text-decoration: underline; }
+.rtlLabel:disabled { opacity: 0.4; cursor: not-allowed; }
+.rtlLabel:first-child { transform: none; }
+.rtlLabel:last-child { transform: translateX(-100%); }
 .popWrap { height: 100vh; overflow: hidden; }
 .popTop { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 18px; border-bottom: 1px solid var(--border); background: var(--surface); flex-wrap: wrap; }
 .popTopRight { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
