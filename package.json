@@ -1,7 +1,7 @@
 {
-  "name": "react-typescript",
+  "name": "paperrally",
   "version": "1.0.0",
-  "description": "React and TypeScript example starter project",
+  "description": "PaperRally \u2014 paper trading simulator for NSE & BSE stocks and NIFTY options",
   "keywords": [
     "typescript",
     "react",

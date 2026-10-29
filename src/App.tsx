@@ -1599,7 +1599,7 @@ function LandingPage({ themeIdx, onEnter }) {
           <div className="landingEyebrow heroReveal heroReveal-1">Free forever · 7-day Pro trial included</div>
           <h1 className="landingH1 heroReveal heroReveal-2">Practice trading NSE &amp; BSE with <span className="landingGradientText">real prices</span>. Zero risk.</h1>
           <p className="landingSub heroReveal heroReveal-3">
-            PAPERRALLY is a paper trading terminal for Indian stocks, options, and indices. Trade with
+            PaperRally is a paper trading terminal for Indian stocks, options, and indices. Trade with
             ₹10,00,000 in virtual cash against live market data — build real skill before you risk real money.
           </p>
           <div className="heroTrust heroReveal heroReveal-3">
