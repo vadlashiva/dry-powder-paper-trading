@@ -2045,7 +2045,7 @@ function PhoneGate({ userId, userEmail, themeIdx, cycleTheme, onDone, onCancel }
         ) : (
           <>
             <p className="authNote phoneGateIntro">
-              Add your mobile number to unlock <b>₹10,00,000 of practice money</b> and your 7-day free Pro trial.
+              Add your mobile number to unlock <b>₹10,00,000 of practice money</b> and <b>every feature free for 7 days</b>.
             </p>
             <form onSubmit={submit}>
               <div className="authField">
@@ -3181,10 +3181,11 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
           <div className="userBadge">
             <UserIcon size={13} />{username}
             {isPaidPro && <span className="proBadge">PRO</span>}
-            {inTrial && <span className="proBadge proBadgeTrial">TRIAL · {trialDaysLeft}D LEFT</span>}
+            {inTrial && <span className="proBadge proBadgeTrial" title="Every feature is free during your first week">ALL FREE · {trialDaysLeft}D LEFT</span>}
           </div>
-          {!isPaidPro && (
-            <button className="upgradeBtn" onClick={() => setUpgradeModalOpen(true)}><Sparkles size={13} /> {inTrial ? "Upgrade Early" : "Upgrade to Pro"}</button>
+          {/* No upgrade prompts during the free first week — only once it's over. */}
+          {!isPaidPro && !inTrial && (
+            <button className="upgradeBtn" onClick={() => setUpgradeModalOpen(true)}><Sparkles size={13} /> Upgrade to Pro</button>
           )}
           <button className="resetBtn" onClick={popOutChart} title="Open a full-day chart in a new window"><Maximize2 size={14} /> Pop-out chart</button>
           <button className="themeBtn" onClick={cycleTheme} title="Change background theme"><span className="themeEmoji">{THEMES[themeIdx].emoji}</span> {THEMES[themeIdx].name}</button>
