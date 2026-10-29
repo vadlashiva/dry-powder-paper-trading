@@ -4456,7 +4456,7 @@ function PopoutChart() {
           {termConnected && (
             <div className="popTradeStats">
               <div><span className="dim">Cash</span><span className="mono">{fmtMoney(acct.cash, 0)}</span></div>
-              <div><span className="dim">Positions</span><span className="mono">{fmtMoney(posValue, 0)}</span></div>
+              <div><span className="dim">Stocks held</span><span className="mono">{fmtMoney(posValue, 0)}</span></div>
             </div>
           )}
 
