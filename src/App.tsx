@@ -2405,6 +2405,19 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
         if (r.ok) setToast({ msg: `From pop-out: ${r.msg}`, kind: m.side === "buy" ? "bull" : "bear" });
         return;
       }
+      if (m.type === "optOrder") {
+        const r = !popoutAcctRef.current.isPro
+          ? { ok: false, msg: "Options trading is a Pro feature — upgrade from your PaperRally tab" }
+          : executeOptionOrderRef.current({ symbol: m.sym, type: m.opt.type, strike: m.opt.strike, expiry: m.opt.expiry }, m.mode, m.qty);
+        ch.postMessage({ type: "orderResult", id: m.id, ok: r.ok, msg: r.msg });
+        if (r.ok) setToast({ msg: `From pop-out: ${r.msg}`, kind: r.kind || "bull" });
+        return;
+      }
+      if (m.type === "optClose") {
+        const r = closeOptionFromPopoutRef.current(m.posId);
+        ch.postMessage({ type: "orderResult", id: m.id, ok: r.ok, msg: r.msg });
+        return;
+      }
       if (m.type === "startReplay" && m.date) { startReplayRef.current(m.date); return; }
       if (!st.replayActive || !st.replayData || m.date !== st.replayData.date) return;
       if (m.type === "seek") setReplayClock(Math.max(st.replayData.dayStart, Math.min(m.clock, st.replayData.dayEnd)));
@@ -2424,7 +2437,8 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
   const popoutAcctRef = useRef(null);
   const buildPopoutAcct = () => {
     const w = popoutWatchRef.current;
-    return { ...popoutAcctRef.current, watch: w ? { symbol: w, price: quotesRef.current[w]?.price ?? null } : null };
+    const wMeta = w ? allInstrumentsRef.current.find((x) => x.symbol === w) : null;
+    return { ...popoutAcctRef.current, now: nowMs(), watch: w ? { symbol: w, price: quotesRef.current[w]?.price ?? null, iv: wMeta?.iv ?? null } : null };
   };
   popoutAcctRef.current = {
     type: "acct",
@@ -2434,6 +2448,9 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
     label: marketStatus.label,
     cash,
     positions: stockPositions.map((p) => ({ symbol: p.symbol, qty: p.qty, avgPrice: p.avgPrice, price: quotes[p.symbol]?.price ?? null })),
+    options: optionPositions.map((p) => ({ id: p.id, symbol: p.symbol, type: p.type, strike: p.strike, expiry: p.expiry, qty: p.qty, side: isShort(p) ? "short" : "long", avgPremium: p.avgPremium, mult: posMultiplier(p), premium: optionPremiumNow(p, quotes, allInstruments) })),
+    isPro,
+    now: nowMs(),
   };
   const buildPopoutAcctRef = useRef(buildPopoutAcct);
   buildPopoutAcctRef.current = buildPopoutAcct;
@@ -3054,11 +3071,17 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
 
   const openTicket = (type, strike, expiry) => setTicket({ symbol: selected, type, strike, expiry: expiry.getTime() });
 
-  const placeOptionOrder = (mode, qty, stopLoss = null) => {
-    if (!marketStatus.isOpen) { showToast("Market is closed — orders can only be placed 9:15 AM–3:30 PM, Mon–Fri", "bear"); setTicket(null); return; }
-    if (!ticket || qty <= 0) return;
+  // One option-order path for the order ticket and the pop-out chart window.
+  // t = { symbol, type: "call" | "put", strike, expiry (ms) }; mode = buy | sell | short | cover.
+  const executeOptionOrder = (t, mode, qtyIn, stopLoss = null) => {
+    if (!marketStatus.isOpen) return { ok: false, closed: true, msg: replayActive ? "This replay day has ended — press Restart day to trade it again" : "Market is closed — orders can only be placed 9:15 AM–3:30 PM, Mon–Fri" };
+    const qty = Math.floor(Number(qtyIn));
+    if (!t || !(qty > 0)) return { ok: false, msg: "Enter a valid number of lots" };
+    const ticket = t;
     const spot = quotes[ticket.symbol]?.price ?? 0;
     const symMeta = allInstruments.find((s) => s.symbol === ticket.symbol);
+    if (!symMeta || !spot) return { ok: false, msg: "Price is still loading — try again in a moment" };
+    if (ticket.expiry <= nowMs()) return { ok: false, msg: "That expiry has passed — pick a later one" };
     const T = (ticket.expiry - nowMs()) / (365 * 24 * 3600 * 1000);
     const sigma = symMeta.iv * (1 + 0.15 * Math.abs(ticket.strike - spot) / spot);
     const { price } = blackScholes(spot, ticket.strike, T, RISK_FREE, sigma, ticket.type);
@@ -3072,7 +3095,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
     const shortKey = (p) => sameContract(p) && isShort(p);
 
     if (mode === "buy") {
-      if (premiumTotal > cash) return showToast("Insufficient buying power", "bear");
+      if (premiumTotal > cash) return { ok: false, msg: "Insufficient buying power" };
       setCash((c) => c - premiumTotal);
       setOptionPositions((prev) => {
         const existing = prev.find(longKey);
@@ -3084,18 +3107,18 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
         return [...prev, { id: uid(), symbol: ticket.symbol, type: ticket.type, strike: ticket.strike, expiry: ticket.expiry, qty, avgPremium: price, lotBased: true, side: "long", stopLoss }];
       });
       logTrade(`BTO ${plural} ${label} @ ${fmtMoney(price)}`, -premiumTotal);
-      showToast(`Bought ${plural} ${label}${stopLoss ? ` · SL ${fmtMoney(stopLoss)}` : ""}`, "bull");
+      return { ok: true, kind: "bull", msg: `Bought ${plural} ${label}${stopLoss ? ` · SL ${fmtMoney(stopLoss)}` : ""}` };
     } else if (mode === "sell") {
       const existing = optionPositions.find(longKey);
       const held = existing?.qty ?? 0;
-      if (qty > held) return showToast(held ? `Only ${held} lot${held > 1 ? "s" : ""} held — use Sell to Open to go short` : "You don't hold this option — use Sell to Open to go short", "bear");
+      if (qty > held) return { ok: false, msg: held ? `Only ${held} lot${held > 1 ? "s" : ""} held — use Sell to Open to go short` : "You don't hold this option — use Sell to Open to go short" };
       setCash((c) => c + premiumTotal);
       setOptionPositions((prev) => prev.map((p) => (longKey(p) ? { ...p, qty: p.qty - qty } : p)).filter((p) => p.qty > 0));
       logTrade(`STC ${plural} ${label} @ ${fmtMoney(price)}`, premiumTotal, (price - existing.avgPremium) * lot * qty);
-      showToast(`Sold ${plural} ${label}`, "bear");
+      return { ok: true, kind: "bear", msg: `Sold ${plural} ${label}` };
     } else if (mode === "short") {
       const marginNeeded = shortMarginPerLot(spot, ticket.strike, ticket.type, lot) * qty;
-      if (marginNeeded - premiumTotal > cash) return showToast(`Insufficient margin — selling ${plural} needs about ${fmtMoney(marginNeeded, 0)}`, "bear");
+      if (marginNeeded - premiumTotal > cash) return { ok: false, msg: `Insufficient margin — selling ${plural} needs about ${fmtMoney(marginNeeded, 0)}` };
       setCash((c) => c - marginNeeded + premiumTotal);
       setOptionPositions((prev) => {
         const existing = prev.find(shortKey);
@@ -3107,19 +3130,29 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
         return [...prev, { id: uid(), symbol: ticket.symbol, type: ticket.type, strike: ticket.strike, expiry: ticket.expiry, qty, avgPremium: price, lotBased: true, side: "short", margin: marginNeeded, stopLoss }];
       });
       logTrade(`STO ${plural} ${label} @ ${fmtMoney(price)} (margin ${fmtMoney(marginNeeded, 0)} blocked)`, premiumTotal);
-      showToast(`Shorted ${plural} ${label} — margin ${fmtMoney(marginNeeded, 0)} blocked${stopLoss ? ` · SL ${fmtMoney(stopLoss)}` : ""}`, "bear");
+      return { ok: true, kind: "bear", msg: `Shorted ${plural} ${label} — margin ${fmtMoney(marginNeeded, 0)} blocked${stopLoss ? ` · SL ${fmtMoney(stopLoss)}` : ""}` };
     } else if (mode === "cover") {
       const existing = optionPositions.find(shortKey);
       const held = existing?.qty ?? 0;
-      if (qty > held) return showToast(held ? `Only ${held} lot${held > 1 ? "s" : ""} short` : "You have no short position in this option", "bear");
+      if (qty > held) return { ok: false, msg: held ? `Only ${held} lot${held > 1 ? "s" : ""} short` : "You have no short position in this option" };
       const release = (existing.margin || 0) * (qty / held);
-      if (premiumTotal > cash + release) return showToast("Insufficient funds to buy back", "bear");
+      if (premiumTotal > cash + release) return { ok: false, msg: "Insufficient funds to buy back" };
       setCash((c) => c + release - premiumTotal);
       setOptionPositions((prev) => prev.map((p) => (shortKey(p) ? { ...p, qty: p.qty - qty, margin: (p.margin || 0) - release } : p)).filter((p) => p.qty > 0));
       logTrade(`BTC ${plural} ${label} @ ${fmtMoney(price)}`, -premiumTotal, (existing.avgPremium - price) * lot * qty);
-      showToast(`Covered ${plural} ${label}`, "bull");
+      return { ok: true, kind: "bull", msg: `Covered ${plural} ${label}` };
     }
-    setTicket(null);
+    return { ok: false, msg: "Unknown order type" };
+  };
+
+  const executeOptionOrderRef = useRef(executeOptionOrder);
+  executeOptionOrderRef.current = executeOptionOrder;
+
+  const placeOptionOrder = (mode, qty, stopLoss = null) => {
+    if (!ticket || qty <= 0) { if (!marketStatus.isOpen) setTicket(null); return; }
+    const r = executeOptionOrder(ticket, mode, qty, stopLoss);
+    showToast(r.msg, r.ok ? r.kind : "bear");
+    if (r.ok || r.closed) setTicket(null);
   };
 
   const closeOptionPosition = (pos, atPrice = null, reason = null) => {
@@ -3135,6 +3168,16 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
     logTrade(`${reason ? `${reason} ` : ""}${short ? "BTC" : "STC"} ${pos.qty}x ${pos.type.toUpperCase()} ${displayTicker(pos.symbol)} ${pos.strike} @ ${fmtMoney(price)}`, short ? -total : total, (short ? pos.avgPremium - price : price - pos.avgPremium) * posMultiplier(pos) * pos.qty);
     showToast(reason ? `${reason}: ${pos.type === "call" ? "C" : "P"} ${displayTicker(pos.symbol)} ${pos.strike} closed @ ${fmtMoney(price)}` : "Position closed", "bear");
   };
+
+  const closeOptionFromPopout = (posId) => {
+    if (!marketStatus.isOpen) return { ok: false, msg: replayActive ? "This replay day has ended" : "Market is closed — positions can be closed 9:15 AM–3:30 PM, Mon–Fri" };
+    const pos = optionPositions.find((p) => p.id === posId);
+    if (!pos) return { ok: false, msg: "That position is already closed" };
+    closeOptionPosition(pos);
+    return { ok: true, msg: `Closed ${pos.type.toUpperCase()} ${displayTicker(pos.symbol)} ${pos.strike}` };
+  };
+  const closeOptionFromPopoutRef = useRef(closeOptionFromPopout);
+  closeOptionFromPopoutRef.current = closeOptionFromPopout;
 
   // ---- option stop-losses ----
   const openStopLossEditor = (pos) => {
@@ -3204,12 +3247,36 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
   const deleteAlert = (id) => setAlerts((prev) => prev.filter((a) => a.id !== id));
   const activeAlerts = alerts.filter((a) => !a.triggered).length;
 
+  const bseTab = exchangeFilter === "BSE";
   const filteredInstruments = allInstruments.filter((s) => {
     const query = search.trim().toLowerCase();
     const matchesSearch = !query || displayTicker(s.symbol).toLowerCase().includes(query) || s.name.toLowerCase().includes(query);
-    const matchesExchange = query ? true : (exchangeFilter === "ALL" || s.exchange === exchangeFilter);
+    // On the BSE tab, search stays within BSE (the full BSE list below covers the rest).
+    const matchesExchange = bseTab ? s.exchange === "BSE" : query ? true : (exchangeFilter === "ALL" || s.exchange === exchangeFilter);
     return matchesExchange && matchesSearch;
   });
+
+  // ---- Full BSE list (loaded on first visit to the BSE tab) ----
+  const [bseAll, setBseAll] = useState(null); // [[ticker, name, mcapCr], ...] largest first
+  const [bseLoadError, setBseLoadError] = useState(false);
+  const [bseShown, setBseShown] = useState(150);
+  useEffect(() => {
+    if (!bseTab || bseAll) return;
+    let cancelled = false;
+    fetch("/bse-stocks.json")
+      .then((r) => r.json())
+      .then((j) => { if (!cancelled) setBseAll(j.stocks || []); })
+      .catch(() => { if (!cancelled) setBseLoadError(true); });
+    return () => { cancelled = true; };
+  }, [bseTab, bseAll]);
+  useEffect(() => { setBseShown(150); }, [search, exchangeFilter]);
+  const bseMatches = useMemo(() => {
+    if (!bseAll) return [];
+    const query = search.trim().toLowerCase();
+    const have = new Set(allInstruments.map((s) => s.symbol));
+    return bseAll.filter(([t, n]) => !have.has(`${t}.BO`) && (!query || t.toLowerCase().includes(query) || n.toLowerCase().includes(query)));
+  }, [bseAll, search, allInstruments]);
+  const fmtCrore = (cr) => (cr >= 1 ? `₹${cr.toLocaleString("en-IN")} Cr` : "—");
 
   const currentExpiry = expiries[expiryIdx] ?? expiries[0];
   const chainStep = EXPIRY_RULES[viewSym]?.step ?? strikeStep(q?.price ?? meta.fallback);
@@ -3338,6 +3405,8 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                   </button>
                 );
               })
+            ) : bseTab ? (
+              search.trim() ? null : <div className="wlEmpty dim">No BSE stocks in your watchlist yet — pick one below.</div>
             ) : searchingRemote ? (
               <div className="wlEmpty dim">Searching NSE &amp; BSE for &ldquo;{search}&rdquo;…</div>
             ) : remoteResults.length > 0 ? (
@@ -3357,6 +3426,34 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
               <div className="wlEmpty dim">No symbols match &ldquo;{search}&rdquo; on NSE or BSE.</div>
             ) : (
               <div className="wlEmpty dim">No symbols match &ldquo;{search}&rdquo;.</div>
+            )}
+
+            {bseTab && (
+              <div className="bseAll">
+                <div className="wlRemoteLabel dim bseAllHead">
+                  {bseAll
+                    ? <>All BSE stocks · {bseMatches.length.toLocaleString("en-IN")}{search.trim() ? ` matching “${search.trim()}”` : ""} · largest first</>
+                    : bseLoadError ? "Couldn't load the BSE list — check your connection and reopen this tab." : "Loading all BSE stocks…"}
+                </div>
+                {bseMatches.slice(0, bseShown).map(([t, n, mcap]) => (
+                  <button key={t} className="wlRow wlRowAdd" onClick={() => addCustomInstrument({ symbol: `${t}.BO`, name: n, exchange: "BSE" })}>
+                    <div className="wlSym">
+                      <span className="wlTicker">{t}<span className="exBadge exBadge-BSE">{exchangeBadge("BSE")}</span></span>
+                      <span className="wlName">{n}</span>
+                    </div>
+                    <div className="wlPriceCol">
+                      <span className="wlPrice mono bseMcap">{fmtCrore(mcap)}</span>
+                      <span className="addBadge">{isPro ? "+ Add" : <><Lock size={10} /> Pro</>}</span>
+                    </div>
+                  </button>
+                ))}
+                {bseMatches.length > bseShown && (
+                  <button className="btn btnGhost bseMoreBtn" onClick={() => setBseShown((n) => n + 300)}>
+                    Show more ({(bseMatches.length - bseShown).toLocaleString("en-IN")} left)
+                  </button>
+                )}
+                {bseAll && bseMatches.length === 0 && search.trim() && <div className="wlEmpty dim">No BSE stock matches &ldquo;{search}&rdquo;.</div>}
+              </div>
             )}
           </div>
         </div>
@@ -4253,6 +4350,11 @@ function PopoutChart() {
   const lastAcctRef = useRef(0);
   const [termConnected, setTermConnected] = useState(false);
   const [tradeQty, setTradeQty] = useState(10);
+  const [tradeMode, setTradeMode] = useState("stock"); // stock | options
+  const [optType, setOptType] = useState("call");
+  const [optExpiryIdx, setOptExpiryIdx] = useState(0);
+  const [optStrike, setOptStrike] = useState(null);
+  const [optLots, setOptLots] = useState(1);
   const [tradeMsg, setTradeMsg] = useState(null);
   const pendingRef = useRef({});
   const symRef = useRef(sym);
@@ -4359,6 +4461,46 @@ function PopoutChart() {
   else if (acct.mode === "live" && !isToday) tradeBlock = { text: "The market is open now — switch the chart to today to trade live.", action: { label: "Show today", run: () => { setLiveFollow(true); setDate(istTodayISO()); } } };
   else if (acct.mode === "replay" && !acct.open) tradeBlock = { text: "This replay day has ended. Restart it from the terminal to trade again." };
   const canTrade = !tradeBlock && !isIndexSym;
+  const showOptions = isIndexSym || tradeMode === "options";
+  useEffect(() => { setOptStrike(null); setOptExpiryIdx(0); }, [sym]);
+
+  // Options: priced the same way as the terminal's Options Chain (Black-Scholes on the terminal's spot and volatility).
+  const optSpot = termPrice;
+  const optIv = acct?.watch?.symbol === sym ? acct.watch.iv : null;
+  const optNow = acct?.now ?? Date.now();
+  const optExpiries = termConnected ? optionExpiries(sym, 4, acct.mode === "replay" ? Date.parse(acct.date + "T09:15:00+05:30") : null) : [];
+  const optExpiry = optExpiries[Math.min(optExpiryIdx, Math.max(optExpiries.length - 1, 0))];
+  const optStep = EXPIRY_RULES[sym]?.step ?? (optSpot ? strikeStep(optSpot) : 50);
+  const optStrikes = optSpot ? strikesAround(optSpot, 11, optStep) : [];
+  const atmStrike = optStrikes[Math.floor(optStrikes.length / 2)];
+  const strikeNow = optStrike != null && optStrikes.includes(optStrike) ? optStrike : atmStrike;
+  const optLot = lotSizeFor(sym);
+  let optPremium = null;
+  if (optSpot && optIv && optExpiry && strikeNow) {
+    const T = (optExpiry.getTime() - optNow) / (365 * 24 * 3600 * 1000);
+    const sigma = optIv * (1 + 0.15 * Math.abs(strikeNow - optSpot) / optSpot);
+    optPremium = blackScholes(optSpot, strikeNow, T, RISK_FREE, sigma, optType).price;
+  }
+  const optCost = optPremium != null ? optPremium * optLot * optLots : null;
+  const optMargin = optSpot && strikeNow ? shortMarginPerLot(optSpot, strikeNow, optType, optLot) * optLots : null;
+  const canTradeOptions = !tradeBlock && termConnected && acct.isPro;
+
+  const sendOptionOrder = (mode) => {
+    const id = Math.random().toString(36).slice(2);
+    pendingRef.current[id] = true;
+    setTradeMsg({ ok: true, msg: "Sending order…", pending: true });
+    chRef.current?.postMessage({ type: "optOrder", id, sym, mode, qty: optLots, opt: { type: optType, strike: strikeNow, expiry: optExpiry.getTime() } });
+    setTimeout(() => {
+      if (pendingRef.current[id]) { delete pendingRef.current[id]; setTradeMsg({ ok: false, msg: "No reply from your PaperRally tab — is it still open?" }); }
+    }, 4000);
+  };
+  const closeOptionPos = (p) => {
+    const id = Math.random().toString(36).slice(2);
+    pendingRef.current[id] = true;
+    chRef.current?.postMessage({ type: "optClose", id, posId: p.id });
+    setTimeout(() => { delete pendingRef.current[id]; }, 4000);
+  };
+  const fmtExpiry = (d) => d.toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" });
 
   const placeOrder = (side, qtyOverride) => {
     const qty = qtyOverride ?? tradeQty;
@@ -4467,11 +4609,60 @@ function PopoutChart() {
             </div>
           )}
 
-          {!tradeBlock && isIndexSym && (
-            <div className="popTradeBlock"><p>{displayTicker(sym)} is an index — pick a stock from the list to trade, or use the Options Chain in your terminal.</p></div>
+          {!isIndexSym && (
+            <div className="popTradeTabs">
+              <button className={`popTradeTab ${tradeMode === "stock" ? "popTradeTabActive" : ""}`} onClick={() => setTradeMode("stock")}>Shares</button>
+              <button className={`popTradeTab ${tradeMode === "options" ? "popTradeTabActive" : ""}`} onClick={() => setTradeMode("options")}>Options</button>
+            </div>
           )}
 
-          {canTrade && (
+          {showOptions && !tradeBlock && termConnected && !acct.isPro && (
+            <div className="popTradeBlock"><p>Options trading is a Pro feature. Upgrade from your PaperRally tab to trade options here.</p></div>
+          )}
+
+          {showOptions && canTradeOptions && (
+            <div className="popOptForm">
+              <div className="popOptTypes">
+                <button className={`popOptType ${optType === "call" ? "popOptCall" : ""}`} onClick={() => setOptType("call")}>Call (CE)</button>
+                <button className={`popOptType ${optType === "put" ? "popOptPut" : ""}`} onClick={() => setOptType("put")}>Put (PE)</button>
+              </div>
+              <div className="orderRow">
+                <label>Spot</label>
+                <span className="mono">{optSpot != null ? fmtMoney(optSpot) : "…"}</span>
+              </div>
+              <div className="orderRow">
+                <label>Expiry</label>
+                <select className="qtyInput mono popSelect" value={optExpiryIdx} onChange={(e) => setOptExpiryIdx(Number(e.target.value))}>
+                  {optExpiries.map((d, i) => <option key={d.getTime()} value={i}>{fmtExpiry(d)}</option>)}
+                </select>
+              </div>
+              <div className="orderRow">
+                <label>Strike</label>
+                <select className="qtyInput mono popSelect" value={strikeNow ?? ""} onChange={(e) => setOptStrike(Number(e.target.value))}>
+                  {optStrikes.map((k) => <option key={k} value={k}>{k}{k === atmStrike ? " (ATM)" : ""}</option>)}
+                </select>
+              </div>
+              <div className="orderRow">
+                <label>Lots <span className="dim">× {optLot}</span></label>
+                <input type="number" min="1" className="qtyInput mono" value={optLots} onChange={(e) => setOptLots(Math.max(1, parseInt(e.target.value) || 1))} />
+              </div>
+              <div className="orderEst mono">
+                <span className="dim">Premium</span>
+                <span>{optPremium != null ? fmtMoney(optPremium) : "…"}</span>
+              </div>
+              <div className="orderEst mono">
+                <span className="dim">Buy cost</span>
+                <span>{optCost != null ? fmtMoney(optCost) : "…"}</span>
+              </div>
+              <div className="orderBtns">
+                <button className="btn btnBull" onClick={() => sendOptionOrder("buy")} disabled={optPremium == null || !optExpiry}><TrendingUp size={14} /> Buy</button>
+                <button className="btn btnBear" onClick={() => sendOptionOrder("short")} disabled={optPremium == null || !optExpiry} title={optMargin != null ? `Blocks about ${fmtMoney(optMargin, 0)} margin` : ""}><TrendingDown size={14} /> Sell to open</button>
+              </div>
+              {optMargin != null && <div className="dim popOptNote">Selling blocks about {fmtMoney(optMargin, 0)} margin. Close positions from the list below.</div>}
+            </div>
+          )}
+
+          {!showOptions && canTrade && (
             <>
               <div className="orderRow">
                 <label>Price</label>
@@ -4505,6 +4696,24 @@ function PopoutChart() {
                     <button className="popPosSym" onClick={() => setSym(p.symbol)}>{displayTicker(p.symbol)}<span className="dim"> · {p.qty} sh</span></button>
                     <span className={`mono ${pnl == null ? "dim" : pnl >= 0 ? "bull" : "bear"}`}>{pnl == null ? "…" : fmtMoney(pnl, 0)}</span>
                     <button className="indToggle popPosClose" onClick={() => closePosition(p)} disabled={!acct.open || (acct.mode === "replay" && acct.date !== date)}>Close</button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {termConnected && acct.options?.length > 0 && (
+            <div className="popPositions">
+              <div className="popListHead dim">Option positions</div>
+              {acct.options.map((p) => {
+                const pnl = p.premium != null ? (p.side === "short" ? p.avgPremium - p.premium : p.premium - p.avgPremium) * p.mult * p.qty : null;
+                return (
+                  <div key={p.id} className="popPosRow">
+                    <button className="popPosSym" onClick={() => { setSym(p.symbol); setTradeMode("options"); }}>
+                      {displayTicker(p.symbol)} {p.strike} {p.type === "call" ? "CE" : "PE"}
+                      <span className="dim"> · {p.side === "short" ? "−" : ""}{p.qty} lot{p.qty > 1 ? "s" : ""} · {fmtExpiry(new Date(p.expiry))}</span>
+                    </button>
+                    <span className={`mono ${pnl == null ? "dim" : pnl >= 0 ? "bull" : "bear"}`}>{pnl == null ? "…" : fmtMoney(pnl, 0)}</span>
+                    <button className="indToggle popPosClose" onClick={() => closeOptionPos(p)} disabled={!acct.open}>Close</button>
                   </div>
                 );
               })}
@@ -4860,6 +5069,10 @@ const CSS = `
 .replayBadge { align-self: center; background: var(--amber); color: #241800; font-size: 10px; font-weight: 800; padding: 3px 8px; border-radius: 999px; letter-spacing: 0.5px; }
 .replayBar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 24px; background: color-mix(in srgb, var(--amber) 14%, var(--surface)); border-bottom: 1px solid color-mix(in srgb, var(--amber) 40%, var(--border)); }
 .replayBarTag { background: var(--amber); color: #241800; font-size: 10px; font-weight: 800; padding: 3px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+.bseAll { border-top: 1px solid var(--border); margin-top: 4px; }
+.bseAllHead { padding-top: 10px; }
+.bseMcap { font-size: 11px; color: var(--text-dim); }
+.bseMoreBtn { width: calc(100% - 16px); margin: 8px; font-size: 12px; justify-content: center; }
 .closedBar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 24px; background: color-mix(in srgb, var(--accent) 12%, var(--surface)); border-bottom: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border)); }
 .closedBarTag { background: var(--bear); color: white; font-size: 10px; font-weight: 800; padding: 3px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap; }
 .closedBarText { flex: 1 1 260px; font-size: 13px; color: var(--text); line-height: 1.45; }
@@ -4947,6 +5160,16 @@ const CSS = `
 .popPosRow { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 8px; font-size: 12.5px; }
 .popPosSym { background: none; border: none; padding: 0; color: var(--text); font-weight: 700; cursor: pointer; text-align: left; font-size: 12.5px; }
 .popPosClose { padding: 3px 8px; font-size: 11px; }
+.popTradeTabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; background: color-mix(in srgb, var(--text) 5%, transparent); padding: 3px; border-radius: 8px; }
+.popTradeTab { background: none; border: none; color: var(--text-dim); padding: 6px; border-radius: 6px; font-weight: 600; font-size: 12.5px; cursor: pointer; }
+.popTradeTabActive { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,0.25); }
+.popOptForm { display: flex; flex-direction: column; gap: 8px; }
+.popOptTypes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.popOptType { border: 1px solid var(--border); background: none; color: var(--text-dim); padding: 7px; border-radius: 8px; font-weight: 700; font-size: 12.5px; cursor: pointer; }
+.popOptCall { border-color: var(--bull); color: var(--bull); background: color-mix(in srgb, var(--bull) 10%, transparent); }
+.popOptPut { border-color: var(--bear); color: var(--bear); background: color-mix(in srgb, var(--bear) 10%, transparent); }
+.popSelect { width: 120px; }
+.popOptNote { font-size: 11px; line-height: 1.45; }
 .popTradeFoot { font-size: 11px; line-height: 1.5; margin-top: auto; }
 .popLiveTag { color: var(--bull); font-weight: 800; font-size: 12px; letter-spacing: 0.5px; padding: 0 6px; }
 @media (max-width: 1050px) { .popTrade { width: 240px; } }
