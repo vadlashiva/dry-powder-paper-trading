@@ -1030,6 +1030,9 @@ async function fetchYahooDay(symbol, dateISO) {
 const REPLAY_CANDLE_MS = 5 * 60 * 1000;
 const REPLAY_CHANNEL = "paperrally-replay";
 
+// Today's date in India (YYYY-MM-DD).
+const istTodayISO = () => new Date(Date.now() + 19800000).toISOString().slice(0, 10);
+
 // Most recent completed NSE session (skips weekends and NSE holidays).
 function lastTradingDayISO() {
   const istNow = new Date(Date.now() + 19800000); // IST wall clock, read with UTC getters
@@ -2389,9 +2392,20 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
       const m = e.data || {};
       const st = replaySyncRef.current;
       if (m.type === "hello") {
+        popoutSeenRef.current = true;
         ch.postMessage({ type: "state", active: st.replayActive, date: st.replayData?.date, clock: st.replayClock, running: st.replayRunning, rate: st.replayRate });
+        ch.postMessage(buildPopoutAcctRef.current());
         return;
       }
+      // Trading from the pop-out chart window
+      if (m.type === "watch") { popoutSeenRef.current = true; popoutWatchRef.current = m.sym; ch.postMessage(buildPopoutAcctRef.current()); return; }
+      if (m.type === "order") {
+        const r = executeStockOrderRef.current(m.sym, m.side, m.qty);
+        ch.postMessage({ type: "orderResult", id: m.id, ...r });
+        if (r.ok) setToast({ msg: `From pop-out: ${r.msg}`, kind: m.side === "buy" ? "bull" : "bear" });
+        return;
+      }
+      if (m.type === "startReplay" && m.date) { startReplayRef.current(m.date); return; }
       if (!st.replayActive || !st.replayData || m.date !== st.replayData.date) return;
       if (m.type === "seek") setReplayClock(Math.max(st.replayData.dayStart, Math.min(m.clock, st.replayData.dayEnd)));
       if (m.type === "play") setReplayRunning(true);
@@ -2404,8 +2418,34 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
     replayChannelRef.current?.postMessage({ type: "state", active: replayActive, date: replayData?.date, clock: replayClock, running: replayRunning, rate: replayRate });
   }, [replayActive, replayData, replayClock, replayRunning, replayRate]);
 
+  // Account snapshot for the pop-out's trade panel, re-sent every second while a pop-out is open.
+  const popoutSeenRef = useRef(false);
+  const popoutWatchRef = useRef(null);
+  const popoutAcctRef = useRef(null);
+  const buildPopoutAcct = () => {
+    const w = popoutWatchRef.current;
+    return { ...popoutAcctRef.current, watch: w ? { symbol: w, price: quotesRef.current[w]?.price ?? null } : null };
+  };
+  popoutAcctRef.current = {
+    type: "acct",
+    mode: replayActive && replayData ? "replay" : "live",
+    date: replayActive && replayData ? replayData.date : istTodayISO(),
+    open: marketStatus.isOpen,
+    label: marketStatus.label,
+    cash,
+    positions: stockPositions.map((p) => ({ symbol: p.symbol, qty: p.qty, avgPrice: p.avgPrice, price: quotes[p.symbol]?.price ?? null })),
+  };
+  const buildPopoutAcctRef = useRef(buildPopoutAcct);
+  buildPopoutAcctRef.current = buildPopoutAcct;
+  useEffect(() => {
+    const iv = setInterval(() => {
+      if (popoutSeenRef.current) replayChannelRef.current?.postMessage(buildPopoutAcct());
+    }, 1000);
+    return () => clearInterval(iv);
+  }, []);
+
   const popOutChart = () => {
-    const date = replayActive && replayData ? replayData.date : lastTradingDayISO();
+    const date = replayActive && replayData ? replayData.date : liveMarketStatus.isOpen ? istTodayISO() : lastTradingDayISO();
     if (!openChartPopout(date, selected || "^NSEI")) showToast("Your browser blocked the pop-up — allow pop-ups for paperrally.in", "bear");
   };
 
@@ -2759,6 +2799,9 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
     return true;
   };
 
+  const startReplayRef = useRef(startReplay);
+  startReplayRef.current = startReplay;
+
   // Today's session if it has started (weekday, not a holiday, at least 15 min after the open); otherwise the last trading day.
   const practiceDayISO = () => {
     const ist = new Date(Date.now() + 19800000);
@@ -2873,35 +2916,49 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
     } catch { /* localStorage unavailable */ }
   }, [isPaidPro, inTrial, userId]);
 
-  const placeStockOrder = (side) => {
-    if (!marketStatus.isOpen) return showToast("Market is closed — orders can only be placed 9:15 AM–3:30 PM, Mon–Fri", "bear");
-    const price = q.price;
-    const qty = orderQty;
-    if (qty <= 0) return;
+  // One market-order path for both the main screen and the pop-out chart window,
+  // so every trade lands in the same cash, positions and history.
+  const executeStockOrder = (sym, side, qtyIn) => {
+    if (!marketStatus.isOpen) {
+      return { ok: false, msg: replayActive ? "This replay day has ended — press Restart day to trade it again" : "Market is closed — orders can only be placed 9:15 AM–3:30 PM, Mon–Fri" };
+    }
+    const symMeta = allInstruments.find((s) => s.symbol === sym);
+    if (!symMeta) return { ok: false, msg: "Unknown symbol" };
+    if (symMeta.exchange === "INDEX") return { ok: false, msg: `${displayTicker(sym)} is an index — trade its options from the Options Chain tab` };
+    const price = quotes[sym]?.price;
+    if (!price) return { ok: false, msg: "Price is still loading — try again in a moment" };
+    const qty = Math.floor(Number(qtyIn));
+    if (!(qty > 0)) return { ok: false, msg: "Enter a valid quantity" };
     const cost = price * qty;
     if (side === "buy") {
-      if (cost > cash) return showToast("Insufficient buying power", "bear");
+      if (cost > cash) return { ok: false, msg: "Insufficient buying power" };
       setCash((c) => c - cost);
       setStockPositions((prev) => {
-        const existing = prev.find((p) => p.symbol === selected);
+        const existing = prev.find((p) => p.symbol === sym);
         if (existing) {
           const totalQty = existing.qty + qty;
           const avgPrice = (existing.avgPrice * existing.qty + cost) / totalQty;
-          return prev.map((p) => (p.symbol === selected ? { ...p, qty: totalQty, avgPrice } : p));
+          return prev.map((p) => (p.symbol === sym ? { ...p, qty: totalQty, avgPrice } : p));
         }
-        return [...prev, { id: uid(), symbol: selected, qty, avgPrice: price }];
+        return [...prev, { id: uid(), symbol: sym, qty, avgPrice: price }];
       });
-      logTrade(`BUY ${qty} ${displayTicker(selected)} @ ${fmtMoney(price)}`, -cost);
-      showToast(`Bought ${qty} ${displayTicker(selected)}`, "bull");
-    } else {
-      const existing = stockPositions.find((p) => p.symbol === selected);
-      const held = existing?.qty ?? 0;
-      if (qty > held) return showToast(`Only ${held} shares held`, "bear");
-      setCash((c) => c + cost);
-      setStockPositions((prev) => prev.map((p) => (p.symbol === selected ? { ...p, qty: p.qty - qty } : p)).filter((p) => p.qty > 0));
-      logTrade(`SELL ${qty} ${displayTicker(selected)} @ ${fmtMoney(price)}`, cost, (price - existing.avgPrice) * qty);
-      showToast(`Sold ${qty} ${displayTicker(selected)}`, "bear");
+      logTrade(`BUY ${qty} ${displayTicker(sym)} @ ${fmtMoney(price)}`, -cost);
+      return { ok: true, msg: `Bought ${qty} ${displayTicker(sym)} @ ${fmtMoney(price)}` };
     }
+    const existing = stockPositions.find((p) => p.symbol === sym);
+    const held = existing?.qty ?? 0;
+    if (qty > held) return { ok: false, msg: `Only ${held} shares held` };
+    setCash((c) => c + cost);
+    setStockPositions((prev) => prev.map((p) => (p.symbol === sym ? { ...p, qty: p.qty - qty } : p)).filter((p) => p.qty > 0));
+    logTrade(`SELL ${qty} ${displayTicker(sym)} @ ${fmtMoney(price)}`, cost, (price - existing.avgPrice) * qty);
+    return { ok: true, msg: `Sold ${qty} ${displayTicker(sym)} @ ${fmtMoney(price)}` };
+  };
+  const executeStockOrderRef = useRef(executeStockOrder);
+  executeStockOrderRef.current = executeStockOrder;
+
+  const placeStockOrder = (side) => {
+    const r = executeStockOrder(selected, side, orderQty);
+    showToast(r.msg, r.ok && side === "buy" ? "bull" : "bear");
   };
 
   const placeConditionalOrder = (side) => {
@@ -4191,6 +4248,18 @@ function PopoutChart() {
   const lastStateRef = useRef(0);
   const chRef = useRef(null);
   const meta = INSTRUMENTS.find((s) => s.symbol === sym);
+  // Trade panel: orders go to the main PaperRally tab, which owns the portfolio.
+  const [acct, setAcct] = useState(null);
+  const lastAcctRef = useRef(0);
+  const [termConnected, setTermConnected] = useState(false);
+  const [tradeQty, setTradeQty] = useState(10);
+  const [tradeMsg, setTradeMsg] = useState(null);
+  const pendingRef = useRef({});
+  const symRef = useRef(sym);
+  useEffect(() => { symRef.current = sym; chRef.current?.postMessage({ type: "watch", sym }); }, [sym]);
+  // Live chart of today's session while the market is open.
+  const isToday = date === istTodayISO();
+  const [liveFollow, setLiveFollow] = useState(true);
 
   useEffect(() => { document.title = `${displayTicker(sym)} · ${date} · PaperRally chart`; }, [sym, date]);
 
@@ -4216,6 +4285,11 @@ function PopoutChart() {
     chRef.current = ch;
     ch.onmessage = (e) => {
       const m = e.data || {};
+      if (m.type === "acct") { lastAcctRef.current = Date.now(); setAcct(m); setTermConnected(true); return; }
+      if (m.type === "orderResult") {
+        if (pendingRef.current[m.id]) { delete pendingRef.current[m.id]; setTradeMsg({ ok: m.ok, msg: m.msg }); }
+        return;
+      }
       if (m.type !== "state") return;
       if (m.active && m.date === date) {
         lastStateRef.current = Date.now();
@@ -4225,9 +4299,24 @@ function PopoutChart() {
       }
     };
     ch.postMessage({ type: "hello" });
-    const iv = setInterval(() => { if (Date.now() - lastStateRef.current > 3000) setLinked(false); }, 1500);
+    ch.postMessage({ type: "watch", sym: symRef.current });
+    const iv = setInterval(() => {
+      if (Date.now() - lastStateRef.current > 3000) setLinked(false);
+      if (Date.now() - lastAcctRef.current > 3500) setTermConnected(false);
+    }, 1500);
     return () => { clearInterval(iv); ch.close(); chRef.current = null; };
   }, [date]);
+
+  // Today, market hours, not linked to a replay: track the real clock and refresh candles every minute.
+  const liveNow = !linked && isToday && liveFollow && Date.now() >= dayStart && Date.now() < dayEnd + 60000;
+  useEffect(() => {
+    if (!liveNow) return;
+    setRunning(false);
+    setClock(Math.min(Date.now(), dayEnd));
+    const tick = setInterval(() => setClock(Math.min(Date.now(), dayEnd)), 1000);
+    const refetch = setInterval(() => { fetchYahooDay(sym, date).then((e) => { if (e.candles.length) setEntry(e); }).catch(() => {}); }, 60000);
+    return () => { clearInterval(tick); clearInterval(refetch); };
+  }, [liveNow, sym, date]);
 
   // own clock when not linked
   useEffect(() => {
@@ -4239,9 +4328,10 @@ function PopoutChart() {
   useEffect(() => { if (!linked) { setClock(dayStart); setRunning(false); } }, [date]);
 
   const send = (msg) => chRef.current?.postMessage({ ...msg, date });
-  const seek = (t) => { const v = Math.max(dayStart, Math.min(t, dayEnd)); if (linked) send({ type: "seek", clock: v }); else setClock(v); };
+  const seek = (t) => { const v = Math.max(dayStart, Math.min(t, dayEnd)); if (linked) send({ type: "seek", clock: v }); else { setLiveFollow(false); setClock(v); } };
   const togglePlay = () => {
     if (linked) { send({ type: running ? "pause" : "play" }); return; }
+    setLiveFollow(false);
     if (clock >= dayEnd) setClock(dayStart);
     setRunning((r) => !r);
   };
@@ -4256,6 +4346,37 @@ function PopoutChart() {
   const timeLabel = new Date(clock).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" });
   const minDate = new Date(Date.now() - 55 * 86400000).toISOString().slice(0, 10);
   const ticks = ["09:15", "10:30", "11:45", "13:00", "14:15", "15:30"];
+
+  const isIndexSym = meta?.exchange === "INDEX";
+  const heldPos = acct?.positions?.find((p) => p.symbol === sym);
+  const termPrice = acct?.watch?.symbol === sym ? acct.watch.price : null;
+  const dayLabel = (iso) => new Date(iso + "T12:00:00+05:30").toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" });
+  // Trades only make sense when the chart shows the same moment the terminal trades at.
+  let tradeBlock = null;
+  if (!termConnected) tradeBlock = { text: "Keep your PaperRally tab open in this browser to trade from this window." };
+  else if (acct.mode === "replay" && acct.date !== date) tradeBlock = { text: `Your terminal is replaying ${dayLabel(acct.date)}, but this chart shows ${dayLabel(date)}.`, action: { label: `Show ${dayLabel(acct.date)}`, run: () => setDate(acct.date) } };
+  else if (acct.mode === "live" && !acct.open) tradeBlock = { text: `The market is closed. Practise ${dayLabel(date)} from 9:15 AM — with separate practice money — and trade it right here.`, action: { label: `Practise ${dayLabel(date)}`, run: () => chRef.current?.postMessage({ type: "startReplay", date }) } };
+  else if (acct.mode === "live" && !isToday) tradeBlock = { text: "The market is open now — switch the chart to today to trade live.", action: { label: "Show today", run: () => { setLiveFollow(true); setDate(istTodayISO()); } } };
+  else if (acct.mode === "replay" && !acct.open) tradeBlock = { text: "This replay day has ended. Restart it from the terminal to trade again." };
+  const canTrade = !tradeBlock && !isIndexSym;
+
+  const placeOrder = (side, qtyOverride) => {
+    const qty = qtyOverride ?? tradeQty;
+    const id = Math.random().toString(36).slice(2);
+    pendingRef.current[id] = true;
+    setTradeMsg({ ok: true, msg: "Sending order…", pending: true });
+    chRef.current?.postMessage({ type: "order", id, sym, side, qty });
+    setTimeout(() => {
+      if (pendingRef.current[id]) { delete pendingRef.current[id]; setTradeMsg({ ok: false, msg: "No reply from your PaperRally tab — is it still open?" }); }
+    }, 4000);
+  };
+  const closePosition = (p) => {
+    const id = Math.random().toString(36).slice(2);
+    pendingRef.current[id] = true;
+    chRef.current?.postMessage({ type: "order", id, sym: p.symbol, side: "sell", qty: p.qty });
+    setTimeout(() => { delete pendingRef.current[id]; }, 4000);
+  };
+  const posValue = (acct?.positions ?? []).reduce((sum, p) => sum + (p.price ?? p.avgPrice) * p.qty, 0);
 
   return (
     <div className="app popWrap" style={THEMES[themeIdx].vars}>
@@ -4308,7 +4429,10 @@ function PopoutChart() {
           </div>
 
           <div className="popControls">
-            <button className="btn btnBull popPlay" onClick={togglePlay} disabled={!entry}>{running ? "Pause" : clock >= dayEnd ? "Replay day" : "Play"}</button>
+            {liveNow
+              ? <span className="popLiveTag">● LIVE</span>
+              : <button className="btn btnBull popPlay" onClick={togglePlay} disabled={!entry}>{running ? "Pause" : clock >= dayEnd ? "Replay day" : "Play"}</button>}
+            {!linked && isToday && !liveFollow && Date.now() < dayEnd && <button className="indToggle" onClick={() => setLiveFollow(true)}>Go live</button>}
             <span className="mono popClock">{timeLabel}</span>
             <div className="popSliderWrap">
               <input type="range" className="replaySlider popSlider" aria-label="Choose time" min={dayStart} max={dayEnd} step={60000} value={clock} onChange={(e) => seek(Number(e.target.value))} disabled={!entry} />
@@ -4322,6 +4446,72 @@ function PopoutChart() {
           </div>
           <div className="dim popFoot">Drag the time bar to any minute between 9:15 AM and 3:30 PM, then press Play. When the terminal is running a replay of the same day, this window follows and controls the same clock.</div>
         </div>
+
+        <aside className="popTrade">
+          <div className="popTradeHead">
+            <h3>Trade {displayTicker(sym)}</h3>
+            {termConnected && <span className={`popModeTag ${acct.mode === "replay" ? "popModeReplay" : acct.open ? "popModeLive" : ""}`}>{acct.mode === "replay" ? `Replay · ${dayLabel(acct.date)}` : acct.open ? "Live" : "Closed"}</span>}
+          </div>
+
+          {termConnected && (
+            <div className="popTradeStats">
+              <div><span className="dim">Cash</span><span className="mono">{fmtMoney(acct.cash, 0)}</span></div>
+              <div><span className="dim">Positions</span><span className="mono">{fmtMoney(posValue, 0)}</span></div>
+            </div>
+          )}
+
+          {tradeBlock && (
+            <div className="popTradeBlock">
+              <p>{tradeBlock.text}</p>
+              {tradeBlock.action && <button className="btn btnBull popTradeBlockBtn" onClick={tradeBlock.action.run}><Play size={13} /> {tradeBlock.action.label}</button>}
+            </div>
+          )}
+
+          {!tradeBlock && isIndexSym && (
+            <div className="popTradeBlock"><p>{displayTicker(sym)} is an index — pick a stock from the list to trade, or use the Options Chain in your terminal.</p></div>
+          )}
+
+          {canTrade && (
+            <>
+              <div className="orderRow">
+                <label>Price</label>
+                <span className="mono">{termPrice != null ? fmtMoney(termPrice) : "…"}</span>
+              </div>
+              <div className="orderRow">
+                <label>Quantity</label>
+                <input type="number" min="1" className="qtyInput mono" value={tradeQty} onChange={(e) => setTradeQty(Math.max(1, parseInt(e.target.value) || 1))} />
+              </div>
+              <div className="orderEst mono">
+                <span className="dim">Est. cost</span>
+                <span>{termPrice != null ? fmtMoney(termPrice * tradeQty) : "…"}</span>
+              </div>
+              <div className="orderBtns">
+                <button className="btn btnBull" onClick={() => placeOrder("buy")}><TrendingUp size={14} /> Buy</button>
+                <button className="btn btnBear" onClick={() => placeOrder("sell")} disabled={!heldPos}><TrendingDown size={14} /> Sell</button>
+              </div>
+              <div className="held mono">{heldPos ? `Held: ${heldPos.qty} sh · avg ${fmtMoney(heldPos.avgPrice)}` : "Held: 0 shares"}</div>
+            </>
+          )}
+
+          {tradeMsg && <div className={`popTradeMsg ${tradeMsg.pending ? "dim" : tradeMsg.ok ? "bull" : "bear"}`}>{tradeMsg.msg}</div>}
+
+          {termConnected && acct.positions.length > 0 && (
+            <div className="popPositions">
+              <div className="popListHead dim">Open positions</div>
+              {acct.positions.map((p) => {
+                const pnl = p.price != null ? (p.price - p.avgPrice) * p.qty : null;
+                return (
+                  <div key={p.symbol} className="popPosRow">
+                    <button className="popPosSym" onClick={() => setSym(p.symbol)}>{displayTicker(p.symbol)}<span className="dim"> · {p.qty} sh</span></button>
+                    <span className={`mono ${pnl == null ? "dim" : pnl >= 0 ? "bull" : "bear"}`}>{pnl == null ? "…" : fmtMoney(pnl, 0)}</span>
+                    <button className="indToggle popPosClose" onClick={() => closePosition(p)} disabled={!acct.open || (acct.mode === "replay" && acct.date !== date)}>Close</button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <div className="dim popTradeFoot">Orders go to your PaperRally tab and use the same balance, positions and history.</div>
+        </aside>
       </div>
     </div>
   );
@@ -4739,6 +4929,28 @@ const CSS = `
 .popChartCard { position: relative; flex: 1; min-height: 260px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 10px; }
 .popChart { width: 100%; height: 100%; }
 .popOverlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 5; font-size: 13px; text-align: center; padding: 20px; }
+.popTrade { width: 280px; flex-shrink: 0; overflow-y: auto; border-left: 1px solid var(--border); background: var(--surface); padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+.popTradeHead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.popTradeHead h3 { margin: 0; font-size: 15px; }
+.popModeTag { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; padding: 3px 8px; border-radius: 4px; background: var(--bear); color: white; white-space: nowrap; }
+.popModeLive { background: var(--bull); color: #06231A; }
+.popModeReplay { background: var(--amber); color: #241800; }
+.popTradeStats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.popTradeStats > div { display: flex; flex-direction: column; gap: 2px; font-size: 12px; background: color-mix(in srgb, var(--text) 4%, transparent); border-radius: 8px; padding: 8px 10px; }
+.popTradeStats .mono { font-size: 14px; color: var(--text); }
+.popTradeBlock { background: color-mix(in srgb, var(--accent) 10%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border)); border-radius: 10px; padding: 10px 12px; font-size: 12.5px; line-height: 1.5; }
+.popTradeBlock p { margin: 0; }
+.popTradeBlockBtn { margin-top: 10px; width: 100%; justify-content: center; font-size: 12.5px; }
+.popTradeMsg { font-size: 12.5px; line-height: 1.4; }
+.popPositions { display: flex; flex-direction: column; gap: 4px; border-top: 1px solid var(--border); padding-top: 10px; }
+.popPositions .popListHead { padding: 0 0 4px; }
+.popPosRow { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 8px; font-size: 12.5px; }
+.popPosSym { background: none; border: none; padding: 0; color: var(--text); font-weight: 700; cursor: pointer; text-align: left; font-size: 12.5px; }
+.popPosClose { padding: 3px 8px; font-size: 11px; }
+.popTradeFoot { font-size: 11px; line-height: 1.5; margin-top: auto; }
+.popLiveTag { color: var(--bull); font-weight: 800; font-size: 12px; letter-spacing: 0.5px; padding: 0 6px; }
+@media (max-width: 1050px) { .popTrade { width: 240px; } }
+@media (max-width: 760px) { .popBody { flex-direction: column; } .popTrade { width: auto; border-left: none; border-top: 1px solid var(--border); } }
 .popControls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px; }
 .popPlay { flex: none; min-width: 96px; }
 .popClock { font-size: 16px; font-weight: 700; color: var(--amber); min-width: 70px; text-align: center; }
