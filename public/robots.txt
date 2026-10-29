@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://winbannu.com/sitemap.xml
+Sitemap: https://paperrally.in/sitemap.xml

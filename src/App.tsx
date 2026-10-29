@@ -919,7 +919,7 @@ async function registerPhoneForUser(userId, phone) {
   const { error } = await supabase.from("phone_registry").insert({ phone: p, user_id: userId });
   if (error) {
     if (error.code === "23505") {
-      return { error: { message: "This phone number is already linked to a Winbannu account. Please log in with your original account instead." } };
+      return { error: { message: "This phone number is already linked to a PaperRally account. Please log in with your original account instead." } };
     }
     return { error: { message: "Could not save your phone number. Try again." } };
   }
@@ -1011,7 +1011,7 @@ async function fetchYahooDay(symbol, dateISO) {
 }
 
 const REPLAY_CANDLE_MS = 5 * 60 * 1000;
-const REPLAY_CHANNEL = "winbannu-replay";
+const REPLAY_CHANNEL = "paperrally-replay";
 
 // Most recent completed NSE session (skips weekends and NSE holidays).
 function lastTradingDayISO() {
@@ -1030,7 +1030,7 @@ function lastTradingDayISO() {
 
 function openChartPopout(dateISO, sym) {
   const url = `${window.location.origin}/#/chart?date=${encodeURIComponent(dateISO)}&sym=${encodeURIComponent(sym || "^NSEI")}`;
-  const w = window.open(url, "winbannu-chart", "width=1280,height=800");
+  const w = window.open(url, "paperrally-chart", "width=1280,height=800");
   if (w) w.focus();
   return !!w;
 }
@@ -1202,7 +1202,7 @@ const HOW_STEPS = [
 ];
 
 const GUIDE_LINKS = [
-  { label: "How to use Winbannu", url: "/how-to-use.html" },
+  { label: "How to use PaperRally", url: "/how-to-use.html" },
   { label: "Paper trading in India", url: "/paper-trading-india.html" },
   { label: "How to read an options chain", url: "/how-to-read-options-chain.html" },
 ];
@@ -1215,12 +1215,12 @@ const LEARN_LINKS = [
 ];
 
 const FAQ_ITEMS = [
-  { q: "Is the money on Winbannu real?", a: "No. Every account starts with ₹10,00,000 in virtual cash. Trades, profits, and losses are simulated and have no monetary value." },
-  { q: "Is the market data live or delayed?", a: "Live. Winbannu pulls real NSE & BSE prices during market hours — not a delayed feed." },
-  { q: "Do I need a broker or demat account?", a: "No. Winbannu isn't a broker — just sign up with Google and a phone number, and you're trading virtual capital immediately." },
-  { q: "What is Replay Mode?", a: "Pick any weekday from the last 30 days and Winbannu replays that day's real price action candle by candle, with its own separate ₹10,00,000 balance — so practicing in Replay never touches your live portfolio." },
+  { q: "Is the money on PaperRally real?", a: "No. Every account starts with ₹10,00,000 in virtual cash. Trades, profits, and losses are simulated and have no monetary value." },
+  { q: "Is the market data live or delayed?", a: "Live. PaperRally pulls real NSE & BSE prices during market hours — not a delayed feed." },
+  { q: "Do I need a broker or demat account?", a: "No. PaperRally isn't a broker — just sign up with Google and a phone number, and you're trading virtual capital immediately." },
+  { q: "What is Replay Mode?", a: "Pick any weekday from the last 30 days and PaperRally replays that day's real price action candle by candle, with its own separate ₹10,00,000 balance — so practicing in Replay never touches your live portfolio." },
   { q: "Do option prices match the exchange exactly?", a: "Not exactly. Premiums are worked out from the live index or stock price with the Black-Scholes model, so they move realistically with the market but won't tick-for-tick match NSE's option quotes." },
-  { q: "Is Winbannu free?", a: "Every new account gets a full 7-day Pro trial, no card required. After that, core paper trading stays free — Pro features like the options chain, alerts, and CSV export need an active subscription." },
+  { q: "Is PaperRally free?", a: "Every new account gets a full 7-day Pro trial, no card required. After that, core paper trading stays free — Pro features like the options chain, alerts, and CSV export need an active subscription." },
 ];
 
 // A small decorative candlestick strip — static, on-brand, ties directly to
@@ -1300,7 +1300,7 @@ function LiveTicker() {
 }
 
 // Live "Leaders & Laggards" strip for the landing page — ranks the NSE
-// stocks available on Winbannu by today's % change using the same feed.
+// stocks available on PaperRally by today's % change using the same feed.
 const MOVERS_SYMBOLS = ["RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS", "SBIN.NS", "ITC.NS", "BHARTIARTL.NS"];
 
 function MoversStrip() {
@@ -1341,7 +1341,7 @@ function MoversStrip() {
   return (
     <section className="landingMovers">
       <h2 className="landingH2">Who's Leading, Who's Lagging Right Now</h2>
-      <p className="dim mistakesIntro">Live NSE movers among the stocks you can trade on Winbannu — refreshes automatically.</p>
+      <p className="dim mistakesIntro">Live NSE movers among the stocks you can trade on PaperRally — refreshes automatically.</p>
       <div className="moversGrid">
         <div className="moversCol moversColUp">
           <h3 className="moversColTitle bull"><TrendingUp size={14} /> Leading</h3>
@@ -1571,7 +1571,7 @@ function LandingPage({ themeIdx, onEnter }) {
       <header className="landingNav">
         <div className="authBrand" style={{ justifyContent: "flex-start" }}>
           <Flame size={22} className="brandIcon" />
-          <span>WINBANNU</span>
+          <span>PAPERRALLY</span>
         </div>
         <nav className="landingMenu" aria-label="Main">
           <a href="#features">Features</a>
@@ -1580,7 +1580,7 @@ function LandingPage({ themeIdx, onEnter }) {
           <details className="landingMenuDrop">
             <summary>Guides</summary>
             <div className="landingMenuPanel">
-              <a href="/how-to-use.html">How to use Winbannu</a>
+              <a href="/how-to-use.html">How to use PaperRally</a>
               <a href="/paper-trading-india.html">Paper trading in India</a>
               <a href="/how-to-read-options-chain.html">How to read an options chain</a>
             </div>
@@ -1599,7 +1599,7 @@ function LandingPage({ themeIdx, onEnter }) {
           <div className="landingEyebrow heroReveal heroReveal-1">Free forever · 7-day Pro trial included</div>
           <h1 className="landingH1 heroReveal heroReveal-2">Practice trading NSE &amp; BSE with <span className="landingGradientText">real prices</span>. Zero risk.</h1>
           <p className="landingSub heroReveal heroReveal-3">
-            WINBANNU is a paper trading terminal for Indian stocks, options, and indices. Trade with
+            PAPERRALLY is a paper trading terminal for Indian stocks, options, and indices. Trade with
             ₹10,00,000 in virtual cash against live market data — build real skill before you risk real money.
           </p>
           <div className="heroTrust heroReveal heroReveal-3">
@@ -1616,7 +1616,7 @@ function LandingPage({ themeIdx, onEnter }) {
         <div className="landingHeroCard heroReveal heroReveal-3">
           <div className="authBrand">
             <Flame size={20} className="brandIcon" />
-            <span>WINBANNU</span>
+            <span>PAPERRALLY</span>
           </div>
           <div className="authSub">Start trading in under a minute</div>
           <LiveHeroPrice />
@@ -1674,7 +1674,7 @@ function LandingPage({ themeIdx, onEnter }) {
           <div className="landingEyebrow">REPLAY MODE</div>
           <h2 className="landingH2" style={{ textAlign: "left", margin: "0 0 14px" }}>Practice Against a Real Day, Not a Guess.</h2>
           <p className="dim replaySpotlightText">
-            Pick any weekday from the last 30 days and Winbannu replays that day's real NSE &amp; BSE price
+            Pick any weekday from the last 30 days and PaperRally replays that day's real NSE &amp; BSE price
             action candle by candle — as if it were happening live. Play, pause, or skip ahead at 0.5x, 1x, or 2x speed,
             and trade against it with a separate ₹10,00,000 balance that never touches your live portfolio.
           </p>
@@ -1730,7 +1730,7 @@ function LandingPage({ themeIdx, onEnter }) {
                   <p className="dim">{m.real}</p>
                 </div>
                 <div className="mistakeCol mistakeColPractice">
-                  <span className="mistakeColLabel bull">On Winbannu</span>
+                  <span className="mistakeColLabel bull">On PaperRally</span>
                   <p className="dim">{m.practice}</p>
                 </div>
               </div>
@@ -1785,7 +1785,7 @@ function LandingPage({ themeIdx, onEnter }) {
       <footer className="landingFooter">
         <div className="authBrand" style={{ justifyContent: "flex-start", fontSize: "13px" }}>
           <Flame size={16} className="brandIcon" />
-          <span>WINBANNU</span>
+          <span>PAPERRALLY</span>
         </div>
         <div className="landingFooterLinks">
           <a href="/how-to-use.html">How to use</a>
@@ -1795,7 +1795,7 @@ function LandingPage({ themeIdx, onEnter }) {
           <a href="/privacy.html">Privacy</a>
           <a href="/terms.html">Terms</a>
         </div>
-        <div className="dim landingFooterNote">Winbannu is a simulator for learning. No real money or securities are ever traded, virtual balances have no cash value, and nothing here is investment advice. Winbannu is not registered with SEBI and is not a broker.</div>
+        <div className="dim landingFooterNote">PaperRally is a simulator for learning. No real money or securities are ever traded, virtual balances have no cash value, and nothing here is investment advice. PaperRally is not registered with SEBI and is not a broker.</div>
       </footer>
     </div>
   );
@@ -1861,7 +1861,7 @@ function AuthGate({ themeIdx, cycleTheme, initialMode, onBack }) {
             .insert({ phone: normalizedPhone(), user_id: newUserId });
           if (phoneErr) {
             if (phoneErr.code === "23505") {
-              setError("This phone number is already linked to a Winbannu account. Please log in with your original account instead.");
+              setError("This phone number is already linked to a PaperRally account. Please log in with your original account instead.");
             } else {
               setError("Could not complete registration. Try again.");
             }
@@ -1897,7 +1897,7 @@ function AuthGate({ themeIdx, cycleTheme, initialMode, onBack }) {
       <div className="authCard">
         <div className="authBrand">
           <Flame size={22} className="brandIcon" />
-          <span>WINBANNU</span>
+          <span>PAPERRALLY</span>
         </div>
         <div className="authSub">Paper trading terminal &middot; NSE &amp; BSE</div>
 
@@ -1953,7 +1953,7 @@ function AuthGate({ themeIdx, cycleTheme, initialMode, onBack }) {
 
         <div className="authNote">
           {mode === "register"
-            ? "One Winbannu account per mobile number."
+            ? "One PaperRally account per mobile number."
             : "Your account and portfolio are saved on the server — log in with the same username and password on any device to pick up right where you left off."}
         </div>
       </div>
@@ -2010,7 +2010,7 @@ function PhoneGate({ userId, userEmail, themeIdx, cycleTheme, onDone, onCancel }
       <div className="authCard">
         <div className="authBrand">
           <Flame size={22} className="brandIcon" />
-          <span>WINBANNU</span>
+          <span>PAPERRALLY</span>
         </div>
         <div className="authSub">{duplicateBlocked ? "This number's trial is already used" : "One last step"}</div>
 
@@ -2018,7 +2018,7 @@ function PhoneGate({ userId, userEmail, themeIdx, cycleTheme, onDone, onCancel }
           <>
             <div className="authError" style={{ marginBottom: "14px" }}>{error}</div>
             <p className="authNote" style={{ marginTop: 0, marginBottom: "18px" }}>
-              This mobile number has already used its free Winbannu trial. You can still use this account by upgrading to Pro directly — no trial needed.
+              This mobile number has already used its free PaperRally trial. You can still use this account by upgrading to Pro directly — no trial needed.
             </p>
             <button className="btn btnMarigold authSubmit" onClick={handleUpgrade} disabled={checkoutBusy} style={{ marginBottom: "10px" }}>
               {checkoutBusy ? "Opening…" : "Upgrade to Pro — ₹99"}
@@ -2037,7 +2037,7 @@ function PhoneGate({ userId, userEmail, themeIdx, cycleTheme, onDone, onCancel }
               {error && <div className="authError">{error}</div>}
               <button type="submit" className="btn btnBull authSubmit" disabled={busy}>{busy ? "Please wait…" : "Continue"}</button>
             </form>
-            <div className="authNote">One Winbannu account per mobile number — this keeps things fair for everyone during the free trial.</div>
+            <div className="authNote">One PaperRally account per mobile number — this keeps things fair for everyone during the free trial.</div>
           </>
         )}
       </div>
@@ -2384,7 +2384,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
 
   const popOutChart = () => {
     const date = replayActive && replayData ? replayData.date : lastTradingDayISO();
-    if (!openChartPopout(date, selected || "^NSEI")) showToast("Your browser blocked the pop-up — allow pop-ups for winbannu.com", "bear");
+    if (!openChartPopout(date, selected || "^NSEI")) showToast("Your browser blocked the pop-up — allow pop-ups for paperrally.in", "bear");
   };
 
   // Replay: advance the simulated clock
@@ -2913,7 +2913,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `winbannu-history-${username}-${Date.now()}.csv`;
+    a.download = `paperrally-history-${username}-${Date.now()}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -3092,7 +3092,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
       <div className="topbar">
         <div className="brand">
           <Flame size={20} className="brandIcon" />
-          <span>WINBANNU</span>
+          <span>PAPERRALLY</span>
           <span className="brandSub">paper terminal</span>
         </div>
         <div className="stats">
@@ -4014,7 +4014,7 @@ function SplashScreen({ label, themeIdx }) {
     <div className="authWrap" style={THEMES[themeIdx].vars}>
       <style>{CSS}</style>
       <div className="authCard splashCard">
-        <div className="authBrand"><Flame size={22} className="brandIcon" /><span>WINBANNU</span></div>
+        <div className="authBrand"><Flame size={22} className="brandIcon" /><span>PAPERRALLY</span></div>
         <div className="authSub">{label}</div>
       </div>
     </div>
@@ -4085,7 +4085,7 @@ function PopoutChart() {
   const chRef = useRef(null);
   const meta = INSTRUMENTS.find((s) => s.symbol === sym);
 
-  useEffect(() => { document.title = `${displayTicker(sym)} · ${date} · Winbannu chart`; }, [sym, date]);
+  useEffect(() => { document.title = `${displayTicker(sym)} · ${date} · PaperRally chart`; }, [sym, date]);
 
   // load the chosen symbol's day
   useEffect(() => {
@@ -4154,7 +4154,7 @@ function PopoutChart() {
     <div className="app popWrap" style={THEMES[themeIdx].vars}>
       <style>{CSS}</style>
       <div className="popTop">
-        <div className="brand"><Flame size={18} className="brandIcon" /><span>WINBANNU</span><span className="brandSub">full-day chart</span></div>
+        <div className="brand"><Flame size={18} className="brandIcon" /><span>PAPERRALLY</span><span className="brandSub">full-day chart</span></div>
         <div className="popTopRight">
           {linked ? <span className="popLinked">Linked to terminal replay</span> : <span className="dim popHint">Standalone · open Replay in the terminal to link</span>}
           <label className="dim popDateLabel">Date
