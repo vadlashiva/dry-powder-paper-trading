@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { createChart, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries } from "lightweight-charts";
 import { createClient } from "@supabase/supabase-js";
-import {TrendingUp, TrendingDown, RotateCcw, X, Flame, Activity, LogOut, Lock, User as UserIcon, Bell, Trash2, Maximize2, Download, Newspaper, Crosshair, Sparkles,Eye, EyeOff, LineChart, Layers, Play, GraduationCap,
+import {TrendingUp, TrendingDown, RotateCcw, X, Flame, Activity, LogOut, Lock, User as UserIcon, Bell, Trash2, Maximize2, Download, Newspaper, Crosshair, Sparkles,Eye, EyeOff, LineChart, Layers, Play, GraduationCap, Phone,
 } from "lucide-react";
 declare global { interface Window { Razorpay: any; } }
 /* ---------------- background themes ---------------- */
@@ -907,15 +907,32 @@ async function hasRegisteredPhone(userId) {
   return !!data;
 }
 
+// Accepts the ways people actually type an Indian mobile number —
+// "9876543210", "98765 43210", "09876543210", "919876543210", "+91 98765-43210" —
+// and stores them all the same way (+919876543210), so one number can't be
+// registered twice just by typing it differently.
 function normalizePhoneInput(phone) {
-  const digits = phone.trim();
-  if (digits.startsWith("+")) return digits;
-  return `+91${digits.replace(/\D/g, "")}`;
+  const raw = phone.trim();
+  let digits = raw.replace(/\D/g, "");
+  if (raw.startsWith("+")) return `+${digits}`;
+  if (digits.length === 12 && digits.startsWith("91")) return `+${digits}`;
+  if (digits.length === 11 && digits.startsWith("0")) digits = digits.slice(1);
+  return `+91${digits}`;
+}
+
+function phoneInputError(p) {
+  if (p.startsWith("+91")) {
+    if (!/^\+91[6-9]\d{9}$/.test(p)) return "Enter your 10-digit mobile number (e.g. 9876543210).";
+    return null;
+  }
+  if (!/^\+\d{8,15}$/.test(p)) return "Enter a valid mobile number.";
+  return null;
 }
 
 async function registerPhoneForUser(userId, phone) {
   const p = normalizePhoneInput(phone);
-  if (!/^\+\d{8,15}$/.test(p)) return { error: { message: "Enter a valid mobile number." } };
+  const invalid = phoneInputError(p);
+  if (invalid) return { error: { message: invalid } };
   const { error } = await supabase.from("phone_registry").insert({ phone: p, user_id: userId });
   if (error) {
     if (error.code === "23505") {
@@ -1812,12 +1829,7 @@ function AuthGate({ themeIdx, cycleTheme, initialMode, onBack }) {
   const [showPw, setShowPw] = useState(false);
   const [googleBusy, setGoogleBusy] = useState(false);
 
-  const normalizedPhone = () => {
-    const digits = phone.trim();
-    if (digits.startsWith("+")) return digits;
-    // Assume a bare 10-digit Indian mobile number if no country code given
-    return `+91${digits.replace(/\D/g, "")}`;
-  };
+  const normalizedPhone = () => normalizePhoneInput(phone);
 
   const handleGoogle = async () => {
     setError("");
@@ -1840,8 +1852,8 @@ function AuthGate({ themeIdx, cycleTheme, initialMode, onBack }) {
     if (!/^[a-zA-Z0-9_]+$/.test(uname)) return setError("Username can only use letters, numbers, and underscores.");
 
     if (mode === "register") {
-      const p = normalizedPhone();
-      if (!/^\+\d{8,15}$/.test(p)) return setError("Enter a valid mobile number.");
+      const phoneErr = phoneInputError(normalizedPhone());
+      if (phoneErr) return setError(phoneErr);
       if (password !== confirm) return setError("Passwords don't match.");
     }
 
@@ -1930,9 +1942,12 @@ function AuthGate({ themeIdx, cycleTheme, initialMode, onBack }) {
           </div>
           {mode === "register" && (
             <div className="authField">
-              <UserIcon size={14} className="authIcon" />
+              <Phone size={14} className="authIcon" />
               <input placeholder="Mobile number (e.g. 9876543210)" value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" autoComplete="tel" />
             </div>
+          )}
+          {mode === "register" && (
+            <div className="authNote phonePrivacyNote">No OTP, calls or SMS, and we never sell your number — it just makes sure each person gets one free trial.</div>
           )}
           <div className="authField">
             <Lock size={14} className="authIcon" />
@@ -2012,7 +2027,7 @@ function PhoneGate({ userId, userEmail, themeIdx, cycleTheme, onDone, onCancel }
           <Flame size={22} className="brandIcon" />
           <span>PAPERRALLY</span>
         </div>
-        <div className="authSub">{duplicateBlocked ? "This number's trial is already used" : "One last step"}</div>
+        <div className="authSub">{duplicateBlocked ? "This number's trial is already used" : "One last step — then you're trading"}</div>
 
         {duplicateBlocked ? (
           <>
@@ -2029,15 +2044,22 @@ function PhoneGate({ userId, userEmail, themeIdx, cycleTheme, onDone, onCancel }
           </>
         ) : (
           <>
+            <p className="authNote phoneGateIntro">
+              Add your mobile number to unlock <b>₹10,00,000 of practice money</b> and your 7-day free Pro trial.
+            </p>
             <form onSubmit={submit}>
               <div className="authField">
-                <UserIcon size={14} className="authIcon" />
+                <Phone size={14} className="authIcon" />
                 <input placeholder="Mobile number (e.g. 9876543210)" value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" autoComplete="tel" autoFocus />
               </div>
               {error && <div className="authError">{error}</div>}
-              <button type="submit" className="btn btnBull authSubmit" disabled={busy}>{busy ? "Please wait…" : "Continue"}</button>
+              <button type="submit" className="btn btnBull authSubmit" disabled={busy}>{busy ? "Please wait…" : "Start trading"}</button>
             </form>
-            <div className="authNote">One PaperRally account per mobile number — this keeps things fair for everyone during the free trial.</div>
+            <ul className="phoneGatePromises">
+              <li>No OTP, no calls, no SMS — we don't contact you on this number.</li>
+              <li>We never sell your number to anyone.</li>
+              <li>It's only used so each person gets one free trial.</li>
+            </ul>
           </>
         )}
       </div>
@@ -2701,7 +2723,10 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
     setTrades((prev) => [{ id: uid(), time: new Date(nowMs()), label, amount, realized }, ...prev].slice(0, 200));
   };
 
-  const startReplay = async (dayArg) => {
+  // opts.focus: symbol to open once replay starts (e.g. RELIANCE.NS for a first trade).
+  // opts.quiet: skip the toast (the first-trade card explains replay instead).
+  // Resolves true once replay is running, false otherwise.
+  const startReplay = async (dayArg, opts = {}) => {
     const replayDay = typeof dayArg === "string" ? dayArg : replayDayRef.current;
     if (!replayDay) return showToast("Pick a date first", "bear");
     setReplayDay(replayDay);
@@ -2727,9 +2752,11 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
     setReplayClock(dayStart);
     setReplayRunning(true);
     setReplayActive(true);
-    if (!selected || !bySym[selected]) setSelected(bySym["^NSEI"] ? "^NSEI" : Object.keys(bySym)[0]);
+    if (opts.focus && bySym[opts.focus]) setSelected(opts.focus);
+    else if (!selected || !bySym[selected]) setSelected(bySym["^NSEI"] ? "^NSEI" : Object.keys(bySym)[0]);
     setTab("trade");
-    showToast(`Replaying ${new Date(dayStart).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })} from the 9:15 AM open — trade as if it's live`, "bull");
+    if (!opts.quiet) showToast(`Replaying ${new Date(dayStart).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })} from the 9:15 AM open — trade as if it's live`, "bull");
+    return true;
   };
 
   // Today's session if it has started (weekday, not a holiday, at least 15 min after the open); otherwise the last trading day.
@@ -2743,6 +2770,53 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
   };
   const practiceToday = () => startReplay(practiceDayISO());
   const restartReplayDay = () => replayData && startReplay(replayData.date);
+
+  // ---- First-run experience ----
+  // Most people sign up in the evening or at weekends, when live orders are
+  // blocked. Someone who has never traded is taken straight into a replay of
+  // the last trading session from its 9:15 AM open, so their first visit can
+  // end with a real (practice) trade instead of a "market is closed" toast.
+  const neverTradedRef = useRef(
+    !(saved?.trades?.length) && !(saved?.stockPositions?.length) && !(saved?.optionPositions?.length)
+  );
+  const firstTradeKey = `pr_first_trade_done_${userId}`;
+  const [firstTradeDone, setFirstTradeDone] = useState(() => {
+    if (!neverTradedRef.current) return true;
+    try { return localStorage.getItem(firstTradeKey) === "1"; } catch { return false; }
+  });
+  const [highlightBuy, setHighlightBuy] = useState(false);
+  const lastSessionISO = lastTradingDayISO();
+  const lastSessionLabel = new Date(lastSessionISO + "T12:00:00+05:30").toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" });
+
+  const markFirstTradeDone = () => {
+    setFirstTradeDone(true);
+    setHighlightBuy(false);
+    try { localStorage.setItem(firstTradeKey, "1"); } catch { /* storage unavailable */ }
+  };
+  useEffect(() => {
+    if (!firstTradeDone && trades.length > 0) {
+      markFirstTradeDone();
+      showToast("Nice — that's your first trade! Track it in the Positions tab.", "bull");
+    }
+  }, [trades.length]);
+
+  const autoReplayTriedRef = useRef(false);
+  useEffect(() => {
+    if (autoReplayTriedRef.current || firstTradeDone || replayActive || liveMarketStatus.isOpen) return;
+    autoReplayTriedRef.current = true;
+    startReplay(lastSessionISO, { focus: "RELIANCE.NS", quiet: true });
+  }, [firstTradeDone, replayActive, liveMarketStatus.isOpen]);
+
+  const practiceLastSession = () => startReplay(lastSessionISO);
+
+  const setUpFirstTrade = () => {
+    setSelected("RELIANCE.NS");
+    setTab("trade");
+    setOrderType("market");
+    setOrderQty(10);
+    setHighlightBuy(true);
+    setTimeout(() => document.getElementById("stockOrderCard")?.scrollIntoView({ behavior: "smooth", block: "center" }), 150);
+  };
 
   const exitReplay = () => {
     const st = liveStashRef.current;
@@ -3151,6 +3225,30 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
         </div>
       )}
 
+      {!firstTradeDone && (
+        <div className="firstTradeCard">
+          <button className="firstTradeClose" onClick={markFirstTradeDone} aria-label="Dismiss"><X size={14} /></button>
+          <div className="firstTradeTitle"><GraduationCap size={16} /> Make your first practice trade</div>
+          <p className="firstTradeText">
+            {replayActive && replayData
+              ? <>The market is closed right now, so you're trading a replay of <b>{new Date(replayData.dayStart).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "short" })}</b> from the 9:15 AM open. Prices move exactly as they did that day, and you have <b>₹10,00,000</b> of practice money. Nothing here is real.</>
+              : <>You have <b>₹10,00,000</b> of practice money. Nothing here is real — try a trade and see how it feels.</>}
+          </p>
+          <ol className="firstTradeSteps">
+            <li><button className="btn btnBull firstTradeBtn" onClick={setUpFirstTrade}><TrendingUp size={14} /> Set up: buy 10 Reliance shares</button></li>
+            <li>Then press the glowing green <b>Buy</b> button.</li>
+            <li>Watch your profit or loss move in the <b>Positions</b> tab.</li>
+          </ol>
+        </div>
+      )}
+      {!liveMarketStatus.isOpen && !replayActive && (
+        <div className="closedBar">
+          <span className="closedBarTag">Market closed</span>
+          <span className="closedBarText">Live orders open at 9:15 AM, Mon–Fri. Meanwhile, practise the last session ({lastSessionLabel}) candle by candle — with separate practice money.</span>
+          <button className="btn btnBull closedBarBtn" onClick={practiceLastSession} disabled={replayBusy}><Play size={13} /> {replayBusy ? "Loading…" : "Start practice"}</button>
+        </div>
+      )}
+
       <div className="body">
         <div className="watchlist">
           <input className="search" placeholder="Search symbol…" value={search} onChange={(e) => setSearch(e.target.value)} />
@@ -3352,7 +3450,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                   <p className="dim indexNote">{meta.name} isn't traded as a cash position here — head to the <b>Options Chain</b> tab to trade {displayTicker(selected)} options.</p>
                 </div>
               ) : (
-                <div className="orderCard">
+                <div className="orderCard" id="stockOrderCard">
                   <div className="orderCardHead">
                     <h3>{orderType === "market" ? "Market Order" : orderType === "limit" ? "Limit Order" : "Stop Order"}</h3>
                     <span className="orderCardSym mono">{displayTicker(selected)}</span>
@@ -3400,11 +3498,19 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                   )}
 
                   <div className="orderBtns">
-                    <button className="btn btnBull" disabled={!marketStatus.isOpen} onClick={() => (orderType === "market" ? placeStockOrder("buy") : placeConditionalOrder("buy"))}><TrendingUp size={14} /> Buy</button>
+                    <button className={`btn btnBull ${highlightBuy && marketStatus.isOpen && !firstTradeDone ? "buyGlow" : ""}`} disabled={!marketStatus.isOpen} onClick={() => (orderType === "market" ? placeStockOrder("buy") : placeConditionalOrder("buy"))}><TrendingUp size={14} /> Buy</button>
                     <button className="btn btnBear" disabled={!marketStatus.isOpen} onClick={() => (orderType === "market" ? placeStockOrder("sell") : placeConditionalOrder("sell"))}><TrendingDown size={14} /> Sell</button>
                   </div>
-                  {!marketStatus.isOpen && (
-                    <div className="orderHint dim" style={{ textAlign: "center", marginTop: "-6px" }}>Trading resumes when the market opens</div>
+                  {!marketStatus.isOpen && !replayActive && (
+                    <div className="closedOrderHint">
+                      <div className="orderHint dim" style={{ textAlign: "center" }}>Live trading resumes when the market opens.</div>
+                      <button className="btn btnGhost closedPracticeBtn" onClick={practiceLastSession} disabled={replayBusy}>
+                        <Play size={13} /> {replayBusy ? "Loading…" : `Practise ${lastSessionLabel} from 9:15 AM now`}
+                      </button>
+                    </div>
+                  )}
+                  {!marketStatus.isOpen && replayActive && (
+                    <div className="orderHint dim" style={{ textAlign: "center", marginTop: "-6px" }}>This replay day has ended — press Restart day to go again</div>
                   )}
 
                   {(() => {
@@ -4563,6 +4669,28 @@ const CSS = `
 .replayBadge { align-self: center; background: var(--amber); color: #241800; font-size: 10px; font-weight: 800; padding: 3px 8px; border-radius: 999px; letter-spacing: 0.5px; }
 .replayBar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 24px; background: color-mix(in srgb, var(--amber) 14%, var(--surface)); border-bottom: 1px solid color-mix(in srgb, var(--amber) 40%, var(--border)); }
 .replayBarTag { background: var(--amber); color: #241800; font-size: 10px; font-weight: 800; padding: 3px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+.closedBar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 24px; background: color-mix(in srgb, var(--accent) 12%, var(--surface)); border-bottom: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border)); }
+.closedBarTag { background: var(--bear); color: white; font-size: 10px; font-weight: 800; padding: 3px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap; }
+.closedBarText { flex: 1 1 260px; font-size: 13px; color: var(--text); line-height: 1.45; }
+.closedBarBtn { padding: 8px 14px; font-size: 13px; white-space: nowrap; }
+.firstTradeCard { position: relative; margin: 12px 24px 0; padding: 16px 44px 14px 18px; border-radius: 12px; background: color-mix(in srgb, var(--bull) 9%, var(--surface)); border: 1px solid color-mix(in srgb, var(--bull) 45%, var(--border)); }
+.firstTradeClose { position: absolute; top: 10px; right: 10px; background: none; border: none; color: var(--text-dim); cursor: pointer; padding: 4px; border-radius: 6px; }
+.firstTradeClose:hover { color: var(--text); background: color-mix(in srgb, var(--text) 8%, transparent); }
+.firstTradeTitle { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; color: var(--text); }
+.firstTradeText { margin: 8px 0 10px; font-size: 13px; line-height: 1.55; color: var(--text-dim); }
+.firstTradeText b { color: var(--text); }
+.firstTradeSteps { margin: 0; padding-left: 20px; display: grid; gap: 8px; font-size: 13px; color: var(--text); }
+.firstTradeSteps li::marker { color: var(--text-dim); font-weight: 700; }
+.firstTradeBtn { padding: 8px 14px; font-size: 13px; }
+.buyGlow { animation: buyGlow 1.4s ease-in-out infinite; }
+@keyframes buyGlow { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--bull) 70%, transparent); } 50% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--bull) 0%, transparent); } }
+@media (prefers-reduced-motion: reduce) { .buyGlow { animation: none; outline: 2px solid var(--bull); outline-offset: 2px; } }
+.closedOrderHint { display: grid; gap: 8px; margin-top: -4px; }
+.closedPracticeBtn { width: 100%; font-size: 12.5px; }
+.phoneGateIntro { margin: 0 0 16px; font-size: 13px; color: var(--text); }
+.phoneGatePromises { margin: 16px 0 0; padding-left: 18px; color: var(--text-dim); font-size: 11.5px; line-height: 1.6; text-align: left; }
+.phonePrivacyNote { margin: -4px 0 12px; text-align: left; }
+@media (max-width: 700px) { .closedBar { padding: 10px 16px; } .firstTradeCard { margin: 12px 16px 0; } .closedBarBtn { width: 100%; justify-content: center; } }
 .replayBarClock { font-size: 13px; font-weight: 600; margin-right: 6px; }
 .replayProgress { flex: 1; min-width: 80px; height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; margin-right: 6px; }
 .replayProgress div { height: 100%; background: var(--amber); }
