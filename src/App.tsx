@@ -1179,6 +1179,15 @@ const LANDING_FEATURES = [
   { icon: Crosshair, title: "Stop-Losses on Every Trade", desc: "Stop orders on stocks and an automatic stop-loss on option positions, so protecting a trade becomes a reflex, not an afterthought." },
   { icon: Bell, title: "Price Alerts", desc: "Get notified the moment a stock crosses the price you're watching for." },
   { icon: Download, title: "Trade History Export", desc: "Download your full trade log as a CSV whenever you want to review your performance." },
+  { icon: Maximize2, title: "Pop-out Trading Window", desc: "Open a full-screen chart in its own window and buy, sell, or trade options right beside it — on the same balance." },
+  { icon: Activity, title: "5,000+ BSE Stocks", desc: "Every actively traded BSE company, searchable by name or ticker — from Reliance to the smallest caps." },
+];
+
+const WHATS_NEW = [
+  { icon: Play, title: "Trade any time — even after hours", desc: "Market closed? Jump into the last trading session from its 9:15 AM open and trade it as if it's live. Evenings and weekends count too.", tag: "Practise now" },
+  { icon: Maximize2, title: "Pop-out trading window", desc: "A big full-day chart in its own window, with shares and options — calls, puts, any expiry and strike — traded right next to it.", tag: "Shares + options" },
+  { icon: Activity, title: "All 5,000+ BSE stocks", desc: "Tap BSE to browse every active BSE company, largest first, and add any of them to your watchlist in one tap.", tag: "5,123 stocks" },
+  { icon: Sparkles, title: "Every feature free for 7 days", desc: "Options chain, indicators, alerts, the pop-out window — all unlocked from day one, with no upgrade prompts in your first week.", tag: "No card needed" },
 ];
 
 const WHO_FOR = [
@@ -1572,8 +1581,9 @@ function ReplaySpotlight() {
 }
 
 function LandingPage({ themeIdx, onEnter }) {
+  const [marketNow] = useState(() => getMarketStatus());
   useEffect(() => {
-    const els = document.querySelectorAll(".landingFeatureCard, .landingTrial, .whoForCard, .replaySpotlight, .mistakeRow, .faqItem");
+    const els = document.querySelectorAll(".landingFeatureCard, .landingTrial, .whoForCard, .replaySpotlight, .mistakeRow, .faqItem, .newCard");
     const obs = new IntersectionObserver(
       (entries) => entries.forEach((e) => { if (e.isIntersecting) e.target.classList.add("revealed"); }),
       { threshold: 0.15 }
@@ -1594,6 +1604,7 @@ function LandingPage({ themeIdx, onEnter }) {
           <span>PAPERRALLY</span>
         </div>
         <nav className="landingMenu" aria-label="Main">
+          <a href="#new">What's new</a>
           <a href="#features">Features</a>
           <a href="#how-it-works">How it works</a>
           <a href="#replay">Replay</a>
@@ -1616,7 +1627,7 @@ function LandingPage({ themeIdx, onEnter }) {
 
       <section className="landingHero">
         <div className="landingHeroCopy">
-          <div className="landingEyebrow heroReveal heroReveal-1">Free forever · 7-day Pro trial included</div>
+          <div className="landingEyebrow heroReveal heroReveal-1">Free to use · every feature free for your first 7 days</div>
           <h1 className="landingH1 heroReveal heroReveal-2">Practice trading NSE &amp; BSE with <span className="landingGradientText">real prices</span>. Zero risk.</h1>
           <p className="landingSub heroReveal heroReveal-3">
             PaperRally is a paper trading terminal for Indian stocks, options, and indices. Trade with
@@ -1625,6 +1636,11 @@ function LandingPage({ themeIdx, onEnter }) {
           <div className="heroTrust heroReveal heroReveal-3">
             <span>No demat account</span><span>No KYC</span><span>No real money</span>
           </div>
+          {!marketNow.isOpen && (
+            <div className="heroClosedNote heroReveal heroReveal-3">
+              <span className="heroClosedDot" /> <b>Market's closed right now — you can still trade.</b> Sign up and practise the last session from its 9:15 AM open, tonight.
+            </div>
+          )}
           <div className="landingHeroBtns heroReveal heroReveal-4">
             <button className="btn btnBull landingCta" onClick={() => onEnter("register")}><Sparkles size={15} /> Get Started Free</button>
             <button className="btn btnGhost landingCta" onClick={() => onEnter("login")}>Log In</button>
@@ -1661,8 +1677,33 @@ function LandingPage({ themeIdx, onEnter }) {
         </div>
         <div className="landingStatDivider" />
         <div className="landingStatItem">
+          <span className="landingStatNum">5,000+</span>
+          <span className="landingStatLabel">NSE &amp; BSE stocks to trade</span>
+        </div>
+        <div className="landingStatDivider" />
+        <div className="landingStatItem">
           <span className="landingStatNum">7 Days</span>
-          <span className="landingStatLabel">Full Pro trial, free</span>
+          <span className="landingStatLabel">Every feature free</span>
+        </div>
+      </section>
+
+      <section className="whatsNew" id="new">
+        <div className="landingEyebrow whatsNewEyebrow">New on PaperRally</div>
+        <h2 className="landingH2">Practise whenever you want, on whatever you want</h2>
+        <div className="newGrid">
+          {WHATS_NEW.map((f) => (
+            <div key={f.title} className="newCard">
+              <div className="newCardTop">
+                <div className="newIcon"><f.icon size={18} /></div>
+                <span className="newTag">{f.tag}</span>
+              </div>
+              <h3>{f.title}</h3>
+              <p className="dim">{f.desc}</p>
+            </div>
+          ))}
+        </div>
+        <div className="whatsNewCta">
+          <button className="btn btnBull landingCta" onClick={() => onEnter("register")}><Sparkles size={15} /> Try it free — takes a minute</button>
         </div>
       </section>
 
@@ -1695,12 +1736,12 @@ function LandingPage({ themeIdx, onEnter }) {
           <h2 className="landingH2" style={{ textAlign: "left", margin: "0 0 14px" }}>Practice Against a Real Day, Not a Guess.</h2>
           <p className="dim replaySpotlightText">
             Pick any weekday from the last 30 days and PaperRally replays that day's real NSE &amp; BSE price
-            action candle by candle — as if it were happening live. Play, pause, or skip ahead at 0.5x, 1x, or 2x speed,
-            and trade against it with a separate ₹10,00,000 balance that never touches your live portfolio.
+            action candle by candle — as if it were happening live. Start from the 9:15 AM open, play at 1x, 5x, 30x or 60x,
+            drag the timeline to any minute, and trade against it with a separate ₹10,00,000 balance that never touches your live portfolio.
           </p>
           <ul className="upgradeList">
-            <li>Any weekday from the last 30 trading days</li>
-            <li>Play / pause / skip to end, at three speeds</li>
+            <li>Market closed? One tap replays the last session — evenings and weekends included</li>
+            <li>Play, pause, jump ±15 min, or drag to any time — at 1x to 60x speed</li>
             <li>A fully separate practice balance — your real portfolio is untouched</li>
           </ul>
         </div>
@@ -1797,8 +1838,8 @@ function LandingPage({ themeIdx, onEnter }) {
 
       <section className="landingTrial">
         <Sparkles size={22} className="proBadgeIcon" />
-        <h2 className="landingH2">Try every Pro feature free for 7 days</h2>
-        <p className="dim landingTrialSub">Options chain, RSI &amp; MACD, price alerts, every chart timeframe, and more — no card required.</p>
+        <h2 className="landingH2">Every feature free for your first 7 days</h2>
+        <p className="dim landingTrialSub">Options chain, RSI &amp; MACD, price alerts, every chart timeframe, the pop-out trading window and all 5,000+ BSE stocks — no card required.</p>
         <button className="btn btnMarigold landingCta" onClick={() => onEnter("register")}>Start your free trial</button>
       </section>
 
@@ -5473,6 +5514,27 @@ html { scroll-behavior: smooth; }
 .landingHeroCard .authSub { margin: 6px 0 0; text-align: left; }
 .landingHeroCard .authSubmit { margin-top: 18px; }
 
+.whatsNew { max-width: 1120px; margin: 0 auto; padding: 56px 24px 24px; text-align: center; }
+.whatsNewEyebrow { display: inline-block; margin-bottom: 10px; }
+.newGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; text-align: left; }
+.newCard { position: relative; background: var(--surface); border: 1px solid color-mix(in srgb, var(--bull) 35%, var(--border)); border-radius: 14px; padding: 20px; opacity: 0; transform: translateY(14px); transition: opacity 0.5s ease, transform 0.5s ease, box-shadow 0.15s ease; }
+.newCard.revealed { opacity: 1; transform: none; }
+.newCard:hover { box-shadow: 0 14px 34px rgba(0,0,0,0.22); }
+.newGrid .newCard:nth-child(2) { transition-delay: 0.08s; }
+.newGrid .newCard:nth-child(3) { transition-delay: 0.16s; }
+.newGrid .newCard:nth-child(4) { transition-delay: 0.24s; }
+.newCardTop { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+.newIcon { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: color-mix(in srgb, var(--bull) 16%, transparent); color: var(--bull); }
+.newTag { font-size: 10px; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; color: var(--bull); background: color-mix(in srgb, var(--bull) 12%, transparent); padding: 4px 8px; border-radius: 999px; white-space: nowrap; }
+.newCard h3 { margin: 0 0 8px; font-size: 16px; }
+.newCard p { margin: 0; font-size: 13.5px; line-height: 1.55; }
+.whatsNewCta { margin-top: 26px; display: flex; justify-content: center; }
+.heroClosedNote { margin-top: 16px; padding: 10px 14px; border-radius: 10px; background: color-mix(in srgb, var(--bull) 12%, transparent); border: 1px solid color-mix(in srgb, var(--bull) 40%, transparent); font-size: 13.5px; line-height: 1.5; max-width: 560px; }
+.heroClosedDot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--bull); margin-right: 4px; vertical-align: 1px; box-shadow: 0 0 0 0 var(--bull); animation: heroDot 1.8s ease-out infinite; }
+@keyframes heroDot { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--bull) 70%, transparent); } 100% { box-shadow: 0 0 0 9px transparent; } }
+@media (prefers-reduced-motion: reduce) { .newCard { opacity: 1; transform: none; transition: none; } .heroClosedDot { animation: none; } }
+@media (max-width: 980px) { .newGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .newGrid { grid-template-columns: 1fr; } .whatsNew { padding: 40px 16px 16px; } }
 .landingH2 { font-family: 'Instrument Sans', sans-serif; font-weight: 700; font-size: 26px; letter-spacing: -0.3px; text-align: center; margin: 0 0 36px; }
 .landingFeatures { padding: 70px 40px; max-width: 1180px; margin: 0 auto; }
 .landingFeatureGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
