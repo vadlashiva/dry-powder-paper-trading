@@ -1638,7 +1638,7 @@ function LandingPage({ themeIdx, onEnter }) {
           </div>
           {!marketNow.isOpen && (
             <div className="heroClosedNote heroReveal heroReveal-3">
-              <span className="heroClosedDot" /> <b>Market's closed right now — you can still trade.</b> Sign up and practise the last session from its 9:15 AM open, tonight.
+              <span className="heroClosedDot" /> <b>Market's closed right now — you can still trade.</b> Sign up and practise the last session from its 9:15 AM open right now.
             </div>
           )}
           <div className="landingHeroBtns heroReveal heroReveal-4">
