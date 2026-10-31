@@ -1646,7 +1646,7 @@ function LandingPage({ themeIdx, onEnter: onEnterRaw }) {
     if (install.canInstall) install.promptInstall().then((r) => track("install_prompt", { result: r, from: "landing" }));
     else { setInstallHelp(true); track("install_help", { platform: install.platform, from: "landing" }); }
   };
-  const showInstall = !install.standalone && (install.canInstall || isPhone);
+  const showInstall = !install.standalone && (install.canInstall || isPhone || install.platform !== "desktop");
   const onEnter = (mode) => { track(mode === "register" ? "signup_start" : "login_start"); onEnterRaw(mode); };
   useEffect(() => { track("landing_view", { ref: !!new URLSearchParams(window.location.search).get("ref") }); }, []);
   const [marketNow] = useState(() => getMarketStatus());
@@ -3865,7 +3865,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, referral
           {!isPaidPro && !inTrial && (
             <button className="upgradeBtn" onClick={() => setUpgradeModalOpen(true)}><Sparkles size={13} /> Upgrade to Pro</button>
           )}
-          {install.canInstall && <button className="resetBtn installBtn" onClick={doInstall} title="Install PaperRally as an app"><Smartphone size={14} /> Install app</button>}
+          {!install.standalone && (install.canInstall || install.platform !== "desktop") && <button className="resetBtn installBtn" onClick={doInstall} title="Install PaperRally as an app"><Smartphone size={14} /> Install app</button>}
           <a className="resetBtn" href={feedbackHref} title="Tell us what to improve"><MessageSquare size={14} /> Feedback</a>
           <button className="resetBtn" onClick={popOutChart} title="Open a full-day chart in a new window"><Maximize2 size={14} /> Pop-out chart</button>
           <button className="themeBtn" onClick={cycleTheme} title="Change background theme"><span className="themeEmoji">{THEMES[themeIdx].emoji}</span> {THEMES[themeIdx].name}</button>
