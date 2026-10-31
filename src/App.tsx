@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef, useMemo } from "react";
 import { createChart, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries } from "lightweight-charts";
 import { createClient } from "@supabase/supabase-js";
 import {TrendingUp, TrendingDown, RotateCcw, X, Flame, Activity, LogOut, Lock, User as UserIcon, Bell, Trash2, Maximize2, Download, Newspaper, Crosshair, Sparkles,Eye, EyeOff, LineChart, Layers, Play, GraduationCap, Phone,
-  List, BarChart3, Ellipsis, BookOpen, Briefcase, ListOrdered, Mail, KeyRound, Hourglass,
+  List, BarChart3, Ellipsis, BookOpen, Briefcase, ListOrdered, Mail, KeyRound, Hourglass, MessageSquare,
 } from "lucide-react";
 import { LEARN, LangSwitch, loadLang, saveLang } from "./i18n";
 import { useIsMobile, loadSetting, saveSetting, computeCharges, PerformancePanel } from "./extras";
@@ -1880,6 +1880,12 @@ function LandingPage({ themeIdx, onEnter }) {
           <a href="/contact.html">Contact</a>
           <a href="/privacy.html">Privacy</a>
           <a href="/terms.html">Terms</a>
+          <a
+            className="footerFeedback"
+            href={mailtoSupport("PaperRally feedback", "Hi PaperRally team,\n\nWhat I like:\n\nWhat's confusing or broken:\n\nWhat I'd love to see next:\n\n(Optional) Phone / desktop and browser:\n")}
+          >
+            <MessageSquare size={15} /> Give feedback
+          </a>
         </div>
         <div className="dim landingFooterNote">PaperRally is a simulator for learning. No real money or securities are ever traded, virtual balances have no cash value, and nothing here is investment advice. PaperRally is not registered with SEBI and is not a broker.</div>
       </footer>
@@ -6203,6 +6209,15 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .learnLbl { font-weight: 600; }
 .learnLinksRow { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 .learnLinksRow .btn { flex: none; text-decoration: none; }
+
+/* landing footer: links as visible pills, feedback stands out */
+.landingWrap .landingFooterLinks { gap: 10px; align-items: center; }
+.landingWrap .landingFooterLinks a { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 999px; background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.28); color: #FFFFFF !important; font-weight: 600; font-size: 14px; text-decoration: none; transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease; }
+.landingWrap .landingFooterLinks a:hover { background: rgba(255,255,255,0.22); border-color: rgba(255,255,255,0.55); color: #FFFFFF !important; }
+.landingWrap .landingFooterLinks a:active { transform: scale(0.97); }
+.landingWrap .landingFooterLinks a.footerFeedback { background: var(--bull); border-color: var(--bull); color: #06281A !important; box-shadow: 0 4px 14px rgba(0,0,0,0.18); }
+.landingWrap .landingFooterLinks a.footerFeedback:hover { filter: brightness(1.08); background: var(--bull); color: #06281A !important; }
+@media (max-width: 560px) { .landingWrap .landingFooterLinks { justify-content: center; } .landingWrap .landingFooterLinks a { padding: 8px 13px; font-size: 13px; } }
 
 /* mobile-only pieces are hidden on desktop by default */
 .bottomNav, .mTradeBar, .mSectionHead { display: none; }
