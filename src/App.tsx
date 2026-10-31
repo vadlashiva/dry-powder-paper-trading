@@ -1,9 +1,48 @@
 // @ts-nocheck
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { createChart, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries } from "lightweight-charts";
 import { createClient } from "@supabase/supabase-js";
 import {TrendingUp, TrendingDown, RotateCcw, X, Flame, Activity, LogOut, Lock, User as UserIcon, Bell, Trash2, Maximize2, Download, Newspaper, Crosshair, Sparkles,Eye, EyeOff, LineChart, Layers, Play, GraduationCap, Phone,
+  List, BarChart3, Ellipsis, BookOpen, Briefcase, ListOrdered, Mail, KeyRound, Hourglass, MessageSquare, Trophy, Share2, Smartphone, Compass, NotebookPen,
 } from "lucide-react";
+import { LEARN, LangSwitch, loadLang, saveLang } from "./i18n";
+import { useIsMobile, loadSetting, saveSetting, computeCharges, PerformancePanel } from "./extras";
+import { isoWeekIST, initTelemetry, track, tradeKey, TagChips, JournalModal, JournalStatsCard, computeAchievements, AchievementsGrid, ACHIEVEMENTS, makeShareImage, shareImage, captureReferralFromUrl, syncReferrals, InvitePanel, LeaderboardPanel, TourOverlay, InstallHelp } from "./growth";
+import { useInstallPrompt, notify, requestNotifications, notificationPermission } from "./pwa";
+
+const SUPPORT_EMAIL = "adi.shiv999@gmail.com";
+const mailtoSupport = (subject, body) => `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+
+/* ---------------- chart library, loaded as its own file ----------------
+   lightweight-charts is ~20% of the app's JavaScript. Loading it separately (the
+   download starts immediately, in parallel) lets the page render without waiting
+   for it; each chart mounts as soon as the library has arrived. */
+let LW = null;
+const lwListeners = new Set();
+const lwReady = import(/* webpackChunkName: "charts" */ "lightweight-charts").then((m) => {
+  LW = m;
+  lwListeners.forEach((fn) => fn());
+  lwListeners.clear();
+  return m;
+});
+lwReady.catch((e) => console.error("chart library failed to load", e));
+function withCharts(Impl, minHeight = 0) {
+  return function ChartGate(props) {
+    const [ready, setReady] = useState(!!LW);
+    useEffect(() => {
+      if (LW) { setReady(true); return; }
+      const fn = () => setReady(true);
+      lwListeners.add(fn);
+      return () => { lwListeners.delete(fn); };
+    }, []);
+    return ready ? <Impl {...props} /> : <div className="chartLoading" style={{ minHeight }} aria-busy="true" />;
+  };
+}
+const PriceChart = withCharts(PriceChartImpl, 360);
+const IndicatorPane = withCharts(IndicatorPaneImpl, 120);
+const RSIChart = withCharts(RSIChartImpl, 120);
+const MACDChart = withCharts(MACDChartImpl, 120);
+const MiniHeroChart = withCharts(MiniHeroChartImpl, 120);
+const PopoutCanvas = withCharts(PopoutCanvasImpl, 200);
 declare global { interface Window { Razorpay: any; } }
 /* ---------------- background themes ---------------- */
 const THEMES = [
@@ -58,11 +97,11 @@ const TRIAL_DAYS = 7;
 // During Replay the whole terminal runs on a simulated clock.
 let SIM_NOW = null;
 const nowMs = () => (SIM_NOW ?? Date.now());
-function trialDaysRemaining(createdAtIso) {
+function trialDaysRemaining(createdAtIso, bonusDays = 0) {
   if (!createdAtIso) return 0;
   const start = new Date(createdAtIso).getTime();
   const elapsedDays = (Date.now() - start) / 86400000;
-  return Math.max(0, Math.ceil(TRIAL_DAYS - elapsedDays));
+  return Math.max(0, Math.ceil(TRIAL_DAYS + bonusDays - elapsedDays));
 }
 
 const TIMEFRAMES = {
@@ -430,7 +469,7 @@ const DRAW_TOOLS = [
   { id: "erase", label: "Erase" },
 ];
 
-function PriceChart({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPrice, pendingLines, chartType, resetKey, overlays = [] }) {
+function PriceChartImpl({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPrice, pendingLines, chartType, resetKey, overlays = [] }) {
   const overlaySeriesRef = useRef(new Map());
   const fitKeyRef = useRef(null);
   const containerRef = useRef(null);
@@ -458,26 +497,26 @@ function PriceChart({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPr
 
   useEffect(() => {
     if (!containerRef.current) return;
-    const chart = createChart(containerRef.current, {
+    const chart = LW.createChart(containerRef.current, {
       width: containerRef.current.clientWidth,
       height: 340,
       layout: { background: { color: "transparent" }, textColor: LW_COLORS.text, fontFamily: "JetBrains Mono, monospace", fontSize: 11, attributionLogo: false },
       grid: { vertLines: { color: LW_COLORS.grid }, horzLines: { color: LW_COLORS.grid } },
-      crosshair: { mode: CrosshairMode.Normal },
+      crosshair: { mode: LW.CrosshairMode.Normal },
       rightPriceScale: { borderColor: LW_COLORS.grid },
       timeScale: { borderColor: LW_COLORS.grid, timeVisible: true, secondsVisible: false },
       handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: true },
       handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: true },
       kineticScroll: { touch: true, mouse: true },
     });
-    const candleSeries = chart.addSeries(CandlestickSeries, {
+    const candleSeries = chart.addSeries(LW.CandlestickSeries, {
       upColor: LW_COLORS.bull, downColor: LW_COLORS.bear, borderVisible: false,
       wickUpColor: LW_COLORS.bull, wickDownColor: LW_COLORS.bear,
     });
-    const lineSeries = chart.addSeries(LineSeries, {
+    const lineSeries = chart.addSeries(LW.LineSeries, {
       color: LW_COLORS.accent, lineWidth: 2, priceLineVisible: true, lastValueVisible: true, visible: false,
     });
-    const maSeries = chart.addSeries(LineSeries, { color: LW_COLORS.amber, lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+    const maSeries = chart.addSeries(LW.LineSeries, { color: LW_COLORS.amber, lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
 
     chart.subscribeCrosshairMove((param) => {
       if (!legendRef.current) return;
@@ -599,7 +638,7 @@ function PriceChart({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPr
     overlays.forEach((o) => {
       let series = overlaySeriesRef.current.get(o.id);
       if (!series) {
-        series = chart.addSeries(LineSeries, { color: o.color, lineWidth: o.width ?? 1.5, lineStyle: o.lineStyle ?? 0, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
+        series = chart.addSeries(LW.LineSeries, { color: o.color, lineWidth: o.width ?? 1.5, lineStyle: o.lineStyle ?? 0, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
         overlaySeriesRef.current.set(o.id, series);
       }
       series.setData(prepped.filter(({ d }) => d[o.field] != null).map(({ t, d }) => (
@@ -726,24 +765,24 @@ function PriceChart({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPr
   );
 }
 
-function IndicatorPane({ data, syncGroupRef, lines, levels = [] }) {
+function IndicatorPaneImpl({ data, syncGroupRef, lines, levels = [] }) {
   const containerRef = useRef(null);
   const seriesRefs = useRef([]);
 
   useEffect(() => {
     if (!containerRef.current) return;
-    const chart = createChart(containerRef.current, {
+    const chart = LW.createChart(containerRef.current, {
       width: containerRef.current.clientWidth,
       height: 110,
       layout: { background: { color: "transparent" }, textColor: LW_COLORS.text, fontFamily: "JetBrains Mono, monospace", fontSize: 10, attributionLogo: false },
       grid: { vertLines: { color: LW_COLORS.grid }, horzLines: { color: LW_COLORS.grid } },
-      crosshair: { mode: CrosshairMode.Normal },
+      crosshair: { mode: LW.CrosshairMode.Normal },
       rightPriceScale: { borderColor: LW_COLORS.grid },
       timeScale: { borderColor: LW_COLORS.grid, visible: false },
       handleScroll: { mouseWheel: true, pressedMouseMove: true },
       handleScale: { mouseWheel: true, pinch: true },
     });
-    seriesRefs.current = lines.map((l) => chart.addSeries(LineSeries, { color: l.color, lineWidth: 2, priceLineVisible: false, lastValueVisible: false }));
+    seriesRefs.current = lines.map((l) => chart.addSeries(LW.LineSeries, { color: l.color, lineWidth: 2, priceLineVisible: false, lastValueVisible: false }));
     levels.forEach((lv) => seriesRefs.current[0].createPriceLine({ price: lv.price, color: lv.color, lineWidth: 1, lineStyle: 2, axisLabelVisible: true }));
     joinSyncGroup(chart, syncGroupRef);
     const onResize = () => { if (containerRef.current) chart.applyOptions({ width: containerRef.current.clientWidth }); };
@@ -762,25 +801,25 @@ function IndicatorPane({ data, syncGroupRef, lines, levels = [] }) {
   return <div ref={containerRef} className="lwChart" />;
 }
 
-function RSIChart({ data, syncGroupRef }) {
+function RSIChartImpl({ data, syncGroupRef }) {
   const containerRef = useRef(null);
   const chartRef = useRef(null);
   const seriesRef = useRef(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
-    const chart = createChart(containerRef.current, {
+    const chart = LW.createChart(containerRef.current, {
       width: containerRef.current.clientWidth,
       height: 110,
       layout: { background: { color: "transparent" }, textColor: LW_COLORS.text, fontFamily: "JetBrains Mono, monospace", fontSize: 10, attributionLogo: false },
       grid: { vertLines: { color: LW_COLORS.grid }, horzLines: { color: LW_COLORS.grid } },
-      crosshair: { mode: CrosshairMode.Normal },
+      crosshair: { mode: LW.CrosshairMode.Normal },
       rightPriceScale: { borderColor: LW_COLORS.grid },
       timeScale: { borderColor: LW_COLORS.grid, visible: false },
       handleScroll: { mouseWheel: true, pressedMouseMove: true },
       handleScale: { mouseWheel: true, pinch: true },
     });
-    const series = chart.addSeries(LineSeries, { color: LW_COLORS.accent, lineWidth: 2, priceLineVisible: false, lastValueVisible: false });
+    const series = chart.addSeries(LW.LineSeries, { color: LW_COLORS.accent, lineWidth: 2, priceLineVisible: false, lastValueVisible: false });
     series.createPriceLine({ price: 70, color: LW_COLORS.bear, lineWidth: 1, lineStyle: 2, axisLabelVisible: true });
     series.createPriceLine({ price: 30, color: LW_COLORS.bull, lineWidth: 1, lineStyle: 2, axisLabelVisible: true });
 
@@ -806,7 +845,7 @@ function RSIChart({ data, syncGroupRef }) {
   return <div ref={containerRef} className="lwChart" />;
 }
 
-function MACDChart({ data, syncGroupRef }) {
+function MACDChartImpl({ data, syncGroupRef }) {
   const containerRef = useRef(null);
   const chartRef = useRef(null);
   const histRef = useRef(null);
@@ -815,20 +854,20 @@ function MACDChart({ data, syncGroupRef }) {
 
   useEffect(() => {
     if (!containerRef.current) return;
-    const chart = createChart(containerRef.current, {
+    const chart = LW.createChart(containerRef.current, {
       width: containerRef.current.clientWidth,
       height: 110,
       layout: { background: { color: "transparent" }, textColor: LW_COLORS.text, fontFamily: "JetBrains Mono, monospace", fontSize: 10, attributionLogo: false },
       grid: { vertLines: { color: LW_COLORS.grid }, horzLines: { color: LW_COLORS.grid } },
-      crosshair: { mode: CrosshairMode.Normal },
+      crosshair: { mode: LW.CrosshairMode.Normal },
       rightPriceScale: { borderColor: LW_COLORS.grid },
       timeScale: { borderColor: LW_COLORS.grid, timeVisible: true, secondsVisible: false },
       handleScroll: { mouseWheel: true, pressedMouseMove: true },
       handleScale: { mouseWheel: true, pinch: true },
     });
-    const hist = chart.addSeries(HistogramSeries, { priceLineVisible: false, lastValueVisible: false });
-    const macdLine = chart.addSeries(LineSeries, { color: LW_COLORS.bull, lineWidth: 2, priceLineVisible: false, lastValueVisible: false });
-    const signalLine = chart.addSeries(LineSeries, { color: LW_COLORS.bear, lineWidth: 2, priceLineVisible: false, lastValueVisible: false });
+    const hist = chart.addSeries(LW.HistogramSeries, { priceLineVisible: false, lastValueVisible: false });
+    const macdLine = chart.addSeries(LW.LineSeries, { color: LW_COLORS.bull, lineWidth: 2, priceLineVisible: false, lastValueVisible: false });
+    const signalLine = chart.addSeries(LW.LineSeries, { color: LW_COLORS.bear, lineWidth: 2, priceLineVisible: false, lastValueVisible: false });
 
     chartRef.current = chart;
     histRef.current = hist;
@@ -868,6 +907,8 @@ const SUPABASE_URL = "https://qfzepvorvvajqpnfwceq.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_-pw1tSkYhKymxQZHNqT66w_GOPnWEQN";
 const YAHOO_PROXY_URL = `${SUPABASE_URL}/functions/v1/yahoo-proxy`;
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+initTelemetry(supabase);
+captureReferralFromUrl();
 
 const usernameToEmail = (username) => `${username.trim().toLowerCase()}@gmail.com`;
 
@@ -953,6 +994,8 @@ function hydratePortfolio(raw) {
     alerts: base.alerts ?? [],
     pendingOrders: (base.pendingOrders || []).map((o) => ({ ...o, createdAt: new Date(o.createdAt) })),
     customInstruments: base.customInstruments ?? [],
+    prefs: base.prefs ?? {},
+    weekStart: base.weekStart ?? null,
   };
 }
 async function fetchPortfolio(userId) {
@@ -1411,14 +1454,14 @@ function LiveHeroPrice() {
   );
 }
 
-function MiniHeroChart() {
+function MiniHeroChartImpl() {
   const containerRef = useRef(null);
   const chartRef = useRef(null);
   const seriesRef = useRef(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
-    const chart = createChart(containerRef.current, {
+    const chart = LW.createChart(containerRef.current, {
       width: containerRef.current.clientWidth,
       height: 90,
       layout: { background: { color: "transparent" }, textColor: "transparent", attributionLogo: false },
@@ -1430,7 +1473,7 @@ function MiniHeroChart() {
       handleScale: false,
       crosshair: { vertLine: { visible: false }, horzLine: { visible: false } },
     });
-    const series = chart.addSeries(CandlestickSeries, {
+    const series = chart.addSeries(LW.CandlestickSeries, {
       upColor: "#14E8A0", downColor: "#FF5470", borderVisible: false,
       wickUpColor: "#14E8A0", wickDownColor: "#FF5470",
     });
@@ -1580,8 +1623,50 @@ function ReplaySpotlight() {
   );
 }
 
-function LandingPage({ themeIdx, onEnter }) {
+// "N traders practised this week" — shown only once the number is worth showing.
+function LiveTradersCount() {
+  const [n, setN] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    supabase.rpc("active_traders_this_week").then(({ data, error }) => { if (!cancelled && !error && typeof data === "number") setN(data); }, () => {});
+    return () => { cancelled = true; };
+  }, []);
+  if (n == null || n < 25) return null;
+  return <div className="liveCount heroReveal heroReveal-3"><span className="liveCountDot" /> {n.toLocaleString("en-IN")} traders practised on PaperRally this week</div>;
+}
+
+const PRO_FEATURES = ["Limit & stop-loss orders", "RSI, MACD and every chart timeframe", "Options chain with live Greeks", "Search & add any NSE/BSE stock", "Price alerts with phone notifications", "News tab", "Trade history CSV export"];
+const FREE_FEATURES = ["₹10,00,000 virtual cash", "Live NSE & BSE prices", "Market orders & positions", "Replay any recent trading day", "Performance stats, journal & leaderboard", "Learn section (English, हिंदी, ಕನ್ನಡ)"];
+
+function LandingPage({ themeIdx, onEnter: onEnterRaw }) {
+  const install = useInstallPrompt();
+  const isPhone = useIsMobile(760);
+  const [installHelp, setInstallHelp] = useState(false);
+  const landingInstall = () => {
+    if (install.canInstall) install.promptInstall().then((r) => track("install_prompt", { result: r, from: "landing" }));
+    else { setInstallHelp(true); track("install_help", { platform: install.platform, from: "landing" }); }
+  };
+  const showInstall = !install.standalone && (install.canInstall || isPhone || install.platform !== "desktop");
+  const onEnter = (mode) => { track(mode === "register" ? "signup_start" : "login_start"); onEnterRaw(mode); };
+  useEffect(() => { track("landing_view", { ref: !!new URLSearchParams(window.location.search).get("ref") }); }, []);
   const [marketNow] = useState(() => getMarketStatus());
+  const [lang, setLangState] = useState(() => loadLang());
+  const setLang = (code) => { setLangState(code); saveLang(code); };
+  const L = LEARN[lang] || LEARN.en;
+  // The Guides dropdown is a <details> element, which only closes when its own summary is
+  // clicked. Close it on any click/tap outside it, on Escape, or after picking a link.
+  const guidesRef = useRef(null);
+  useEffect(() => {
+    const close = () => { if (guidesRef.current?.open) guidesRef.current.open = false; };
+    const onPointer = (e) => { if (guidesRef.current && !guidesRef.current.contains(e.target)) close(); };
+    const onKey = (e) => { if (e.key === "Escape" && guidesRef.current?.open) { close(); guidesRef.current.querySelector("summary")?.focus(); } };
+    document.addEventListener("pointerdown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, []);
   useEffect(() => {
     const els = document.querySelectorAll(".landingFeatureCard, .landingTrial, .whoForCard, .replaySpotlight, .mistakeRow, .faqItem, .newCard");
     const obs = new IntersectionObserver(
@@ -1597,6 +1682,7 @@ function LandingPage({ themeIdx, onEnter }) {
       <style>{CSS}</style>
 
       <LiveTicker />
+      {installHelp && <InstallHelp platform={install.platform} onClose={() => setInstallHelp(false)} />}
 
       <header className="landingNav">
         <div className="authBrand" style={{ justifyContent: "flex-start" }}>
@@ -1608,12 +1694,15 @@ function LandingPage({ themeIdx, onEnter }) {
           <a href="#features">Features</a>
           <a href="#how-it-works">How it works</a>
           <a href="#replay">Replay</a>
-          <details className="landingMenuDrop">
+          <details className="landingMenuDrop" ref={guidesRef}>
             <summary>Guides</summary>
-            <div className="landingMenuPanel">
+            <div className="landingMenuPanel" onClick={() => { if (guidesRef.current) guidesRef.current.open = false; }}>
               <a href="/how-to-use.html">How to use PaperRally</a>
               <a href="/paper-trading-india.html">Paper trading in India</a>
               <a href="/how-to-read-options-chain.html">How to read an options chain</a>
+              <a href="/how-to-set-stop-loss.html">How to set a stop-loss</a>
+              <a href="/nifty-options-for-beginners.html">NIFTY options for beginners</a>
+              <a href="/guides.html" className="landingMenuAll">All guides →</a>
             </div>
           </details>
           <a href="#faq">FAQ</a>
@@ -1636,6 +1725,7 @@ function LandingPage({ themeIdx, onEnter }) {
           <div className="heroTrust heroReveal heroReveal-3">
             <span>No demat account</span><span>No KYC</span><span>No real money</span>
           </div>
+          <LiveTradersCount />
           {!marketNow.isOpen && (
             <div className="heroClosedNote heroReveal heroReveal-3">
               <span className="heroClosedDot" /> <b>Market's closed right now — you can still trade.</b> Sign up and practise the last session from its 9:15 AM open right now.
@@ -1645,6 +1735,11 @@ function LandingPage({ themeIdx, onEnter }) {
             <button className="btn btnBull landingCta" onClick={() => onEnter("register")}><Sparkles size={15} /> Get Started Free</button>
             <button className="btn btnGhost landingCta" onClick={() => onEnter("login")}>Log In</button>
           </div>
+          {showInstall && (
+            <button type="button" className="heroInstall heroReveal heroReveal-4" onClick={landingInstall}>
+              <Smartphone size={15} /> Install the app on your phone
+            </button>
+          )}
           <div className="heroReveal heroReveal-5">
             <MiniHeroChart />
           </div>
@@ -1764,14 +1859,35 @@ function LandingPage({ themeIdx, onEnter }) {
         </div>
       </section>
 
+      <section className="demoSection" id="demo">
+        <div className="demoCopy">
+          <h2 className="landingH2" style={{ textAlign: "left", margin: "0 0 12px" }}>See PaperRally in 36 seconds</h2>
+          <p className="dim">Virtual capital, live prices, options with Greeks, replay of any recent day, the pop-out trading window and more — in one quick tour.</p>
+          <button className="btn btnBull landingCta" onClick={() => onEnter("register")}><Sparkles size={15} /> Try it yourself — free</button>
+        </div>
+        <div className="demoPhone">
+          <video
+            className="demoVideo"
+            src="/media/paperrally-demo.mp4"
+            poster="/media/paperrally-demo-poster.jpg"
+            controls
+            playsInline
+            preload="none"
+            onPlay={() => track("demo_play")}
+            aria-label="36-second demo video of the PaperRally app"
+          />
+        </div>
+      </section>
+
       <section className="howSteps" id="how-it-works">
-        <h2 className="landingH2">From sign-up to first trade in three steps</h2>
+        <LangSwitch lang={lang} onChange={setLang} className="landingLangSwitch" />
+        <h2 className="landingH2">{L.howTitle}</h2>
         <div className="howStepsRow">
-          {HOW_STEPS.map((st) => (
+          {HOW_STEPS.map((st, i) => (
             <div key={st.n} className="howStep whoForCard">
               <span className="howStepNum">{st.n}</span>
-              <h3>{st.title}</h3>
-              <p className="dim">{st.desc}</p>
+              <h3>{L.howSteps[i].title}</h3>
+              <p className="dim">{L.howSteps[i].desc}</p>
             </div>
           ))}
         </div>
@@ -1779,19 +1895,19 @@ function LandingPage({ themeIdx, onEnter }) {
       </section>
 
       <section className="mistakesSection">
-        <h2 className="landingH2">Mistakes Are Part of Learning to Trade.</h2>
-        <p className="dim mistakesIntro">They don't have to be expensive ones.</p>
+        <h2 className="landingH2">{L.mistakesTitle}</h2>
+        <p className="dim mistakesIntro">{L.mistakesIntro}</p>
         <div className="mistakesList">
-          {MISTAKES.map((m) => (
-            <div key={m.title} className="mistakeRow">
+          {L.mistakes.map((m, i) => (
+            <div key={i} className="mistakeRow">
               <h3>{m.title}</h3>
               <div className="mistakeCols">
                 <div className="mistakeCol mistakeColReal">
-                  <span className="mistakeColLabel bear">With real money</span>
+                  <span className="mistakeColLabel bear">{L.realLabel}</span>
                   <p className="dim">{m.real}</p>
                 </div>
                 <div className="mistakeCol mistakeColPractice">
-                  <span className="mistakeColLabel bull">On PaperRally</span>
+                  <span className="mistakeColLabel bull">{L.practiceLabel}</span>
                   <p className="dim">{m.practice}</p>
                 </div>
               </div>
@@ -1801,14 +1917,15 @@ function LandingPage({ themeIdx, onEnter }) {
       </section>
 
       <section className="landingLearn">
-        <h2 className="landingH2">New to Reading Charts? Start Here.</h2>
-        <p className="dim mistakesIntro">A 60-second primer on candlesticks, plus where to learn more about the exchanges themselves.</p>
+        <LangSwitch lang={lang} onChange={setLang} className="landingLangSwitch" />
+        <h2 className="landingH2">{L.chartsTitle}</h2>
+        <p className="dim mistakesIntro">{L.chartsIntro}</p>
         <div className="whoForGrid">
-          {CANDLE_BASICS.map((c) => (
+          {CANDLE_BASICS.map((c, i) => (
             <div key={c.title} className="whoForCard">
               <div className="whoForIcon"><c.icon size={17} /></div>
-              <h3>{c.title}</h3>
-              <p className="dim">{c.desc}</p>
+              <h3>{L.candles[i].title}</h3>
+              <p className="dim">{L.candles[i].desc}</p>
             </div>
           ))}
         </div>
@@ -1821,6 +1938,27 @@ function LandingPage({ themeIdx, onEnter }) {
           {LEARN_LINKS.map((l) => (
             <a key={l.url} href={l.url} target="_blank" rel="noopener noreferrer" className="btn btnGhost landingCta learnLinkBtn">{l.label} →</a>
           ))}
+        </div>
+      </section>
+
+      <section className="pricingSection" id="pricing">
+        <h2 className="landingH2">Simple pricing</h2>
+        <p className="dim mistakesIntro">Everything is free for your first 7 days. After that, keep paper trading free — or unlock Pro.</p>
+        <div className="pricingGrid">
+          <div className="priceCard">
+            <div className="priceName">Free</div>
+            <div className="priceAmt">₹0<span>/forever</span></div>
+            <ul>{FREE_FEATURES.map((f) => <li key={f}>{f}</li>)}</ul>
+            <button className="btn btnGhost landingCta" onClick={() => onEnter("register")}>Start free</button>
+          </div>
+          <div className="priceCard priceCardPro">
+            <div className="priceBadge">First 7 days free</div>
+            <div className="priceName">Pro</div>
+            <div className="priceAmt">₹99<span>/month</span></div>
+            <ul><li><b>Everything in Free, plus:</b></li>{PRO_FEATURES.map((f) => <li key={f}>{f}</li>)}</ul>
+            <button className="btn btnMarigold landingCta" onClick={() => onEnter("register")}>Try Pro free for 7 days</button>
+            <div className="dim priceFine">No card needed for the trial. Pay by UPI or card via Razorpay when you upgrade. No auto-renewal.</div>
+          </div>
         </div>
       </section>
 
@@ -1852,9 +1990,15 @@ function LandingPage({ themeIdx, onEnter }) {
           <a href="/how-to-use.html">How to use</a>
           <a href="/paper-trading-india.html">Paper trading in India</a>
           <a href="/how-to-read-options-chain.html">How to read an options chain</a>
+          <a href="/guides.html">All guides</a>
           <a href="/contact.html">Contact</a>
           <a href="/privacy.html">Privacy</a>
           <a href="/terms.html">Terms</a>
+          {showInstall && (
+            <a href="#install" className="footerInstall" onClick={(e) => { e.preventDefault(); landingInstall(); }}>
+              <Smartphone size={15} /> Install app
+            </a>
+          )}
         </div>
         <div className="dim landingFooterNote">PaperRally is a simulator for learning. No real money or securities are ever traded, virtual balances have no cash value, and nothing here is investment advice. PaperRally is not registered with SEBI and is not a broker.</div>
       </footer>
@@ -1872,6 +2016,7 @@ function AuthGate({ themeIdx, cycleTheme, initialMode, onBack }) {
   const [busy, setBusy] = useState(false);
   const [showPw, setShowPw] = useState(false);
   const [googleBusy, setGoogleBusy] = useState(false);
+  const [forgotOpen, setForgotOpen] = useState(false);
 
   const normalizedPhone = () => normalizePhoneInput(phone);
 
@@ -1907,7 +2052,8 @@ function AuthGate({ themeIdx, cycleTheme, initialMode, onBack }) {
         const { data: signUpData, error: signUpError } = await signUpUser(uname, password);
         if (signUpError) {
           if (/registered/i.test(signUpError.message)) setError("That username is already taken.");
-          else setError(signUpError.message);
+          else if (/fetch|network/i.test(signUpError.message)) setError("Couldn't reach the server — check your internet connection and try again.");
+          else { console.error("sign-up failed", signUpError); setError("Could not create your account. Please try again."); }
           return;
         }
         const newUserId = signUpData?.user?.id;
@@ -1930,7 +2076,11 @@ function AuthGate({ themeIdx, cycleTheme, initialMode, onBack }) {
         const { error: signInError } = await signInUser(uname, password);
         if (signInError) {
           if (/confirm/i.test(signInError.message)) {
-            setError("Sign-in blocked pending email confirmation — turn off \"Confirm email\" in your Supabase project's Auth settings.");
+            // Server-side config issue (email confirmation switched on) — not something the user can fix.
+            console.error("Supabase sign-in blocked: 'Confirm email' is enabled in Auth settings", signInError);
+            setError("Something went wrong signing you in. Please try again in a minute, or use Continue with Google.");
+          } else if (/fetch|network/i.test(signInError.message)) {
+            setError("Couldn't reach the server — check your internet connection and try again.");
           } else {
             setError("Invalid username or password.");
           }
@@ -1971,6 +2121,7 @@ function AuthGate({ themeIdx, cycleTheme, initialMode, onBack }) {
           </svg>
           {googleBusy ? "Redirecting…" : "Continue with Google"}
         </button>
+        <div className="authGoogleNote">Recommended — Google keeps your account safe and you can never get locked out.</div>
 
         <div className="authDivider"><span>or</span></div>
 
@@ -1996,10 +2147,33 @@ function AuthGate({ themeIdx, cycleTheme, initialMode, onBack }) {
           <div className="authField">
             <Lock size={14} className="authIcon" />
             <input type={showPw ? "text" : "password"} placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={mode === "register" ? "new-password" : "current-password"} />
-            <button type="button" onClick={() => setShowPw((v) => !v)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-dim)", padding: 0 }}>
+            <button type="button" onClick={() => setShowPw((v) => !v)} aria-label={showPw ? "Hide password" : "Show password"} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-dim)", padding: 0 }}>
               {showPw ? <EyeOff size={14} /> : <Eye size={14} />}
             </button>
           </div>
+          {mode === "login" && (
+            <button type="button" className="authForgotLink" onClick={() => setForgotOpen((v) => !v)} aria-expanded={forgotOpen}>
+              Forgot password?
+            </button>
+          )}
+          {mode === "login" && forgotOpen && (
+            <div className="authForgot" role="region" aria-label="Reset your password">
+              <div className="authForgotTitle"><KeyRound size={14} /> Can't log in?</div>
+              <ol>
+                <li><b>Signed up with Google?</b> Use <i>Continue with Google</i> above — there's no password to remember.</li>
+                <li><b>Signed up with a username?</b> Email us from your phone with your username and registered mobile number. We'll reset your password, usually within a day.</li>
+              </ol>
+              <a
+                className="btn btnGhost authForgotBtn"
+                href={mailtoSupport(
+                  "PaperRally password reset",
+                  `Hi, I can't log in to PaperRally.\n\nUsername: ${username.trim() || "(your username)"}\nRegistered mobile number: \n\nPlease reset my password.`
+                )}
+              >
+                <Mail size={14} /> Email support to reset password
+              </a>
+            </div>
+          )}
           {mode === "register" && (
             <div className="authField">
               <Lock size={14} className="authIcon" />
@@ -2111,7 +2285,7 @@ function PhoneGate({ userId, userEmail, themeIdx, cycleTheme, onDone, onCancel }
   );
 }
 
-function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPaidPro, inTrial, trialDaysLeft, onRefreshSubscription, onLogout, themeIdx, cycleTheme }) {
+function TradingApp({ username, userId, userEmail, contactEmail = null, referral = null, initialPortfolio, isPro, isPaidPro, inTrial, trialDaysLeft, onRefreshSubscription, onLogout, themeIdx, cycleTheme }) {
   const saved = initialPortfolio;
   const syncGroupRef = useRef([]);
 
@@ -2224,6 +2398,39 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
   const [pickingPriceFromChart, setPickingPriceFromChart] = useState(false);
   const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
+
+  // ---- usability additions ----
+  const isMobile = useIsMobile(760);
+  const [mobilePane, setMobilePane] = useState("main"); // "watchlist" | "main" (phones only)
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [closeConfirm, setCloseConfirm] = useState(null); // { kind: "stock" | "option", pos }
+  const [lang, setLangState] = useState(() => loadLang());
+  const setLang = (code) => { setLangState(code); saveLang(code); };
+  const L = LEARN[lang] || LEARN.en;
+  const chargesKey = `pr_charges_on_${userId}`;
+  const [chargesOn, setChargesOn] = useState(() => loadSetting(chargesKey, false));
+  const chargesOnRef = useRef(chargesOn);
+  useEffect(() => { chargesOnRef.current = chargesOn; saveSetting(chargesKey, chargesOn); }, [chargesOn]);
+  // Planned stop-loss on the stock order ticket ("" = use the suggested 2% stop).
+  const [slOn, setSlOn] = useState(true);
+  const [slPrice, setSlPrice] = useState("");
+  useEffect(() => { setSlPrice(""); }, [selected]);
+  const paymentKey = `pr_payment_pending_${userId}`;
+  const [paymentPendingAt, setPaymentPendingAt] = useState(() => loadSetting(paymentKey, null));
+  const [paymentChecking, setPaymentChecking] = useState(false);
+
+  // ---- growth & retention ----
+  const [prefs, setPrefs] = useState(() => saved?.prefs ?? {}); // synced with the portfolio row
+  const updatePrefs = (patch) => setPrefs((p) => ({ ...p, ...patch, flags: { ...(p.flags || {}), ...(patch.flags || {}) } }));
+  const [weekStart, setWeekStart] = useState(() => saved?.weekStart ?? null); // { week, equity, reset? }
+  const [journalEditing, setJournalEditing] = useState(null);
+  const [lastTradeId, setLastTradeId] = useState(null);
+  const [tourOpen, setTourOpen] = useState(false);
+  const [notifPerm, setNotifPerm] = useState(() => notificationPermission());
+  const install = useInstallPrompt();
+  const [installHelpOpen, setInstallHelpOpen] = useState(false);
+  const installBannerKey = `pr_install_banner_dismissed_${userId}`;
+  const [installBannerDismissed, setInstallBannerDismissed] = useState(() => loadSetting(installBannerKey, false));
 
   // ---- Replay Mode ----
   const REPLAY_CASH = 1000000;
@@ -2351,10 +2558,10 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
     if (replayActive) return; // replay sessions are never saved over the real portfolio
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
-      upsertPortfolio(userId, { cash, stockPositions, optionPositions, trades, alerts, pendingOrders, customInstruments });
+      upsertPortfolio(userId, { cash, stockPositions, optionPositions, trades, alerts, pendingOrders, customInstruments, prefs, weekStart });
     }, 600);
     return () => clearTimeout(saveTimerRef.current);
-  }, [userId, cash, stockPositions, optionPositions, trades, alerts, pendingOrders, customInstruments, replayActive]);
+  }, [userId, cash, stockPositions, optionPositions, trades, alerts, pendingOrders, customInstruments, prefs, weekStart, replayActive]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2556,6 +2763,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
       if (hit) {
         changed = true;
         showToast(`Alert: ${displayTicker(a.symbol)} crossed ${a.direction} ${fmtMoney(a.target)}`, a.direction === "above" ? "bull" : "bear");
+        notify(`${displayTicker(a.symbol)} crossed ${fmtMoney(a.target)}`, `Price is now ${fmtMoney(price)} — your ${a.direction} alert on PaperRally fired.`, { tag: `alert-${a.id}` });
         return { ...a, triggered: true };
       }
       return a;
@@ -2635,6 +2843,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
       const label = `${o.kind.toUpperCase()} ${o.side.toUpperCase()} ${o.filledQty} ${displayTicker(o.symbol)} @ ${fmtMoney(o.fillPrice)}`;
       logTrade(label, o.side === "buy" ? -(o.fillPrice * o.filledQty) : o.fillPrice * o.filledQty, o.side === "sell" ? o.realized : null);
       showToast(`${o.kind === "limit" ? "Limit" : "Stop"} order filled: ${o.side} ${o.filledQty} ${displayTicker(o.symbol)}`, o.side === "buy" ? "bull" : "bear");
+      notify(`${o.kind === "limit" ? "Limit" : "Stop"} order filled`, `${o.side.toUpperCase()} ${o.filledQty} ${displayTicker(o.symbol)} @ ${fmtMoney(o.fillPrice)}`, { tag: `fill-${o.id}` });
     });
     partial.forEach((o) => {
       const label = `${o.kind.toUpperCase()} ${o.side.toUpperCase()} ${o.filledQty} ${displayTicker(o.symbol)} @ ${fmtMoney(o.fillPrice)} (partial)`;
@@ -2818,7 +3027,15 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
     setTimeout(() => setToast(null), 2600);
   };
   const logTrade = (label, amount, realized = null) => {
-    setTrades((prev) => [{ id: uid(), time: new Date(nowMs()), label, amount, realized }, ...prev].slice(0, 200));
+    // Optional realistic charges (brokerage, STT, fees, GST, stamp duty), deducted from cash.
+    const ch = chargesOnRef.current ? computeCharges(label, amount) : null;
+    const charges = ch ? ch.total : 0;
+    if (charges) setCash((c) => c - charges);
+    const id = uid();
+    setTrades((prev) => [{ id, time: new Date(nowMs()), label, amount, realized, charges, key: tradeKey(label) }, ...prev].slice(0, 200));
+    setLastTradeId(id);
+    if (replayActiveRef.current) updatePrefs({ flags: { replay: true } });
+    track("trade", { option: /\b(BTO|STO|STC|BTC)\b/.test(label), replay: replayActiveRef.current, close: realized != null });
   };
 
   // opts.focus: symbol to open once replay starts (e.g. RELIANCE.NS for a first trade).
@@ -2919,6 +3136,42 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
     setTimeout(() => document.getElementById("stockOrderCard")?.scrollIntoView({ behavior: "smooth", block: "center" }), 150);
   };
 
+  // Picking a symbol from the watchlist: on phones, jump straight to its chart.
+  const ACCOUNT_TABS = ["positions", "orders", "history", "perf", "leaderboard", "replay", "learn"];
+  const pickSymbol = (sym) => {
+    setSelected(sym);
+    if (isMobile) {
+      setMobilePane("main");
+      if (ACCOUNT_TABS.includes(tab)) setTab("trade");
+      window.scrollTo({ top: 0 });
+    }
+  };
+  // Escape closes whichever dialog or sheet is on top.
+  const escStateRef = useRef({});
+  escStateRef.current = { journalEditing, closeConfirm, moreOpen, ticket, slEditing, editingOrder, upgradeModalOpen, checkoutBusy, confirmReset };
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== "Escape") return;
+      const st = escStateRef.current;
+      if (st.journalEditing) setJournalEditing(null);
+      else if (st.closeConfirm) setCloseConfirm(null);
+      else if (st.moreOpen) setMoreOpen(false);
+      else if (st.ticket) setTicket(null);
+      else if (st.slEditing) setSlEditing(null);
+      else if (st.editingOrder) setEditingOrder(null);
+      else if (st.upgradeModalOpen && !st.checkoutBusy) setUpgradeModalOpen(false);
+      else if (st.confirmReset) setConfirmReset(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const goTab = (id) => {
+    setTab(id);
+    setMoreOpen(false);
+    if (isMobile) { setMobilePane("main"); window.scrollTo({ top: 0 }); }
+  };
+
   const exitReplay = () => {
     const st = liveStashRef.current;
     replayActiveRef.current = false;
@@ -2933,13 +3186,41 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
     showToast("Back to the live market and your real portfolio", "bull");
   };
 
-  const handleUpgrade = () => {
+  const handleUpgrade = async () => {
     setCheckoutBusy(true);
-    startProCheckout({
-      userEmail,
-      onSuccess: () => {
-        showToast("Complete the payment in the new tab — Pro unlocks once it's confirmed (usually within a few hours).", "bull");
+    track("upgrade_click");
+    // Preferred path: a personal payment link from the create-payment-link Edge Function, which
+    // lets the razorpay-webhook function switch Pro on automatically. Falls back to the static link.
+    const win = window.open("", "_blank"); // open now, while we still have the click, so it isn't blocked
+    try {
+      const { data, error } = await supabase.functions.invoke("create-payment-link", { body: {} });
+      if (!error && data?.short_url) {
+        if (win) win.location.href = data.short_url; else window.open(data.short_url, "_blank", "noopener");
+        track("payment_link_opened", { auto: true });
+        showToast("Complete the payment in the new tab — Pro switches on automatically once it's paid.", "bull");
         setUpgradeModalOpen(false);
+        const at = Date.now();
+        setPaymentPendingAt(at);
+        saveSetting(paymentKey, at);
+        let attempts = 0;
+        const poll = setInterval(async () => {
+          attempts++;
+          const sub = await onRefreshSubscription();
+          if (sub?.status === "active" || attempts >= 40) { clearInterval(poll); setCheckoutBusy(false); }
+        }, 5000);
+        return;
+      }
+    } catch { /* function not deployed yet — use the static link below */ }
+    if (win) win.close();
+    track("payment_link_opened", { auto: false });
+    startProCheckout({
+      userEmail: contactEmail,
+      onSuccess: () => {
+        showToast("Complete the payment in the new tab — we'll show its status here.", "bull");
+        setUpgradeModalOpen(false);
+        const at = Date.now();
+        setPaymentPendingAt(at);
+        saveSetting(paymentKey, at);
         // No webhook/backend here, so we just poll Supabase in case Pro was
         // activated manually (or by a webhook you add later). This is best-effort,
         // not instant — refresh the page after paying if it doesn't pick up.
@@ -2959,6 +3240,28 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
   };
 
   useEffect(() => { if (isPro) setCheckoutBusy(false); }, [isPro]);
+
+  // Payment status banner: shown after the user opens the payment link, until Pro is active.
+  useEffect(() => {
+    if (isPaidPro && paymentPendingAt) {
+      setPaymentPendingAt(null);
+      saveSetting(paymentKey, null);
+      showToast("Pro is active — thank you!", "bull");
+    }
+  }, [isPaidPro, paymentPendingAt]);
+  const checkPaymentNow = async () => {
+    setPaymentChecking(true);
+    let sub = null;
+    try { sub = await onRefreshSubscription(); } finally { setPaymentChecking(false); }
+    if (sub?.status !== "active") showToast("Not activated yet — we'll keep checking. Paid already? Email us your payment ID for faster activation.", "bear");
+  };
+  const dismissPaymentBanner = () => { setPaymentPendingAt(null); saveSetting(paymentKey, null); };
+  // Re-check every 2 minutes while a payment is pending and the tab is open.
+  useEffect(() => {
+    if (!paymentPendingAt || isPaidPro) return;
+    const iv = setInterval(() => { onRefreshSubscription(); }, 120000);
+    return () => clearInterval(iv);
+  }, [paymentPendingAt, isPaidPro]);
 
   // One-time nudge when the free trial has just run out (per-browser, since there's
   // no backend to track this server-side). Never fires for paid Pro users.
@@ -3014,8 +3317,30 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
   const executeStockOrderRef = useRef(executeStockOrder);
   executeStockOrderRef.current = executeStockOrder;
 
+  // Suggested stop-loss for a new buy: 2% below the entry, rounded down to a 5-paisa tick.
+  const suggestedStop = (price) => Math.floor(price * 0.98 * 20) / 20;
+  const plannedStopFor = (entry) => {
+    const manual = parseFloat(slPrice);
+    return manual > 0 ? manual : suggestedStop(entry);
+  };
+
   const placeStockOrder = (side) => {
+    const entry = quotes[selected]?.price;
+    const wantStop = side === "buy" && slOn && entry;
+    const stop = wantStop ? plannedStopFor(entry) : null;
+    if (wantStop && stop >= entry) return showToast(`Stop-loss must be below the current price (${fmtMoney(entry)})`, "bear");
     const r = executeStockOrder(selected, side, orderQty);
+    if (r.ok && wantStop) {
+      if (isPro) {
+        const qty = Math.floor(Number(orderQty));
+        setPendingOrders((prev) => [{ id: uid(), symbol: selected, side: "sell", kind: "stop", qty, price: +stop.toFixed(2), createdAt: new Date(nowMs()) }, ...prev]);
+        showToast(`${r.msg} · stop-loss set at ${fmtMoney(stop)}`, "bull");
+      } else {
+        showToast(`${r.msg} · automatic stop-loss orders need Pro — watch your ${fmtMoney(stop)} level`, "bull");
+      }
+      setSlPrice("");
+      return;
+    }
     showToast(r.msg, r.ok && side === "buy" ? "bull" : "bear");
   };
 
@@ -3208,6 +3533,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
     setOptionPositions((prev) => prev.filter((p) => p.id !== pos.id));
     logTrade(`${reason ? `${reason} ` : ""}${short ? "BTC" : "STC"} ${pos.qty}x ${pos.type.toUpperCase()} ${displayTicker(pos.symbol)} ${pos.strike} @ ${fmtMoney(price)}`, short ? -total : total, (short ? pos.avgPremium - price : price - pos.avgPremium) * posMultiplier(pos) * pos.qty);
     showToast(reason ? `${reason}: ${pos.type === "call" ? "C" : "P"} ${displayTicker(pos.symbol)} ${pos.strike} closed @ ${fmtMoney(price)}` : "Position closed", "bear");
+    if (reason) notify(`${reason}: ${displayTicker(pos.symbol)} ${pos.strike} ${pos.type.toUpperCase()}`, `Closed @ ${fmtMoney(price)}`, { tag: `sl-${pos.id}` });
   };
 
   const closeOptionFromPopout = (posId) => {
@@ -3258,6 +3584,31 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
     });
   }, [quotes]);
 
+  // Close buttons open a confirmation first — one stray tap on a phone shouldn't exit a trade.
+  const requestClose = (kind, pos) => {
+    if (!marketStatus.isOpen) {
+      return showToast(replayActive ? "This replay day has ended — press Restart day to trade it again" : "Market is closed — positions can be closed 9:15 AM–3:30 PM, Mon–Fri", "bear");
+    }
+    setCloseConfirm({ kind, pos });
+  };
+  const confirmClose = () => {
+    const c = closeConfirm;
+    setCloseConfirm(null);
+    if (!c) return;
+    if (!marketStatus.isOpen) return showToast("Market is closed — the position was not closed", "bear");
+    if (c.kind === "stock") {
+      const live = stockPositions.find((p) => p.id === c.pos.id);
+      if (live) {
+        closeStockPosition(live);
+        // The position is gone, so its protective stop orders have nothing left to sell.
+        setPendingOrders((prev) => prev.filter((o) => !(o.symbol === live.symbol && o.side === "sell" && o.kind === "stop")));
+      }
+    } else {
+      const live = optionPositions.find((p) => p.id === c.pos.id);
+      if (live) closeOptionPosition(live);
+    }
+  };
+
   const closeStockPosition = (pos) => {
     const price = quotes[pos.symbol]?.price ?? 0;
     const total = price * pos.qty;
@@ -3268,6 +3619,10 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
   };
 
   const doReset = () => {
+    // A reset would wipe out a losing week, so it also takes you off this week's leaderboard.
+    const wk = isoWeekIST();
+    setWeekStart({ week: wk, equity: STARTING_CASH, reset: true });
+    if (prefs.lbJoined) supabase.from("leaderboard").delete().eq("user_id", userId).eq("week", wk).then(() => {}, () => {});
     setCash(STARTING_CASH);
     setStockPositions([]);
     setOptionPositions([]);
@@ -3324,6 +3679,164 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
   const chainStrikes = strikesAround(q?.price ?? meta.fallback, 9, chainStep);
   const T = currentExpiry ? (currentExpiry.getTime() - nowMs()) / (365 * 24 * 3600 * 1000) : 0;
 
+  // ---- weekly challenge: track the start-of-week equity, sync the leaderboard row ----
+  const weekKey = isoWeekIST(nowMs());
+  useEffect(() => {
+    if (replayActive || !pricesReady) return;
+    if (!weekStart || weekStart.week !== weekKey) {
+      if (weekStart && !weekStart.reset && equity > weekStart.equity) updatePrefs({ flags: { green_week: true } });
+      setWeekStart({ week: weekKey, equity });
+    }
+  }, [weekKey, pricesReady, replayActive]);
+  const weekValid = !!(weekStart && weekStart.week === weekKey && weekStart.equity > 0);
+  const weekReturn = weekValid && !replayActive ? ((equity - weekStart.equity) / weekStart.equity) * 100 : 0;
+  const weekTrades = replayActive ? 0 : trades.filter((t) => isoWeekIST(t.time) === weekKey).length;
+  const resetThisWeek = !!(weekStart?.reset && weekStart.week === weekKey);
+  const lbSyncRef = useRef(0);
+  const syncLeaderboard = (force = false, nameOverride = null) => {
+    const name = nameOverride || prefs.lbName;
+    if (!name || replayActive || !weekValid || resetThisWeek) return;
+    if (!force && Date.now() - lbSyncRef.current < 60000) return;
+    lbSyncRef.current = Date.now();
+    supabase.from("leaderboard").upsert({
+      user_id: userId, week: weekKey, display_name: name,
+      return_pct: Math.max(-100, Math.min(100000, +weekReturn.toFixed(3))), trades: weekTrades, updated_at: new Date().toISOString(),
+    }).then(() => {}, () => {});
+  };
+  useEffect(() => { if (prefs.lbJoined && pricesReady) syncLeaderboard(); }, [prefs.lbJoined, pricesReady, Math.round(weekReturn * 100), weekTrades]);
+  const joinLeaderboard = (name) => {
+    updatePrefs({ lbJoined: true, lbName: name, flags: { challenger: true } });
+    syncLeaderboard(true, name);
+    track("leaderboard_join");
+    showToast("You're on this week's leaderboard — good luck!", "bull");
+  };
+  const leaveLeaderboard = () => {
+    updatePrefs({ lbJoined: false });
+    supabase.from("leaderboard").delete().eq("user_id", userId).eq("week", weekKey).then(() => {}, () => {});
+    showToast("You've left the leaderboard", "bear");
+  };
+
+  // ---- share cards ----
+  const shareWeek = async () => {
+    const closes = trades.filter((t) => t.realized != null && isoWeekIST(t.time) === weekKey);
+    const wins = closes.filter((t) => t.realized > 0).length;
+    const pnl = weekValid ? equity - weekStart.equity : 0;
+    const blob = await makeShareImage({
+      title: "My week on PaperRally",
+      bigValue: fmtPct(weekReturn),
+      positive: weekReturn >= 0,
+      lines: [["Virtual P&L", fmtMoney(pnl, 0)], ["Trades this week", String(weekTrades)], ["Win rate", closes.length ? `${Math.round((wins / closes.length) * 100)}%` : "—"]],
+    });
+    const r = await shareImage(blob, `My paper-trading week: ${fmtPct(weekReturn)} on PaperRally. Practise NSE & NIFTY options free → https://paperrally.in/?ref=${userId}`);
+    track("share_card", { result: r });
+    if (r === "downloaded") showToast("Image saved — share it on WhatsApp or Instagram", "bull");
+  };
+
+  // ---- achievements ----
+  const unlockedNow = useMemo(() => computeAchievements(trades, { ...(prefs.flags || {}), installed: prefs.flags?.installed || install.standalone }), [trades, prefs.flags, install.standalone]);
+  useEffect(() => {
+    if (replayActive) return;
+    const stored = prefs.achievements;
+    const now = [...unlockedNow];
+    if (!stored) { updatePrefs({ achievements: now }); return; } // first run: record silently
+    const fresh = now.filter((id) => !stored.includes(id));
+    if (!fresh.length) return;
+    updatePrefs({ achievements: [...stored, ...fresh] });
+    const first = ACHIEVEMENTS.find((a) => a.id === fresh[0]);
+    showToast(`${first.icon} Achievement unlocked: ${first.title}${fresh.length > 1 ? ` (+${fresh.length - 1} more)` : ""}`, "bull");
+    track("achievement", { id: fresh[0] });
+  }, [unlockedNow, replayActive]);
+
+  // ---- links from outside: ?paid=1 after Razorpay, ?tab=… from home-screen shortcuts ----
+  useEffect(() => {
+    const qs = new URLSearchParams(window.location.search);
+    let changed = false;
+    if (qs.get("paid") === "1") {
+      qs.delete("paid"); changed = true;
+      if (!isPaidPro) { const at = Date.now(); setPaymentPendingAt(at); saveSetting(paymentKey, at); onRefreshSubscription(); }
+    }
+    const t = qs.get("tab");
+    if (t && ["positions", "orders", "replay", "perf", "leaderboard", "learn", "history"].includes(t)) { setTab(t); qs.delete("tab"); changed = true; }
+    if (qs.get("source") === "pwa") { updatePrefs({ flags: { installed: true } }); qs.delete("source"); changed = true; }
+    if (changed) window.history.replaceState(null, "", window.location.pathname + (qs.toString() ? `?${qs}` : "") + window.location.hash);
+    track("app_open", { standalone: install.standalone, mobile: isMobile });
+  }, []);
+
+  // ---- guided tour (once per account, on this browser) ----
+  const tourKey = `pr_tour_done_${userId}`;
+  const startTour = () => {
+    if (!selected) setSelected(allInstruments.some((s) => s.symbol === "RELIANCE.NS") ? "RELIANCE.NS" : allInstruments.find((s) => s.exchange !== "INDEX")?.symbol);
+    setTab("trade");
+    setMoreOpen(false);
+    if (isMobile) setMobilePane("main");
+    setTimeout(() => setTourOpen(true), 250);
+  };
+  useEffect(() => {
+    if (loadSetting(tourKey, false) || !neverTradedRef.current) return; // existing users can start it from More / Learn
+    const t = setTimeout(() => { if (!document.querySelector(".modalOverlay")) startTour(); }, 1800);
+    return () => clearTimeout(t);
+  }, []);
+  const finishTour = (completed) => {
+    setTourOpen(false);
+    saveSetting(tourKey, true);
+    track(completed ? "tour_complete" : "tour_skipped");
+  };
+  const tourSteps = [
+    { title: "Pick a stock", text: isMobile ? "Tap Watchlist to see live NSE & BSE prices. Tap any stock to open its chart." : "Your watchlist shows live NSE & BSE prices. Click any stock to open its chart, or search all 5,000+ BSE companies.", target: () => document.querySelector(isMobile ? ".bottomNav .bottomNavItem" : ".watchlist") },
+    { title: "Read the chart", text: "Switch timeframes, add indicators like RSI and MACD, and draw trendlines. Practice today replays the market from 9:15 AM.", target: () => document.querySelector(".chartCard") },
+    { title: "Place a practice trade", text: "Choose a quantity, keep the suggested stop-loss, and check how much you'd risk before you press Buy. It's all virtual money.", target: () => document.getElementById("stockOrderCard") },
+    { title: "Track and improve", text: isMobile ? "Positions shows your live P&L. Under More you'll find Performance, the weekly Leaderboard and Learn." : "Positions shows live P&L. Performance shows your win rate and habits, and the Leaderboard runs a new challenge every week.", target: () => document.querySelector(isMobile ? ".bottomNav" : ".tabs") },
+  ];
+
+  const feedbackHref = mailtoSupport("PaperRally feedback", `Hi PaperRally team,\n\nWhat I like:\n\nWhat's confusing or broken:\n\nWhat I'd love to see next:\n\n— ${username} (${isMobile ? "phone" : "desktop"})`);
+  const enableNotifications = async () => {
+    const r = await requestNotifications();
+    setNotifPerm(r);
+    if (r === "granted") { showToast("Notifications on — alerts, fills and stop-losses reach you even when the app is in the background", "bull"); notify("Notifications are on", "You'll hear from PaperRally when an alert or stop-loss fires.", { force: true }); }
+    else if (r === "denied") showToast("Notifications are blocked — allow them for paperrally.in in your browser settings", "bear");
+  };
+  // Native prompt when the browser offers one (Android Chrome/Edge); otherwise step-by-step help.
+  const doInstall = async () => {
+    setMoreOpen(false);
+    if (!install.canInstall) { setInstallHelpOpen(true); track("install_help", { platform: install.platform }); return; }
+    const r = await install.promptInstall();
+    track("install_prompt", { result: r });
+    if (r === "accepted") updatePrefs({ flags: { installed: true } });
+  };
+  const dismissInstallBanner = () => { setInstallBannerDismissed(true); saveSetting(installBannerKey, true); };
+
+  const TAB_DEFS = [
+    ["trade", "Chart & Trade"],
+    ["indicators", `Indicators${activeIndicatorCount ? ` (${activeIndicatorCount})` : ""}`],
+    ["chain", "Options Chain"],
+    ["positions", "Positions"],
+    ["orders", `Orders${pendingOrders.length ? ` (${pendingOrders.length})` : ""}`],
+    ["alerts", `Alerts${activeAlerts ? ` (${activeAlerts})` : ""}`],
+    ["news", "News"],
+    ["history", "History"],
+    ["perf", "Performance"],
+    ["leaderboard", "Leaderboard"],
+    ["replay", "Replay"],
+    ["learn", L.learnTab],
+  ];
+
+  // Order-ticket helpers: quantity shortcuts and the planned stop-loss / risk preview.
+  const tradePrice = selected ? (orderType === "market" ? q.price : parseFloat(orderPrice) || q.price) : 0;
+  const heldShares = selected ? (stockPositions.find((p) => p.symbol === selected)?.qty ?? 0) : 0;
+  const maxAffordable = tradePrice > 0 ? Math.max(0, Math.floor(cash / tradePrice)) : 0;
+  const qtyShortcuts = [
+    ["1", 1],
+    ["10", 10],
+    ["25%", Math.floor(maxAffordable * 0.25)],
+    ["50%", Math.floor(maxAffordable * 0.5)],
+    ["Max", maxAffordable],
+  ];
+  const plannedStop = selected && tradePrice ? plannedStopFor(tradePrice) : 0;
+  const riskAmount = slOn && plannedStop > 0 && plannedStop < tradePrice ? (tradePrice - plannedStop) * orderQty : null;
+  const capitalBase = Math.max(1, equity);
+  const positionPct = ((tradePrice * orderQty) / capitalBase) * 100;
+  const riskPct = riskAmount != null ? (riskAmount / capitalBase) * 100 : null;
+
   return (
     <div className="app" style={THEMES[themeIdx].vars}>
       <style>{CSS}</style>
@@ -3352,6 +3865,8 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
           {!isPaidPro && !inTrial && (
             <button className="upgradeBtn" onClick={() => setUpgradeModalOpen(true)}><Sparkles size={13} /> Upgrade to Pro</button>
           )}
+          {!install.standalone && (install.canInstall || install.platform !== "desktop") && <button className="resetBtn installBtn" onClick={doInstall} title="Install PaperRally as an app"><Smartphone size={14} /> Install app</button>}
+          <a className="resetBtn" href={feedbackHref} title="Tell us what to improve"><MessageSquare size={14} /> Feedback</a>
           <button className="resetBtn" onClick={popOutChart} title="Open a full-day chart in a new window"><Maximize2 size={14} /> Pop-out chart</button>
           <button className="themeBtn" onClick={cycleTheme} title="Change background theme"><span className="themeEmoji">{THEMES[themeIdx].emoji}</span> {THEMES[themeIdx].name}</button>
           <button className="resetBtn" onClick={() => setConfirmReset(true)}><RotateCcw size={14} /> Reset</button>
@@ -3391,19 +3906,46 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
         </div>
       )}
 
+      {paymentPendingAt && !isPaidPro && (
+        <div className="paymentBar" role="status">
+          <Hourglass size={15} className="paymentBarIcon" />
+          <div className="paymentBarText">
+            <b>Payment being verified.</b> Pro usually activates within a few hours of paying — this page checks automatically.
+            {" "}Paid already? Send us your Razorpay payment ID for faster activation.
+          </div>
+          <div className="paymentBarBtns">
+            <button className="btn btnGhost" onClick={checkPaymentNow} disabled={paymentChecking}>{paymentChecking ? "Checking…" : "Check now"}</button>
+            <a className="btn btnGhost" href={mailtoSupport("PaperRally Pro payment — please activate", `Hi, I've paid for PaperRally Pro.\n\nUsername: ${username}\nAccount ID: ${userId}\nRazorpay payment ID: \n\nThanks!`)}><Mail size={13} /> Email payment ID</a>
+            <button className="iconBtn" onClick={dismissPaymentBanner} aria-label="Hide payment status"><X size={14} /></button>
+          </div>
+        </div>
+      )}
+
+      {isMobile && !install.standalone && !installBannerDismissed && (
+        <div className="installBar">
+          <Smartphone size={18} className="installBarIcon" />
+          <div className="installBarText"><b>Get the PaperRally app</b><span className="dim">Opens full-screen, loads fast, sends alert notifications.</span></div>
+          <button className="btn btnBull" onClick={doInstall}>Install</button>
+          <button className="iconBtn" onClick={dismissInstallBanner} aria-label="Hide install suggestion"><X size={14} /></button>
+        </div>
+      )}
+
       {!firstTradeDone && (
         <div className="firstTradeCard">
           <button className="firstTradeClose" onClick={markFirstTradeDone} aria-label="Dismiss"><X size={14} /></button>
-          <div className="firstTradeTitle"><GraduationCap size={16} /> Make your first practice trade</div>
+          <div className="firstTradeTitleRow">
+            <div className="firstTradeTitle"><GraduationCap size={16} /> {L.firstTrade.title}</div>
+            <LangSwitch lang={lang} onChange={setLang} />
+          </div>
           <p className="firstTradeText">
             {replayActive && replayData
-              ? <>The market is closed right now, so you're trading a replay of <b>{new Date(replayData.dayStart).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "short" })}</b> from the 9:15 AM open. Prices move exactly as they did that day, and you have <b>₹10,00,000</b> of practice money. Nothing here is real.</>
-              : <>You have <b>₹10,00,000</b> of practice money. Nothing here is real — try a trade and see how it feels.</>}
+              ? L.firstTrade.replayText(new Date(replayData.dayStart).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "short" }))
+              : L.firstTrade.liveText}
           </p>
           <ol className="firstTradeSteps">
-            <li><button className="btn btnBull firstTradeBtn" onClick={setUpFirstTrade}><TrendingUp size={14} /> Set up: buy 10 Reliance shares</button></li>
-            <li>Then press the glowing green <b>Buy</b> button.</li>
-            <li>Watch your profit or loss move in the <b>Positions</b> tab.</li>
+            <li><button className="btn btnBull firstTradeBtn" onClick={() => { setUpFirstTrade(); if (isMobile) setMobilePane("main"); }}><TrendingUp size={14} /> {L.firstTrade.setup}</button></li>
+            <li>{L.firstTrade.step2}</li>
+            <li>{L.firstTrade.step3}</li>
           </ol>
         </div>
       )}
@@ -3416,8 +3958,8 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
       )}
 
       <div className="body">
-        <div className="watchlist">
-          <input className="search" placeholder="Search symbol…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <div className={`watchlist ${isMobile && mobilePane !== "watchlist" ? "mHidden" : ""}`}>
+          <input className="search" placeholder="Search name or ticker, e.g. Tata Motors" aria-label="Search stocks by name or ticker" value={search} onChange={(e) => setSearch(e.target.value)} />
           <div className="exchangeTabs">
             {["ALL", "NSE", "BSE", "INDEX"].map((ex) => (
               <button key={ex} className={`exTab ${exchangeFilter === ex ? "exTabActive" : ""}`} onClick={() => setExchangeFilter(ex)}>{ex === "INDEX" ? "Index" : ex}</button>
@@ -3434,7 +3976,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                 const chg = qq.prevClose ? ((qq.price - qq.prevClose) / qq.prevClose) * 100 : 0;
                 const up = chg >= 0;
                 return (
-                  <button key={s.symbol} className={`wlRow ${selected === s.symbol ? "wlRowActive" : ""}`} onClick={() => setSelected(s.symbol)}>
+                  <button key={s.symbol} className={`wlRow ${selected === s.symbol ? "wlRowActive" : ""}`} aria-current={selected === s.symbol ? "true" : undefined} onClick={() => pickSymbol(s.symbol)}>
                     <div className="wlSym">
                       <span className="wlTicker">{displayTicker(s.symbol)}<span className={`exBadge exBadge-${s.exchange}`}>{exchangeBadge(s.exchange)}</span></span>
                       <span className="wlName">{s.name}</span>
@@ -3463,10 +4005,21 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                   </button>
                 ))}
               </>
-            ) : search.trim().length >= 2 ? (
-              <div className="wlEmpty dim">No symbols match &ldquo;{search}&rdquo; on NSE or BSE.</div>
+            ) : !search.trim() ? (
+              <div className="wlEmpty dim">Nothing in this list yet.</div>
             ) : (
-              <div className="wlEmpty dim">No symbols match &ldquo;{search}&rdquo;.</div>
+              <div className="wlEmpty">
+                <div className="wlEmptyTitle">No match for &ldquo;{search.trim()}&rdquo;{search.trim().length >= 2 ? " on NSE or BSE" : ""}</div>
+                <div className="dim wlEmptyTips">
+                  {search.trim().length < 2
+                    ? "Type at least 2 letters to search all NSE & BSE stocks."
+                    : <>Try the company name instead of the ticker (e.g. <i>Tata Motors</i>, <i>State Bank</i>), check the spelling, or browse the <b>BSE</b> tab for every listed company.</>}
+                </div>
+                <div className="wlEmptyBtns">
+                  <button className="btn btnGhost" onClick={() => setSearch("")}>Clear search</button>
+                  <button className="btn btnGhost" onClick={() => { setSearch(""); setExchangeFilter("BSE"); }}>Browse all BSE</button>
+                </div>
+              </div>
             )}
 
             {bseTab && (
@@ -3499,7 +4052,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
           </div>
         </div>
 
-        <div className="main">
+        <div className={`main ${isMobile && mobilePane === "watchlist" ? "mHidden" : ""}`}>
           {selected ? (
           <div className="mainHead">
             <div className="mainHeadLeft">
@@ -3524,11 +4077,16 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
             </div>
           )}
 
-          <div className="tabs">
-            {[["trade", "Chart & Trade"], ["indicators", `Indicators${activeIndicatorCount ? ` (${activeIndicatorCount})` : ""}`], ["chain", "Options Chain"], ["positions", "Positions"], ["orders", `Orders${pendingOrders.length ? ` (${pendingOrders.length})` : ""}`], ["alerts", `Alerts${activeAlerts ? ` (${activeAlerts})` : ""}`], ["news", "News"], ["history", "History"], ["replay", "Replay"]].map(([id, label]) => (
-              <button key={id} className={`tab ${tab === id ? "tabActive" : ""}`} onClick={() => setTab(id)}>{label}</button>
+          <div className="tabs" role="tablist" aria-label="Terminal sections">
+            {TAB_DEFS.map(([id, label]) => (
+              <button key={id} role="tab" aria-selected={tab === id} className={`tab ${tab === id ? "tabActive" : ""}`} onClick={() => setTab(id)}>{label}</button>
             ))}
           </div>
+          {isMobile && ["chain", "alerts", "news"].includes(tab) && (
+            <div className="mSectionHead">
+              <h2>{TAB_DEFS.find(([id]) => id === tab)?.[1]}</h2>
+            </div>
+          )}
 
           {!selected && ["trade", "indicators", "chain", "alerts", "news"].includes(tab) && (
             <div className="pickEmpty">
@@ -3665,8 +4223,23 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                   </div>
 
                   <div className="orderRow">
-                    <label>Quantity</label>
-                    <input type="number" min="1" className="qtyInput mono" value={orderQty} onChange={(e) => setOrderQty(Math.max(1, parseInt(e.target.value) || 1))} />
+                    <label htmlFor="orderQtyInput">Quantity</label>
+                    <input id="orderQtyInput" type="number" min="1" inputMode="numeric" className="qtyInput mono" value={orderQty} onChange={(e) => setOrderQty(Math.max(1, parseInt(e.target.value) || 1))} />
+                  </div>
+                  <div className="qtyChips" role="group" aria-label="Quick quantity">
+                    {qtyShortcuts.map(([label, n]) => (
+                      <button
+                        key={label}
+                        type="button"
+                        className={`qtyChip ${orderQty === n && n > 0 ? "qtyChipActive" : ""}`}
+                        disabled={n < 1}
+                        title={label.includes("%") || label === "Max" ? `${n} shares — ${label} of your available cash` : `${n} share${n > 1 ? "s" : ""}`}
+                        onClick={() => setOrderQty(n)}
+                      >{label}</button>
+                    ))}
+                    {heldShares > 0 && (
+                      <button type="button" className={`qtyChip ${orderQty === heldShares ? "qtyChipActive" : ""}`} title="Sell everything you hold" onClick={() => setOrderQty(heldShares)}>All held ({heldShares})</button>
+                    )}
                   </div>
 
                   {orderType !== "market" && (
@@ -3682,8 +4255,48 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
 
                   <div className="orderEst mono">
                     <span className="dim">Est. cost</span>
-                    <span>{fmtMoney((orderType === "market" ? q.price : parseFloat(orderPrice) || q.price) * orderQty)}</span>
+                    <span>{fmtMoney(tradePrice * orderQty)}</span>
                   </div>
+                  <div className="orderSizeHint dim">
+                    That's <b className={positionPct > 25 ? "bear" : ""}>{positionPct.toFixed(1)}%</b> of your capital{positionPct > 25 ? " — a large position for one stock" : ""}.
+                  </div>
+
+                  {orderType === "market" && (
+                    <div className="slPlan">
+                      <label className="slPlanToggle">
+                        <input type="checkbox" checked={slOn} onChange={(e) => setSlOn(e.target.checked)} />
+                        <span>Add a stop-loss when buying</span>
+                      </label>
+                      {slOn && (
+                        <>
+                          <div className="orderRow slPlanRow">
+                            <label htmlFor="slPlanInput">Stop-loss price</label>
+                            <input
+                              id="slPlanInput"
+                              type="number"
+                              min="0"
+                              step="0.05"
+                              inputMode="decimal"
+                              className="qtyInput mono"
+                              placeholder={plannedStop ? plannedStop.toFixed(2) : ""}
+                              value={slPrice}
+                              onChange={(e) => setSlPrice(e.target.value)}
+                            />
+                          </div>
+                          {riskAmount != null ? (
+                            <div className={`riskBox ${riskPct > 2 ? "riskBoxHigh" : ""}`} aria-live="polite">
+                              If the stop is hit you lose about <b className="mono">{fmtMoney(riskAmount, 0)}</b> — <b>{riskPct.toFixed(2)}%</b> of your capital.
+                              <span className="dim"> {riskPct > 2 ? "Many traders keep this under 1–2% per trade." : "A sensible risk for one trade."}</span>
+                              {!slPrice && <span className="dim"> Suggested stop: 2% below the price.</span>}
+                            </div>
+                          ) : (
+                            <div className="riskBox riskBoxHigh">Stop-loss must be below the current price.</div>
+                          )}
+                          {!isPro && <div className="orderHint dim"><Lock size={10} /> Automatic stop-loss orders are a Pro feature — you'll see the level, but it won't sell for you.</div>}
+                        </>
+                      )}
+                    </div>
+                  )}
 
                   {orderType !== "market" && (
                     <div className="orderHint dim">
@@ -3708,6 +4321,16 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                   {!marketStatus.isOpen && replayActive && (
                     <div className="orderHint dim" style={{ textAlign: "center", marginTop: "-6px" }}>This replay day has ended — press Restart day to go again</div>
                   )}
+                  {(() => {
+                    const lt = lastTradeId && trades[0]?.id === lastTradeId ? trades[0] : null;
+                    if (!lt || lt.realized != null) return null;
+                    return (
+                      <div className="tagPrompt">
+                        <div className="tagPromptQ">{lt.tag ? <>Tagged: <b>{lt.tag}</b></> : "Why did you take this trade?"}</div>
+                        <TagChips compact value={lt.tag} onPick={(tag) => { setTrades((prev) => prev.map((t) => (t.id === lt.id ? { ...t, tag } : t))); if (tag) track("trade_tagged", { tag }); }} />
+                      </div>
+                    );
+                  })()}
 
                   {(() => {
                     const pos = stockPositions.find((p) => p.symbol === selected);
@@ -3880,7 +4503,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                           <td className="orderRowActions">
                             <button className="closeBtn" onClick={() => { setSelected(p.symbol); setTab("trade"); }}><LineChart size={12} /> Chart</button>
                             <button className="closeBtn" onClick={() => startStopLossFromPosition(p)}><Crosshair size={12} /> Stop-Loss</button>
-                            <button className="closeBtn" onClick={() => closeStockPosition(p)}>Close</button>
+                            <button className="closeBtn closeBtnExit" onClick={() => requestClose("stock", p)}>Close</button>
                           </td>
                         </tr>
                       );
@@ -3916,7 +4539,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                           <td className="orderRowActions">
                             <button className="closeBtn" onClick={() => { setSelected(p.symbol); setTab("trade"); }}><LineChart size={12} /> Chart</button>
                             <button className="closeBtn" onClick={() => openStopLossEditor(p)}><Crosshair size={12} /> {p.stopLoss ? "Edit SL" : "Stop-Loss"}</button>
-                            <button className="closeBtn" onClick={() => closeOptionPosition(p)}>{short ? "Cover" : "Close"}</button>
+                            <button className="closeBtn closeBtnExit" onClick={() => requestClose("option", p)}>{short ? "Cover" : "Close"}</button>
                           </td>
                         </tr>
                       );
@@ -3945,7 +4568,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                         <td className="mono dim">{o.createdAt.toLocaleTimeString()}</td>
                         <td className="orderRowActions">
                           <button className="closeBtn" onClick={() => openEditOrder(o)}>Edit</button>
-                          <button className="closeBtn" onClick={() => cancelOrder(o.id)}><Trash2 size={12} /></button>
+                          <button className="closeBtn" onClick={() => cancelOrder(o.id)} aria-label={`Cancel ${o.side} order for ${displayTicker(o.symbol)}`}><Trash2 size={12} /></button>
                         </td>
                       </tr>
                     ))}
@@ -3970,7 +4593,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                             <td className="mono bear">{fmtMoney(p.stopLoss)}</td>
                             <td className="orderRowActions">
                               <button className="closeBtn" onClick={() => openStopLossEditor(p)}>Edit</button>
-                              <button className="closeBtn" onClick={() => removeStopLoss(p.id)}><Trash2 size={12} /></button>
+                              <button className="closeBtn" onClick={() => removeStopLoss(p.id)} aria-label="Remove stop-loss"><Trash2 size={12} /></button>
                             </td>
                           </tr>
                         );
@@ -4001,6 +4624,15 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                   <button className="btn btnBull alertAddBtn" onClick={addAlert}><Bell size={13} /> Add Alert</button>
                 </div>
                 <div className="dim alertHint">Alerts are checked against live prices and fire a notification here in the app — set one for the symbol currently selected in the watchlist.</div>
+                {notifPerm !== "unsupported" && (
+                  <div className="notifRow">
+                    {notifPerm === "granted"
+                      ? <span className="bull"><Bell size={13} /> Phone notifications are on — alerts reach you even when PaperRally is in the background.</span>
+                      : notifPerm === "denied"
+                        ? <span className="dim">Notifications are blocked for this site. Allow them in your browser settings to get alerts in the background.</span>
+                        : <><span className="dim">Get alerts as phone notifications, even when the app is in the background.</span><button className="btn btnGhost" onClick={enableNotifications}><Bell size={13} /> Turn on notifications</button></>}
+                  </div>
+                )}
               </div>
 
               {alerts.length === 0 ? (
@@ -4014,7 +4646,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                         <td className="mono">{displayTicker(a.symbol)}</td>
                         <td className="mono">{a.direction === "above" ? "≥" : "≤"} {fmtMoney(a.target)}</td>
                         <td><span className={`alertStatus ${a.triggered ? "alertTriggered" : "alertActive"}`}>{a.triggered ? "Triggered" : "Active"}</span></td>
-                        <td><button className="closeBtn" onClick={() => deleteAlert(a.id)}><Trash2 size={12} /></button></td>
+                        <td><button className="closeBtn" onClick={() => deleteAlert(a.id)} aria-label={`Delete alert for ${displayTicker(a.symbol)}`}><Trash2 size={12} /></button></td>
                       </tr>
                     ))}
                   </tbody>
@@ -4060,19 +4692,112 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                 <div className="empty">No trades yet. Your fills will show up here.</div>
               ) : (
                 <table className="posTable">
-                  <thead><tr><th>Time</th><th>Trade</th><th>Cash Impact</th><th>Realized P&amp;L</th></tr></thead>
+                  <thead><tr><th>Time</th><th>Trade</th><th>Cash Impact</th><th>Realized P&amp;L</th><th>Journal</th></tr></thead>
                   <tbody>
                     {trades.map((t) => (
                       <tr key={t.id}>
                         <td className="mono dim">{t.time.toLocaleTimeString()}</td>
-                        <td className="mono">{t.label}</td>
+                        <td className="mono">{t.label}{t.charges ? <div className="dim histCharges">charges {fmtMoney(t.charges)}</div> : null}</td>
                         <td className="mono">{fmtMoney(t.amount)}</td>
                         <td className={`mono ${t.realized == null ? "dim" : t.realized >= 0 ? "bull" : "bear"}`}>{t.realized == null ? "—" : fmtMoney(t.realized)}</td>
+                        <td>
+                          <button className={`closeBtn journalBtn ${t.tag ? "journalBtnOn" : ""}`} onClick={() => setJournalEditing(t)} aria-label={t.tag ? `Journal: ${t.tag}. Edit` : "Add a journal note"} title={t.note || ""}>
+                            <NotebookPen size={12} /> {t.tag || (t.note ? "Note" : "Add")}
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               )}
+            </div>
+          )}
+
+          {tab === "perf" && (
+            <PerformancePanel
+              trades={trades}
+              fmtMoney={fmtMoney}
+              chargesOn={chargesOn}
+              replayActive={replayActive}
+              onToggleCharges={() => {
+                setChargesOn((v) => !v);
+                showToast(chargesOn ? "Charges off — trades are commission-free again" : "Charges on — brokerage, STT, fees and GST will be deducted from now on", "bull");
+              }}
+            />
+          )}
+          {tab === "perf" && (
+            <div className="perfExtras">
+              {!replayActive && (
+                <div className="shareRow">
+                  <div>
+                    <b>This week: <span className={weekReturn >= 0 ? "bull" : "bear"}>{fmtPct(weekReturn)}</span></b>
+                    <span className="dim"> · {weekTrades} trade{weekTrades === 1 ? "" : "s"}</span>
+                  </div>
+                  <button className="btn btnBull" onClick={shareWeek}><Share2 size={14} /> Share my week</button>
+                </div>
+              )}
+              <JournalStatsCard trades={trades} fmtMoney={fmtMoney} />
+              <AchievementsGrid unlocked={prefs.achievements || [...unlockedNow]} />
+            </div>
+          )}
+
+          {tab === "leaderboard" && (
+            replayActive ? (
+              <div className="empty">The leaderboard uses your real portfolio. Exit replay to see this week's standings.</div>
+            ) : (
+              <>
+                <LeaderboardPanel
+                  supabase={supabase}
+                  userId={userId}
+                  prefs={prefs}
+                  defaultName={username.slice(0, 20).replace(/[^\p{L}\p{N} _.\-]/gu, "") || "Trader"}
+                  weekKey={weekKey}
+                  weekReturn={weekReturn}
+                  weekTrades={weekTrades}
+                  resetThisWeek={resetThisWeek}
+                  onJoin={joinLeaderboard}
+                  onLeave={leaveLeaderboard}
+                  onShare={shareWeek}
+                  fmtPct={fmtPct}
+                />
+                <InvitePanel userId={userId} referral={referral} inTrial={inTrial} isPaidPro={isPaidPro} showToast={showToast} />
+              </>
+            )
+          )}
+
+          {tab === "learn" && (
+            <div className="learnTab">
+              <div className="learnTabHead">
+                <h3><BookOpen size={17} /> {L.chartsTitle}</h3>
+                <LangSwitch lang={lang} onChange={setLang} />
+              </div>
+              <p className="dim">{L.chartsIntro}</p>
+              <div className="learnGrid">
+                {L.candles.map((c, i) => (
+                  <div key={i} className="learnCard">
+                    <h4>{c.title}</h4>
+                    <p className="dim">{c.desc}</p>
+                  </div>
+                ))}
+              </div>
+              <h3 className="mt">{L.mistakesTitle}</h3>
+              <p className="dim">{L.mistakesIntro}</p>
+              <div className="learnMistakes">
+                {L.mistakes.map((m, i) => (
+                  <div key={i} className="learnCard">
+                    <h4>{m.title}</h4>
+                    <p><span className="bear learnLbl">{L.realLabel}:</span> <span className="dim">{m.real}</span></p>
+                    <p><span className="bull learnLbl">{L.practiceLabel}:</span> <span className="dim">{m.practice}</span></p>
+                  </div>
+                ))}
+              </div>
+              <div className="learnLinksRow">
+                <button className="btn btnBull" onClick={startTour}><Compass size={14} /> Take the 30-second tour</button>
+                <a className="btn btnGhost" href="/guides.html" target="_blank" rel="noopener noreferrer">All guides →</a>
+                {GUIDE_LINKS.map((l) => (
+                  <a key={l.url} href={l.url} target="_blank" rel="noopener noreferrer" className="btn btnGhost">{l.label} →</a>
+                ))}
+              </div>
             </div>
           )}
 
@@ -4123,7 +4848,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
 
       {slEditing && (
         <div className="modalOverlay" onClick={() => setSlEditing(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
             <h3>Stop-Loss</h3>
             <p className="mono">{isShort(slEditing) ? "SHORT " : ""}{slEditing.type === "call" ? "C" : "P"} {displayTicker(slEditing.symbol)} {slEditing.strike} {fmtDate(new Date(slEditing.expiry))} · {slEditing.qty} lot{slEditing.qty > 1 ? "s" : ""}</p>
             <div className="orderHint dim mono">Entry {fmtMoney(slEditing.avgPremium)} · Now {slEditing.nowPremium != null ? fmtMoney(slEditing.nowPremium) : "—"}</div>
@@ -4146,7 +4871,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
 
       {editingOrder && (
         <div className="modalOverlay" onClick={() => setEditingOrder(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
             <h3>Edit {editingOrder.kind === "limit" ? "Limit" : "Stop"} Order</h3>
             <p>{editingOrder.side.toUpperCase()} {displayTicker(editingOrder.symbol)}</p>
             <div className="orderRow">
@@ -4167,7 +4892,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
 
       {upgradeModalOpen && (
         <div className="modalOverlay" onClick={() => !checkoutBusy && setUpgradeModalOpen(false)}>
-          <div className="modal upgradeModal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal upgradeModal" role="dialog" aria-modal="true" aria-label="Upgrade to Pro" onClick={(e) => e.stopPropagation()}>
             <h3><Sparkles size={17} className="proBadgeIcon" /> Upgrade to Pro</h3>
             <p>Everything in Free, plus:</p>
             <ul className="upgradeList">
@@ -4188,9 +4913,137 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
         </div>
       )}
 
+      {tourOpen && <TourOverlay steps={tourSteps} onDone={finishTour} />}
+      {installHelpOpen && <InstallHelp platform={install.platform} onClose={() => setInstallHelpOpen(false)} />}
+      {journalEditing && (
+        <JournalModal
+          trade={journalEditing}
+          onClose={() => setJournalEditing(null)}
+          onSave={({ tag, note }) => {
+            setTrades((prev) => prev.map((t) => (t.id === journalEditing.id ? { ...t, tag, note } : t)));
+            setJournalEditing(null);
+            if (tag) track("trade_tagged", { tag, from: "history" });
+            showToast("Journal saved", "bull");
+          }}
+        />
+      )}
+
+      {closeConfirm && (() => {
+        const { kind, pos } = closeConfirm;
+        let title, detail, price, pnl;
+        if (kind === "stock") {
+          price = quotes[pos.symbol]?.price ?? 0;
+          pnl = (price - pos.avgPrice) * pos.qty;
+          title = `Sell ${pos.qty} ${displayTicker(pos.symbol)}?`;
+          detail = `${pos.qty} shares at about ${fmtMoney(price)} (bought at ${fmtMoney(pos.avgPrice)})`;
+        } else {
+          price = optionPremiumNow(pos, quotes, allInstruments) ?? pos.avgPremium;
+          const short = isShort(pos);
+          pnl = (short ? pos.avgPremium - price : price - pos.avgPremium) * posMultiplier(pos) * pos.qty;
+          title = `${short ? "Cover" : "Close"} ${pos.type === "call" ? "CALL" : "PUT"} ${displayTicker(pos.symbol)} ${pos.strike}?`;
+          detail = `${pos.qty} ${pos.lotBased ? `lot${pos.qty > 1 ? "s" : ""}` : "contracts"} at about ${fmtMoney(price)} premium (entry ${fmtMoney(pos.avgPremium)})`;
+        }
+        return (
+          <div className="modalOverlay" onClick={() => setCloseConfirm(null)}>
+            <div className="modal" role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
+              <h3>{title}</h3>
+              <p className="dim">{detail}</p>
+              <div className="orderEst mono">
+                <span className="dim">Expected P&amp;L</span>
+                <span className={pnl >= 0 ? "bull" : "bear"}>{fmtMoney(pnl)}</span>
+              </div>
+              <div className="orderHint dim">Fills at the market price at the moment you confirm.</div>
+              <div className="modalBtns">
+                <button className="btn btnGhost" onClick={() => setCloseConfirm(null)} autoFocus>Keep position</button>
+                <button className="btn btnBear" onClick={confirmClose}>{kind === "option" && isShort(pos) ? "Cover now" : "Close now"}</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {isMobile && moreOpen && (
+        <div className="modalOverlay sheetOverlay" onClick={() => setMoreOpen(false)}>
+          <div className="sheet" role="dialog" aria-modal="true" aria-label="More" onClick={(e) => e.stopPropagation()}>
+            <div className="sheetGrab" aria-hidden="true" />
+            <div className="sheetUser">
+              <UserIcon size={14} /> {username}
+              {isPaidPro && <span className="proBadge">PRO</span>}
+              {inTrial && <span className="proBadge proBadgeTrial">ALL FREE · {trialDaysLeft}D LEFT</span>}
+            </div>
+            <div className="sheetGrid">
+              {[
+                ["indicators", "Indicators", Layers],
+                ["chain", "Options chain", BarChart3],
+                ["alerts", "Alerts", Bell],
+                ["news", "News", Newspaper],
+                ["history", "History", ListOrdered],
+                ["perf", "Performance", TrendingUp],
+                ["leaderboard", "Leaderboard", Trophy],
+                ["replay", "Replay", Play],
+                ["learn", L.learnTab, BookOpen],
+              ].map(([id, label, Icon]) => (
+                <button key={id} className={`sheetItem ${tab === id ? "sheetItemActive" : ""}`} onClick={() => goTab(id)}>
+                  <Icon size={18} /><span>{label}</span>
+                </button>
+              ))}
+            </div>
+            <div className="sheetActions">
+              {!isPaidPro && !inTrial && (
+                <button className="btn btnMarigold" onClick={() => { setMoreOpen(false); setUpgradeModalOpen(true); }}><Sparkles size={14} /> Upgrade to Pro</button>
+              )}
+              <button className="btn btnGhost" onClick={() => { setMoreOpen(false); replayActive ? restartReplayDay() : practiceToday(); }} disabled={replayBusy}><Play size={14} /> {replayActive ? "Restart day" : "Practice today"}</button>
+              {replayActive && <button className="btn btnGhost" onClick={() => { setMoreOpen(false); exitReplay(); }}>Exit replay</button>}
+              {!install.standalone && <button className="btn btnBull" onClick={doInstall}><Smartphone size={14} /> Install app</button>}
+              <a className="btn btnGhost" href={feedbackHref}><MessageSquare size={14} /> Feedback</a>
+              <button className="btn btnGhost" onClick={startTour}><Compass size={14} /> Take the tour</button>
+              <button className="btn btnGhost" onClick={() => { setMoreOpen(false); popOutChart(); }}><Maximize2 size={14} /> Pop-out chart</button>
+              <button className="btn btnGhost" onClick={cycleTheme}><span className="themeEmoji">{THEMES[themeIdx].emoji}</span> Theme: {THEMES[themeIdx].name}</button>
+              <button className="btn btnGhost" onClick={() => { setMoreOpen(false); setConfirmReset(true); }}><RotateCcw size={14} /> Reset account</button>
+              <button className="btn btnGhost" onClick={onLogout}><LogOut size={14} /> Log out</button>
+            </div>
+            <div className="sheetLang"><span className="dim">Learning language</span><LangSwitch lang={lang} onChange={setLang} /></div>
+          </div>
+        </div>
+      )}
+
+      {isMobile && tab === "trade" && selected && mobilePane === "main" && !ticket && (
+        <div className="mTradeBar">
+          <div className="mTradeBarPrice">
+            <span className="mono">{displayTicker(selected)}</span>
+            <span className="mono">{fmtMoney(q.price)} <span className={q.price >= q.prevClose ? "bull" : "bear"}>{fmtPct(((q.price - q.prevClose) / q.prevClose) * 100)}</span></span>
+          </div>
+          {isIndex ? (
+            <button className="btn btnBull" onClick={() => setTab("chain")}>Trade options</button>
+          ) : (
+            <>
+              <button className="btn btnBull" onClick={() => { setHighlightBuy(true); document.getElementById("stockOrderCard")?.scrollIntoView({ behavior: "smooth", block: "start" }); }}>Buy</button>
+              <button className="btn btnBear" onClick={() => document.getElementById("stockOrderCard")?.scrollIntoView({ behavior: "smooth", block: "start" })}>Sell</button>
+            </>
+          )}
+        </div>
+      )}
+
+      {isMobile && (
+        <nav className="bottomNav" aria-label="Main navigation">
+          {[
+            ["watchlist", "Watchlist", List, mobilePane === "watchlist", () => { setMobilePane("watchlist"); setMoreOpen(false); window.scrollTo({ top: 0 }); }],
+            ["trade", "Chart", LineChart, mobilePane === "main" && ["trade", "indicators", "chain", "alerts", "news"].includes(tab) && !moreOpen, () => goTab("trade")],
+            ["positions", "Positions", Briefcase, mobilePane === "main" && tab === "positions" && !moreOpen, () => goTab("positions")],
+            ["orders", pendingOrders.length ? `Orders (${pendingOrders.length})` : "Orders", ListOrdered, mobilePane === "main" && tab === "orders" && !moreOpen, () => goTab("orders")],
+            ["more", "More", Ellipsis, moreOpen || (mobilePane === "main" && ["history", "perf", "leaderboard", "replay", "learn"].includes(tab)), () => setMoreOpen((v) => !v)],
+          ].map(([id, label, Icon, active, onClick]) => (
+            <button key={id} className={`bottomNavItem ${active ? "bottomNavItemActive" : ""}`} aria-current={active ? "page" : undefined} onClick={onClick}>
+              <Icon size={20} />
+              <span>{label}</span>
+            </button>
+          ))}
+        </nav>
+      )}
+
       {confirmReset && (
         <div className="modalOverlay" onClick={() => setConfirmReset(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
             <h3>Reset account?</h3>
             <p>This clears all positions, cash, and trade history back to {fmtMoney(STARTING_CASH, 0)}.</p>
             <div className="modalBtns">
@@ -4201,7 +5054,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
         </div>
       )}
 
-      {toast && <div className={`toast toast-${toast.kind}`}>{toast.msg}</div>}
+      {toast && <div className={`toast toast-${toast.kind} ${isMobile ? "toastMobile" : ""}`} role="status" aria-live="polite">{toast.msg}</div>}
     </div>
   );
 }
@@ -4241,14 +5094,14 @@ function OptionTicket({ ticket, quotes, instruments, onClose, onSubmit, heldQty,
 
   return (
     <div className="modalOverlay" onClick={onClose}>
-      <div className="modal ticketModal" onClick={(e) => e.stopPropagation()}>
+      <div className="modal ticketModal" role="dialog" aria-modal="true" aria-label="Option order ticket" onClick={(e) => e.stopPropagation()}>
         <div className="ticketHead">
           <div>
             <span className={`typeBadge ${ticket.type}`}>{ticket.type.toUpperCase()}</span>
             <h3>{displayTicker(ticket.symbol)} {ticket.strike}</h3>
             <span className="dim">Exp {fmtDate(new Date(ticket.expiry))}</span>
           </div>
-          <button className="iconBtn" onClick={onClose}><X size={16} /></button>
+          <button className="iconBtn" onClick={onClose} aria-label="Close order ticket"><X size={16} /></button>
         </div>
 
         <div className="greeksGrid mono">
@@ -4262,8 +5115,16 @@ function OptionTicket({ ticket, quotes, instruments, onClose, onSubmit, heldQty,
 
         <div className="orderRow">
           <label>Lots <span className="dim">(1 lot = {lot})</span></label>
-          <input type="number" min="1" className="qtyInput mono" value={qty} onChange={(e) => setQty(Math.max(1, parseInt(e.target.value) || 1))} />
+          <input type="number" min="1" inputMode="numeric" aria-label="Number of lots" className="qtyInput mono" value={qty} onChange={(e) => setQty(Math.max(1, parseInt(e.target.value) || 1))} />
         </div>
+        <div className="qtyChips" role="group" aria-label="Quick lots">
+          {[1, 2, 5, 10].map((n) => (
+            <button key={n} type="button" className={`qtyChip ${qty === n ? "qtyChipActive" : ""}`} onClick={() => setQty(n)}>{n} lot{n > 1 ? "s" : ""}</button>
+          ))}
+          {heldQty > 0 && <button type="button" className={`qtyChip ${qty === heldQty ? "qtyChipActive" : ""}`} onClick={() => setQty(heldQty)}>All long ({heldQty})</button>}
+          {shortQty > 0 && <button type="button" className={`qtyChip ${qty === shortQty ? "qtyChipActive" : ""}`} onClick={() => setQty(shortQty)}>All short ({shortQty})</button>}
+        </div>
+        <div className="lotExplain dim">1 lot = {lot} units, so {qty} lot{qty > 1 ? "s" : ""} = <b className="mono">{(qty * lot).toLocaleString("en-IN")} units</b></div>
         <div className="orderEst mono">Premium ({qty * lot} units): <span>{fmtMoney(greeks.price * lot * qty)}</span></div>
         <div className="orderHint dim mono" style={{ marginTop: "-8px" }}>Long: {heldQty} lot{heldQty === 1 ? "" : "s"} · Short: {shortQty} lot{shortQty === 1 ? "" : "s"} · Margin to short ≈ {fmtMoney(marginEst, 0)}</div>
 
@@ -4323,7 +5184,7 @@ function SplashScreen({ label, themeIdx }) {
   );
 }
 
-function PopoutCanvas({ entry, clock, dayStart, dayEnd, fitKey, prevClose }) {
+function PopoutCanvasImpl({ entry, clock, dayStart, dayEnd, fitKey, prevClose }) {
   const ref = useRef(null);
   const chartRef = useRef(null);
   const seriesRef = useRef(null);
@@ -4332,16 +5193,16 @@ function PopoutCanvas({ entry, clock, dayStart, dayEnd, fitKey, prevClose }) {
 
   useEffect(() => {
     if (!ref.current) return;
-    const chart = createChart(ref.current, {
+    const chart = LW.createChart(ref.current, {
       width: ref.current.clientWidth,
       height: ref.current.clientHeight || 480,
       layout: { background: { color: "transparent" }, textColor: LW_COLORS.text, fontFamily: "JetBrains Mono, monospace", fontSize: 11, attributionLogo: false },
       grid: { vertLines: { color: LW_COLORS.grid }, horzLines: { color: LW_COLORS.grid } },
-      crosshair: { mode: CrosshairMode.Normal },
+      crosshair: { mode: LW.CrosshairMode.Normal },
       rightPriceScale: { borderColor: LW_COLORS.grid },
       timeScale: { borderColor: LW_COLORS.grid, timeVisible: true, secondsVisible: false, rightOffset: 0 },
     });
-    seriesRef.current = chart.addSeries(CandlestickSeries, {
+    seriesRef.current = chart.addSeries(LW.CandlestickSeries, {
       upColor: LW_COLORS.bull, downColor: LW_COLORS.bear, borderVisible: false, wickUpColor: LW_COLORS.bull, wickDownColor: LW_COLORS.bear,
     });
     chartRef.current = chart;
@@ -4783,6 +5644,7 @@ function MainApp() {
   const [showAuthForm, setShowAuthForm] = useState(false);
   const [authInitialMode, setAuthInitialMode] = useState("login");
   const [phoneStatus, setPhoneStatus] = useState("checking");
+  const [referral, setReferral] = useState(null); // { available, invited, wasReferred, bonusDays }
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -4810,10 +5672,28 @@ function MainApp() {
     return () => { cancelled = true; };
   }, [session?.user?.id]);
 
+  // Referrals: record who invited a brand-new account, then load bonus trial days.
+  useEffect(() => {
+    const user = session?.user;
+    setReferral(null);
+    if (!user || phoneStatus !== "ok") return;
+    let cancelled = false;
+    syncReferrals(supabase, user.id).then((r) => { if (!cancelled) setReferral(r); });
+    // First session of a brand-new account counts as a completed sign-up.
+    const key = `pr_signup_tracked_${user.id}`;
+    if (Date.now() - new Date(user.created_at).getTime() < 15 * 60000 && !loadSetting(key, false)) {
+      saveSetting(key, true);
+      track("signup_complete", { provider: user.app_metadata?.provider || "password" });
+    }
+    return () => { cancelled = true; };
+  }, [session?.user?.id, phoneStatus]);
+
   const refreshSubscription = async () => {
     const userId = session?.user?.id;
-    if (!userId) return;
-    setSubscription(await fetchSubscription(userId));
+    if (!userId) return null;
+    const sub = await fetchSubscription(userId);
+    setSubscription(sub);
+    return sub;
   };
 
   useEffect(() => {
@@ -4873,11 +5753,11 @@ function MainApp() {
       />
     );
   }
-  if (portfolioLoading || !portfolioData || !subscription) return <SplashScreen label="Loading your portfolio…" themeIdx={themeIdx} />;
+  if (portfolioLoading || !portfolioData || !subscription || referral === null) return <SplashScreen label="Loading your portfolio…" themeIdx={themeIdx} />;
 
   const username = session.user.user_metadata?.username || session.user.email.split("@")[0];
   const isPaidPro = subscription.status === "active";
-  const daysLeftInTrial = trialDaysRemaining(session.user.created_at);
+  const daysLeftInTrial = trialDaysRemaining(session.user.created_at, referral?.bonusDays || 0);
   const inTrial = !isPaidPro && daysLeftInTrial > 0;
   const isPro = isPaidPro || inTrial;
 
@@ -4887,6 +5767,8 @@ function MainApp() {
       username={username}
       userId={session.user.id}
       userEmail={session.user.email}
+      contactEmail={session.user.app_metadata?.provider === "google" ? session.user.email : null}
+      referral={referral}
       initialPortfolio={portfolioData}
       isPro={isPro}
       isPaidPro={isPaidPro}
@@ -5047,7 +5929,7 @@ const CSS = `
 
 .orderCard { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px; height: fit-content; transition: box-shadow 0.2s ease; }
 .orderCard:hover { box-shadow: 0 10px 30px rgba(0,0,0,0.22); }
-.orderCard h3 { margin: 0; font-family: 'Instrument Sans'; font-size: 14px; }
+.orderCard h3 { margin: 0; font-family: 'Instrument Sans', 'Inter', system-ui, sans-serif; font-size: 14px; }
 .orderCardHead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
 .orderTypeTabs { display: flex; gap: 3px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 3px; margin-bottom: 14px; }
 .orderTypeTab { flex: 1; background: none; color: var(--text-dim); padding: 7px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; transition: background 0.15s ease, color 0.15s ease; }
@@ -5082,7 +5964,7 @@ const CSS = `
 
 .indTab { display: flex; flex-direction: column; gap: 18px; }
 .indTabHead { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
-.indTabHead h3 { margin: 0 0 4px; font-family: 'Instrument Sans'; font-size: 16px; }
+.indTabHead h3 { margin: 0 0 4px; font-family: 'Instrument Sans', 'Inter', system-ui, sans-serif; font-size: 16px; }
 .indTabHead p { margin: 0; font-size: 12.5px; max-width: 62ch; line-height: 1.5; }
 .indTabChartBtn { flex: none; padding: 9px 16px; }
 .indGroup { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
@@ -5103,7 +5985,7 @@ const CSS = `
 .indText.bull { color: var(--bull); } .indText.bear { color: var(--bear); }
 @media (max-width: 700px) { .indRow { grid-template-columns: auto auto 1fr; } .indRead { grid-column: 3; text-align: left; } }
 .pickEmpty { background: var(--surface); border: 1px dashed var(--border); border-radius: 12px; padding: 48px 24px; text-align: center; }
-.pickEmpty h3 { margin: 0 0 8px; font-family: 'Instrument Sans'; font-size: 17px; }
+.pickEmpty h3 { margin: 0 0 8px; font-family: 'Instrument Sans', 'Inter', system-ui, sans-serif; font-size: 17px; }
 .pickEmpty p { max-width: 46ch; margin: 0 auto 18px; font-size: 13px; line-height: 1.6; }
 .pickQuick { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
 .pickQuickBtn { flex: none; padding: 8px 16px; }
@@ -5140,7 +6022,7 @@ const CSS = `
 .replayProgress { flex: 1; min-width: 80px; height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; margin-right: 6px; }
 .replayProgress div { height: 100%; background: var(--amber); }
 .replayExitBtn { margin-left: auto; }
-.replayTitle { margin: 0 0 12px; font-family: 'Instrument Sans'; font-size: 16px; }
+.replayTitle { margin: 0 0 12px; font-family: 'Instrument Sans', 'Inter', system-ui, sans-serif; font-size: 16px; }
 .replaySlider { flex: 2; min-width: 140px; accent-color: var(--amber); cursor: pointer; }
 .rtl { flex-basis: 100%; padding: 22px 10px 2px; user-select: none; }
 .rtlTrack { position: relative; height: 22px; cursor: pointer; outline: none; touch-action: none; }
@@ -5176,7 +6058,7 @@ const CSS = `
 .popListRowActive { background: var(--surface-2); border-left-color: var(--accent); }
 .popMain { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 14px 20px; gap: 12px; }
 .popHead { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
-.popHead h1 { margin: 0; font-family: 'Instrument Sans'; font-size: 24px; }
+.popHead h1 { margin: 0; font-family: 'Instrument Sans', 'Inter', system-ui, sans-serif; font-size: 24px; }
 .popHead .dim { font-size: 12.5px; }
 .popPrice { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
 .popHL { font-size: 11px; }
@@ -5253,7 +6135,7 @@ const CSS = `
 .lockPanel p { max-width: 34ch; margin: 0 auto 18px; font-size: 13px; line-height: 1.6; }
 .lockPanelBtn { flex: none; display: inline-flex; padding: 9px 18px; }
 
-.posWrap h3, .histWrap h3 { font-family: 'Instrument Sans'; font-size: 14px; margin: 0 0 10px; }
+.posWrap h3, .histWrap h3 { font-family: 'Instrument Sans', 'Inter', system-ui, sans-serif; font-size: 14px; margin: 0 0 10px; }
 .histHead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .histHead h3 { margin: 0; }
 .exportBtn { display: inline-flex; align-items: center; gap: 6px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim); padding: 7px 12px; border-radius: 8px; font-size: 12px; cursor: pointer; transition: color 0.15s ease, border-color 0.15s ease; }
@@ -5305,7 +6187,7 @@ const CSS = `
 
 .modalOverlay { position: fixed; inset: 0; background: rgba(5,6,10,0.7); display: flex; align-items: center; justify-content: center; z-index: 50; backdrop-filter: blur(2px); }
 .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 22px; width: 340px; }
-.modal h3 { margin: 0 0 8px; font-family: 'Instrument Sans'; }
+.modal h3 { margin: 0 0 8px; font-family: 'Instrument Sans', 'Inter', system-ui, sans-serif; }
 .modal p { color: var(--text-dim); font-size: 13px; margin: 0 0 18px; }
 .modalBtns { display: flex; gap: 8px; }
 .upgradeModal h3 { display: flex; align-items: center; gap: 8px; }
@@ -5652,4 +6534,267 @@ html, body { overflow-x: clip; }
   .watchlist { width: 100%; max-height: 260px; }
   .tradeGrid { grid-template-columns: 1fr; }
 }
+
+/* ================= usability additions ================= */
+/* keyboard focus is always visible */
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, [role="tab"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* auth */
+.authGoogleNote { font-size: 11px; color: var(--text-dim); text-align: center; margin: -8px 0 14px; }
+.authForgotLink { display: block; margin: -4px 0 12px auto; background: none; border: none; color: var(--accent); font-size: 12px; cursor: pointer; padding: 2px 0; }
+.authForgot { background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; font-size: 12px; line-height: 1.55; color: var(--text); }
+.authForgotTitle { display: flex; align-items: center; gap: 6px; font-weight: 700; margin-bottom: 6px; }
+.authForgot ol { margin: 0 0 10px; padding-left: 18px; color: var(--text-dim); }
+.authForgot ol b { color: var(--text); }
+.authForgotBtn { width: 100%; box-sizing: border-box; text-decoration: none; }
+
+/* payment status */
+.paymentBar { display: flex; align-items: center; gap: 12px; margin: 12px 24px 0; padding: 12px 16px; border-radius: 12px; background: color-mix(in srgb, var(--amber) 12%, var(--surface)); border: 1px solid color-mix(in srgb, var(--amber) 45%, var(--border)); font-size: 13px; line-height: 1.5; flex-wrap: wrap; }
+.paymentBarIcon { color: var(--amber); flex-shrink: 0; }
+.paymentBarText { flex: 1; min-width: 220px; }
+.paymentBarBtns { display: flex; gap: 8px; align-items: center; }
+.paymentBarBtns .btn { flex: none; padding: 8px 12px; font-size: 12px; text-decoration: none; }
+
+/* language switch */
+.firstTradeTitleRow { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.langSwitch { display: inline-flex; gap: 2px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; padding: 2px; }
+.langBtn { background: none; border: none; color: var(--text-dim); font-size: 12px; padding: 5px 11px; border-radius: 999px; cursor: pointer; }
+.langBtnActive { background: var(--accent); color: #fff; font-weight: 600; }
+.landingLangSwitch { display: flex; width: fit-content; margin: 0 auto 14px; }
+
+/* watchlist empty state */
+.wlEmptyTitle { font-weight: 600; color: var(--text); margin-bottom: 6px; }
+.wlEmptyTips { font-size: 12px; margin-bottom: 12px; }
+.wlEmptyBtns { display: flex; gap: 8px; }
+.wlEmptyBtns .btn { padding: 8px; font-size: 12px; }
+
+/* order ticket */
+.qtyChips { display: flex; flex-wrap: wrap; gap: 6px; margin: -4px 0 12px; }
+.qtyChip { background: var(--surface-2); border: 1px solid var(--border); color: var(--text); border-radius: 999px; padding: 6px 11px; font-size: 12px; cursor: pointer; font-family: inherit; }
+.qtyChip:hover:not(:disabled) { border-color: var(--accent); }
+.qtyChip:disabled { opacity: 0.4; cursor: not-allowed; }
+.qtyChipActive { background: color-mix(in srgb, var(--accent) 22%, var(--surface-2)); border-color: var(--accent); font-weight: 600; }
+.lotExplain { font-size: 12px; margin: -4px 0 10px; }
+.orderSizeHint { font-size: 12px; margin: -6px 0 12px; }
+.slPlan { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin-bottom: 14px; background: var(--surface-2); }
+.slPlanToggle { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; cursor: pointer; }
+.slPlanToggle input { width: 16px; height: 16px; accent-color: var(--bull); }
+.slPlanRow { margin: 10px 0 8px; }
+.riskBox { font-size: 12px; line-height: 1.5; padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--bull) 10%, transparent); border: 1px solid color-mix(in srgb, var(--bull) 35%, transparent); }
+.riskBoxHigh { background: color-mix(in srgb, var(--bear) 10%, transparent); border-color: color-mix(in srgb, var(--bear) 40%, transparent); }
+.closeBtnExit { color: var(--bear); }
+
+/* performance */
+.perfGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.perfStat { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+.perfVal { font-size: 18px; font-weight: 700; color: var(--text); }
+.perfVal.bull { color: var(--bull); } .perfVal.bear { color: var(--bear); }
+.perfCurveCard { margin-top: 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+.perfCurveLabel { font-size: 12px; margin-bottom: 6px; }
+.perfCurve { width: 100%; height: 140px; display: block; }
+.perfTips { margin-top: 14px; background: color-mix(in srgb, var(--accent) 8%, var(--surface)); border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border)); border-radius: 10px; padding: 12px 16px; }
+.perfTips h4 { margin: 0 0 6px; font-size: 13px; }
+.perfTips ul { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.6; }
+.chargesCard { margin-top: 18px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+.chargesHead { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.chargesHead h4 { margin: 0 0 4px; font-size: 14px; }
+.chargesHead p { margin: 0; font-size: 12.5px; line-height: 1.5; }
+.chargesHead .indSwitch { flex-shrink: 0; margin-top: 2px; }
+.chargesTotal { margin-top: 10px; font-size: 12px; }
+
+/* learn tab */
+.learnTabHead { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.learnTabHead h3 { display: flex; align-items: center; gap: 8px; margin: 0; }
+.learnGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; margin-top: 10px; }
+.learnMistakes { display: grid; gap: 10px; margin-top: 10px; }
+.learnCard { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+.learnCard h4 { margin: 0 0 6px; font-size: 14px; }
+.learnCard p { margin: 4px 0; font-size: 13px; line-height: 1.55; }
+.learnLbl { font-weight: 600; }
+.learnLinksRow { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.learnLinksRow .btn { flex: none; text-decoration: none; }
+
+/* landing footer: links as visible pills */
+.landingWrap .landingFooterLinks { gap: 10px; align-items: center; }
+.landingWrap .landingFooterLinks a { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 999px; background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.28); color: #FFFFFF !important; font-weight: 600; font-size: 14px; text-decoration: none; transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease; }
+.landingWrap .landingFooterLinks a:hover { background: rgba(255,255,255,0.22); border-color: rgba(255,255,255,0.55); color: #FFFFFF !important; }
+.landingWrap .landingFooterLinks a:active { transform: scale(0.97); }
+@media (max-width: 560px) { .landingWrap .landingFooterLinks { justify-content: center; } .landingWrap .landingFooterLinks a { padding: 8px 13px; font-size: 13px; } }
+
+.tab { padding: 10px 12px; }
+@media (max-width: 1280px) { .tab { padding: 9px 9px; font-size: 12.5px; } }
+
+/* mobile-only pieces are hidden on desktop by default */
+.bottomNav, .mTradeBar, .mSectionHead { display: none; }
+
+@media (max-width: 760px) {
+  .mHidden { display: none !important; }
+  .topbar { padding: 10px 14px; gap: 8px; }
+  .brandSub { display: none; }
+  .topbarActions { display: none; }
+  .stats { gap: 4px; flex-wrap: nowrap; overflow-x: auto; width: 100%; scrollbar-width: none; }
+  .stats::-webkit-scrollbar { display: none; }
+  .stat { flex-shrink: 0; }
+  .replayBar { overflow-x: auto; flex-wrap: nowrap; }
+  .firstTradeCard, .paymentBar { margin: 10px 14px 0; }
+  .body { flex-direction: column; }
+  .watchlist { width: 100%; max-height: none; border-right: none; min-height: calc(100vh - 200px); }
+  .wlRow { padding-top: 12px; padding-bottom: 12px; }
+  .main { padding: 14px 14px 150px; }
+  .tabs { display: none; }
+  .mSectionHead { display: block; margin-bottom: 12px; }
+  .mSectionHead h2 { margin: 0; font-size: 18px; }
+  .tradeGrid { grid-template-columns: 1fr; }
+  .posWrap, .ordersWrap, .histWrap, .alertsWrap { overflow-x: auto; }
+  .posTable { min-width: 560px; }
+  .closeBtn { padding: 8px 12px; font-size: 12px; }
+  .qtyChip { padding: 8px 13px; font-size: 13px; }
+  .modal { width: calc(100vw - 28px); max-width: 420px; }
+  .toastMobile { bottom: 140px; }
+  .paymentBarBtns { width: 100%; }
+  .paymentBarBtns .btn { flex: 1; }
+
+  .bottomNav { display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; background: var(--surface); border-top: 1px solid var(--border); padding: 4px 4px calc(4px + env(safe-area-inset-bottom)); }
+  .bottomNavItem { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; background: none; border: none; color: var(--text-dim); font-size: 10.5px; padding: 6px 2px; cursor: pointer; border-radius: 8px; min-height: 52px; justify-content: center; }
+  .bottomNavItemActive { color: var(--accent); font-weight: 600; background: color-mix(in srgb, var(--accent) 10%, transparent); }
+
+  .mTradeBar { display: flex; align-items: center; gap: 8px; position: fixed; left: 0; right: 0; bottom: calc(62px + env(safe-area-inset-bottom)); z-index: 39; background: var(--surface); border-top: 1px solid var(--border); padding: 8px 12px; box-shadow: 0 -6px 18px rgba(0,0,0,0.18); }
+  .mTradeBarPrice { flex: 1.4; display: flex; flex-direction: column; font-size: 12px; line-height: 1.3; min-width: 0; }
+  .mTradeBarPrice span:first-child { font-weight: 700; font-size: 13px; }
+  .mTradeBar .btn { padding: 12px 10px; font-size: 14px; }
+
+  .sheetOverlay { align-items: flex-end; }
+  .sheet { width: 100%; background: var(--surface); border-top-left-radius: 18px; border-top-right-radius: 18px; border: 1px solid var(--border); padding: 8px 16px calc(80px + env(safe-area-inset-bottom)); max-height: 85vh; overflow-y: auto; }
+  .sheetGrab { width: 40px; height: 4px; border-radius: 4px; background: var(--border); margin: 4px auto 12px; }
+  .sheetUser { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; margin-bottom: 12px; flex-wrap: wrap; }
+  .sheetGrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 14px; }
+  .sheetItem { display: flex; flex-direction: column; align-items: center; gap: 6px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; padding: 12px 4px; color: var(--text); font-size: 11px; cursor: pointer; text-align: center; }
+  .sheetItemActive { border-color: var(--accent); color: var(--accent); }
+  .sheetActions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .sheetActions .btn { padding: 12px 8px; font-size: 12.5px; text-decoration: none; }
+  .sheetLang { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 14px; font-size: 12px; flex-wrap: wrap; }
+}
+
+.chartLoading { border-radius: 10px; background: linear-gradient(90deg, var(--surface-2), color-mix(in srgb, var(--surface-2) 70%, var(--surface)), var(--surface-2)); background-size: 200% 100%; animation: chartShimmer 1.2s linear infinite; }
+@keyframes chartShimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .chartLoading { animation: none; } }
+
+/* ================= growth & retention ================= */
+.srOnly { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.linkBtn { background: none; border: none; color: var(--accent); cursor: pointer; padding: 0; font-size: inherit; text-decoration: underline; text-underline-offset: 2px; }
+a.resetBtn { text-decoration: none; }
+.installBtn { border-color: color-mix(in srgb, var(--bull) 55%, var(--border)) !important; color: var(--bull) !important; }
+.histCharges { font-size: 10.5px; margin-top: 2px; }
+.journalBtn { white-space: nowrap; }
+.journalBtnOn { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); }
+
+.tagChips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 12px; }
+.tagChip { background: var(--surface-2); border: 1px solid var(--border); color: var(--text); border-radius: 999px; padding: 6px 11px; font-size: 12px; cursor: pointer; }
+.tagChipsCompact .tagChip { padding: 4px 9px; font-size: 11.5px; }
+.tagChip:hover { border-color: var(--accent); }
+.tagChipActive { background: color-mix(in srgb, var(--accent) 24%, var(--surface-2)); border-color: var(--accent); font-weight: 600; }
+.tagChipWarn.tagChipActive { background: color-mix(in srgb, var(--bear) 18%, var(--surface-2)); border-color: var(--bear); }
+.tagPrompt { margin-top: 12px; padding: 10px 12px; border: 1px dashed var(--border); border-radius: 10px; }
+.tagPromptQ { font-size: 12.5px; font-weight: 600; }
+.tagPrompt .tagChips { margin-bottom: 0; }
+.journalModal { width: 420px; max-width: calc(100vw - 28px); }
+.journalLabel { font-size: 12px; margin: -4px 0 10px; word-break: break-word; }
+.journalQ { font-size: 12.5px; display: block; margin-top: 6px; }
+.journalNote { width: 100%; box-sizing: border-box; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 10px; font: inherit; font-size: 13px; margin: 6px 0 4px; resize: vertical; }
+
+.perfExtras { display: grid; gap: 14px; margin-top: 14px; }
+.shareRow { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; }
+.shareRow .btn { flex: none; padding: 9px 14px; }
+.journalCard, .achCard, .inviteCard { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+.journalCard h4, .achCard h4, .inviteCard h4 { margin: 0 0 8px; font-size: 14px; }
+.journalCard p { margin: 0; font-size: 13px; line-height: 1.5; }
+.journalTable { margin-top: 4px; }
+.journalInsight { margin-top: 10px !important; padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--bear) 10%, transparent); border: 1px solid color-mix(in srgb, var(--bear) 35%, transparent); }
+.achGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.achItem { display: flex; flex-direction: column; gap: 3px; padding: 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); opacity: 0.45; filter: grayscale(1); }
+.achOn { opacity: 1; filter: none; border-color: color-mix(in srgb, var(--amber) 55%, var(--border)); background: color-mix(in srgb, var(--amber) 8%, var(--surface-2)); }
+.achIcon { font-size: 22px; line-height: 1; }
+.achTitle { font-weight: 700; font-size: 12.5px; }
+.achDesc { font-size: 11px; line-height: 1.35; }
+
+.inviteCard { margin-top: 14px; }
+.inviteCard p { margin: 0 0 10px; font-size: 13px; line-height: 1.5; }
+.inviteLinkRow { display: flex; gap: 8px; align-items: center; margin: 6px 0; }
+.inviteLinkRow .qtyInput { flex: 1; min-width: 0; text-align: left; }
+.inviteLinkRow .btn { flex: none; padding: 9px 14px; }
+.inviteBtns { display: flex; gap: 8px; margin-top: 8px; }
+.inviteBtns .btn { flex: none; text-decoration: none; padding: 10px 16px; }
+.inviteStats { font-size: 12px; margin-top: 10px; }
+
+.lbWrap { display: grid; gap: 14px; }
+.lbHero { display: flex; gap: 16px; justify-content: space-between; flex-wrap: wrap; background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 22%, var(--surface)), var(--surface)); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
+.lbHero h3 { margin: 4px 0 6px; }
+.lbHero p { margin: 0; font-size: 13px; max-width: 520px; line-height: 1.5; }
+.lbKicker { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--amber); }
+.lbMine { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; min-width: 170px; font-size: 12px; }
+.lbMineVal { font-size: 26px; font-weight: 700; }
+.lbMine .btn { flex: none; padding: 8px 12px; margin-top: 4px; }
+.lbJoin { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; font-size: 13px; }
+.lbAgree { font-weight: 400; font-size: 12.5px; margin-top: 8px; }
+.lbTable td:first-child { width: 44px; }
+.lbMe td { background: color-mix(in srgb, var(--accent) 12%, transparent); font-weight: 600; }
+.lbFoot { font-size: 12px; }
+
+.notifRow { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 10px; font-size: 12.5px; }
+.notifRow .btn { flex: none; padding: 8px 12px; }
+.notifRow span { display: inline-flex; align-items: center; gap: 6px; }
+.iosHint { display: flex; align-items: center; gap: 6px; font-size: 12px; margin-top: 12px; line-height: 1.5; flex-wrap: wrap; }
+
+.tourLayer { position: fixed; inset: 0; z-index: 80; }
+.tourDim { position: absolute; inset: 0; background: rgba(4,6,12,0.7); }
+.tourSpot { position: fixed; border-radius: 12px; box-shadow: 0 0 0 9999px rgba(4,6,12,0.7), 0 0 0 3px var(--accent); transition: all 0.25s ease; pointer-events: none; }
+.tourCard { position: fixed; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; box-shadow: 0 18px 50px rgba(0,0,0,0.45); transition: top 0.25s ease, left 0.25s ease; }
+.tourCard h4 { margin: 4px 0 6px; font-size: 16px; }
+.tourCard p { margin: 0 0 14px; font-size: 13.5px; line-height: 1.55; }
+.tourStep { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+.tourBtns { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.tourNav { display: flex; gap: 8px; }
+.tourNav .btn { flex: none; padding: 9px 14px; }
+@media (prefers-reduced-motion: reduce) { .tourSpot, .tourCard { transition: none; } }
+
+.installBar { display: flex; align-items: center; gap: 10px; margin: 10px 14px 0; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--accent) 14%, var(--surface)); border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.installBarIcon { color: var(--accent); flex-shrink: 0; }
+.installBarText { flex: 1; display: flex; flex-direction: column; font-size: 13px; line-height: 1.35; min-width: 0; }
+.installBarText .dim { font-size: 11.5px; }
+.installBar .btn { flex: none; padding: 9px 14px; }
+.installModal { width: 400px; max-width: calc(100vw - 28px); }
+.installWhy { font-size: 13px; line-height: 1.5; margin: 0 0 10px; }
+.installSteps { margin: 0 0 6px; padding-left: 20px; font-size: 14px; line-height: 1.7; }
+.heroInstall { display: inline-flex; align-items: center; gap: 8px; margin-top: 12px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3); color: #fff; border-radius: 999px; padding: 9px 16px; font-size: 14px; font-weight: 600; cursor: pointer; }
+
+/* landing additions */
+.liveCount { display: inline-flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 13.5px; color: #E3E9F4; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.2); padding: 6px 12px; border-radius: 999px; }
+.liveCountDot { width: 8px; height: 8px; border-radius: 50%; background: var(--bull); box-shadow: 0 0 0 4px color-mix(in srgb, var(--bull) 25%, transparent); }
+.landingMenuAll { font-weight: 700; }
+.demoSection { max-width: 980px; margin: 0 auto; padding: 30px 40px 70px; display: grid; grid-template-columns: 1fr 300px; gap: 40px; align-items: center; position: relative; z-index: 1; }
+.demoCopy p { font-size: 16px; line-height: 1.6; margin: 0 0 18px; }
+.demoCopy .landingCta { flex: none; }
+.demoPhone { justify-self: center; width: 280px; padding: 10px; border-radius: 34px; background: #05070D; box-shadow: 0 20px 60px rgba(0,0,0,0.45), inset 0 0 0 2px rgba(255,255,255,0.12); }
+.demoVideo { display: block; width: 100%; aspect-ratio: 9 / 16; border-radius: 26px; background: #000; object-fit: cover; }
+.pricingSection { max-width: 900px; margin: 0 auto; padding: 20px 40px 70px; text-align: center; position: relative; z-index: 1; }
+.pricingGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 22px; text-align: left; }
+.priceCard { position: relative; background: rgba(8,16,40,0.55); border: 1px solid rgba(255,255,255,0.18); border-radius: 16px; padding: 22px; display: flex; flex-direction: column; }
+.priceCardPro { border-color: var(--amber); box-shadow: 0 12px 40px rgba(0,0,0,0.25); }
+.priceBadge { position: absolute; top: -12px; right: 18px; background: var(--amber); color: #2A1A00; font-size: 11.5px; font-weight: 700; padding: 4px 10px; border-radius: 999px; }
+.priceName { font-weight: 700; font-size: 15px; color: #E3E9F4; }
+.priceAmt { font-family: 'Instrument Sans', sans-serif; font-weight: 700; font-size: 38px; color: #fff; margin: 4px 0 12px; }
+.priceAmt span { font-size: 14px; font-weight: 500; color: #D2DBEB; margin-left: 4px; }
+.priceCard ul { margin: 0 0 18px; padding-left: 18px; color: #E3E9F4; font-size: 14px; line-height: 1.75; flex: 1; }
+.priceCard .landingCta { width: 100%; }
+.priceFine { font-size: 12px; margin-top: 10px; line-height: 1.5; }
+.landingWrap .landingFooterLinks a.footerInstall { background: #fff; border-color: #fff; color: #0C2354 !important; }
+@media (max-width: 760px) {
+  .demoSection { grid-template-columns: 1fr; padding: 10px 20px 50px; gap: 24px; text-align: center; }
+  .demoCopy h2 { text-align: center !important; }
+  .pricingSection { padding: 10px 16px 50px; }
+  .pricingGrid { grid-template-columns: 1fr; }
+  .lbMine { min-width: 0; }
+  .shareRow .btn { width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) { .bottomNavItem, .qtyChip { transition: none; } }
 `;

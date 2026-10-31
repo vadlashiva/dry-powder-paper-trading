@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en-IN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Position Sizing: How Many Shares Should You Buy? | PaperRally</title>
+<meta name="description" content="A simple formula for deciding how many shares to buy based on your capital, your stop-loss and how much you&#x27;re willing to lose — with worked NSE examples and common limits.">
+<link rel="canonical" href="https://paperrally.in/position-sizing.html">
+<link rel="icon" type="image/png" href="/favicon.png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<meta property="og:title" content="Position sizing: how many shares should you buy?">
+<meta property="og:description" content="A simple formula for deciding how many shares to buy based on your capital, your stop-loss and how much you&#x27;re willing to lose — with worked NSE examples and common limits.">
+<meta property="og:url" content="https://paperrally.in/position-sizing.html">
+<meta property="og:type" content="article">
+<meta property="og:image" content="https://paperrally.in/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "Article",
+ "headline": "Position sizing: how many shares should you buy?",
+ "description": "A simple formula for deciding how many shares to buy based on your capital, your stop-loss and how much you're willing to lose — with worked NSE examples and common limits.",
+ "datePublished": "2026-10-31",
+ "dateModified": "2026-10-31",
+ "image": "https://paperrally.in/og-image.png",
+ "author": {
+  "@type": "Organization",
+  "name": "PaperRally"
+ },
+ "publisher": {
+  "@type": "Organization",
+  "name": "PaperRally",
+  "url": "https://paperrally.in/"
+ },
+ "mainEntityOfPage": "https://paperrally.in/position-sizing.html"
+}
+</script>
+<script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "FAQPage",
+ "mainEntity": [
+  {
+   "@type": "Question",
+   "name": "What percentage of capital should I risk per trade?",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "Many traders risk 0.5–2% of their capital per trade. Beginners are usually better off at the low end until they have a tested method."
+   }
+  },
+  {
+   "@type": "Question",
+   "name": "Is position sizing the same as diversification?",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "No. Diversification spreads money across different holdings. Position sizing decides how much to put into each trade based on how much you could lose."
+   }
+  },
+  {
+   "@type": "Question",
+   "name": "How do I size an options trade?",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "Work out the rupee loss per lot at your exit price (premium drop × lot size), then divide your maximum risk by that amount and round down to whole lots."
+   }
+  }
+ ]
+}
+</script>
+<style>
+:root{
+  --paper:#F6F7FA;
+  --ink:#141820;
+  --ink-soft:#4A5263;
+  --navy:#0C2354;
+  --navy-2:#163A86;
+  --mint:#0A9C6B;
+  --mint-bright:#14E8A0;
+  --loss:#C23B4E;
+  --rule:#DDE1E9;
+  --card:#FFFFFF;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --paper:#0D111A; --ink:#E8ECF4; --ink-soft:#A3ACBE; --navy:#081A40; --navy-2:#12306E;
+    --mint:#3FD9A3; --loss:#FF7088; --rule:#262E40; --card:#141A26;
+  }
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:"Source Serif 4",Georgia,"Times New Roman",serif;font-size:1.125rem;line-height:1.7}
+a{color:var(--mint);text-underline-offset:3px}
+a:focus-visible,.cta:focus-visible{outline:3px solid var(--mint-bright);outline-offset:3px;border-radius:4px}
+
+.site{background:var(--navy);color:#fff}
+.site-inner{max-width:68rem;margin:0 auto;padding:1rem 1.25rem;display:flex;align-items:center;justify-content:space-between;gap:1rem}
+.brand{font-family:"Instrument Sans",system-ui,sans-serif;font-weight:700;font-size:1.1rem;letter-spacing:.02em;color:#fff;text-decoration:none}
+.brand span{color:#FFB020}
+.site-link{font-family:"Instrument Sans",system-ui,sans-serif;font-weight:600;font-size:.95rem;color:#fff;background:rgba(255,255,255,.12);padding:.5rem .9rem;border-radius:8px;text-decoration:none}
+
+.hero{background:linear-gradient(180deg,var(--navy) 0%,var(--navy-2) 100%);color:#fff;padding:3.5rem 1.25rem 4.5rem}
+.hero-inner{max-width:44rem;margin:0 auto}
+h1{font-family:"Instrument Sans",system-ui,sans-serif;font-weight:700;font-size:clamp(2rem,5vw,3.1rem);line-height:1.12;letter-spacing:-.015em;margin:0 0 1.25rem}
+.lede{font-size:1.25rem;line-height:1.6;color:#D6DEEF;margin:0}
+.updated{margin-top:1.5rem;font-family:"Instrument Sans",system-ui,sans-serif;font-size:.9rem;color:#A9B6D3}
+
+main{max-width:44rem;margin:0 auto;padding:0 1.25rem 4rem}
+article{margin-top:-2.25rem;background:var(--card);border:1px solid var(--rule);border-radius:14px;padding:2.25rem clamp(1.25rem,4vw,2.75rem)}
+h2{font-family:"Instrument Sans",system-ui,sans-serif;font-weight:700;font-size:1.55rem;line-height:1.25;letter-spacing:-.01em;margin:2.75rem 0 .75rem}
+h2:first-child{margin-top:0}
+h3{font-family:"Instrument Sans",system-ui,sans-serif;font-weight:600;font-size:1.15rem;margin:1.75rem 0 .4rem}
+p{margin:0 0 1.1rem}
+ul,ol{padding-left:1.4rem;margin:0 0 1.2rem}
+li{margin-bottom:.5rem}
+strong{font-weight:600}
+
+/* the one memorable element: a trade worked out on paper */
+.ticket{margin:1.75rem 0 2rem;border:2px solid var(--ink);border-radius:10px;overflow:hidden;font-family:"Instrument Sans",system-ui,sans-serif}
+.ticket-head{display:flex;justify-content:space-between;align-items:baseline;gap:1rem;flex-wrap:wrap;padding:.9rem 1.1rem;border-bottom:2px solid var(--ink)}
+.ticket-head b{font-size:1.15rem}
+.ticket-head span{color:var(--ink-soft);font-size:.95rem}
+.ticket table{width:100%;border-collapse:collapse;font-size:1rem;font-variant-numeric:tabular-nums}
+.ticket td{padding:.65rem 1.1rem;border-bottom:1px dashed var(--rule)}
+.ticket td:last-child{text-align:right;font-weight:600;white-space:nowrap}
+.ticket tr.total td{border-bottom:none;border-top:2px solid var(--ink);font-size:1.1rem}
+.ticket tr.loss td:last-child{color:var(--loss)}
+.ticket tr.gain td:last-child{color:var(--mint)}
+.ticket-note{padding:.75rem 1.1rem;background:var(--paper);font-size:.92rem;color:var(--ink-soft);border-top:2px solid var(--ink)}
+
+.callout{border-left:4px solid var(--mint);padding:.25rem 0 .25rem 1.1rem;margin:1.5rem 0;color:var(--ink-soft)}
+
+.start{margin:2.75rem 0 0;padding:1.75rem;border-radius:12px;background:var(--navy);color:#fff}
+.start h2{margin-top:0;color:#fff}
+.start p{color:#D6DEEF}
+.cta{display:inline-block;margin-top:.5rem;background:var(--mint-bright);color:#06231A;font-family:"Instrument Sans",system-ui,sans-serif;font-weight:700;font-size:1.05rem;padding:.85rem 1.4rem;border-radius:10px;text-decoration:none}
+
+.faq h3{margin-top:1.5rem}
+.disclaimer{margin-top:2.5rem;padding-top:1.25rem;border-top:1px solid var(--rule);font-size:.95rem;color:var(--ink-soft)}
+
+footer{max-width:44rem;margin:0 auto;padding:0 1.25rem 3rem;font-family:"Instrument Sans",system-ui,sans-serif;font-size:.92rem;color:var(--ink-soft);display:flex;gap:1.25rem;flex-wrap:wrap}
+footer a{color:var(--ink-soft)}
+
+@media (max-width:560px){
+  body{font-size:1.06rem}
+  .hero{padding:2.5rem 1.25rem 3.75rem}
+  .ticket td{padding:.6rem .8rem}
+}
+
+.guide-grid{display:grid;gap:1rem;margin:0;padding:0;list-style:none}
+.guide-grid li{margin:0;border:1px solid var(--rule);border-radius:12px;padding:1.1rem 1.25rem;background:var(--card)}
+.guide-grid a{font-family:"Instrument Sans",system-ui,sans-serif;font-weight:700;font-size:1.12rem;text-decoration:none}
+.guide-grid p{margin:.35rem 0 0;font-size:1rem;color:var(--ink-soft)}
+.related{margin-top:2.5rem}
+.related ul{padding-left:1.2rem}
+table.simple{width:100%;border-collapse:collapse;margin:1rem 0 1.5rem;font-family:"Instrument Sans",system-ui,sans-serif;font-size:1rem}
+table.simple th,table.simple td{border-bottom:1px solid var(--rule);padding:.55rem .6rem;text-align:left;vertical-align:top}
+table.simple th{color:var(--ink-soft);font-weight:600}
+</style>
+</head>
+<body>
+
+<header class="site">
+  <div class="site-inner">
+    <a class="brand" href="/"><span>&#128293;</span> PAPERRALLY</a>
+    <a class="site-link" href="/">Open the trading terminal</a>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="hero-inner">
+    <h1>Position sizing: how many shares should you buy?</h1>
+    <p class="lede">Choosing what to buy gets all the attention, but how much you buy decides whether a bad trade is a scratch or a disaster. Here's the one formula you need.</p>
+    <p class="updated">Updated 31 October 2026</p>
+  </div>
+</section>
+
+<main>
+<article>
+
+<h2>The formula</h2>
+<p>Decide how much of your capital you're willing to lose on one trade — commonly 1% — and how far away your stop-loss is. Then:</p>
+<div class="callout"><strong>Shares to buy = (capital × risk %) ÷ (entry price − stop-loss price)</strong></div>
+<p>This flips the usual approach. Instead of "I'll buy ₹1 lakh worth and see", you start from the loss you can accept and work backwards.</p>
+
+<div class="ticket" role="group" aria-label="₹10,00,000 account, risking 1%"><div class="ticket-head"><b>₹10,00,000 account, risking 1%</b><span>Worked example</span></div><table><tr><td>Maximum loss for this trade (1%)</td><td>₹10,000</td></tr><tr><td>Entry price</td><td>₹500.00</td></tr><tr><td>Stop-loss</td><td>₹480.00</td></tr><tr><td>Risk per share</td><td>₹20.00</td></tr><tr class="total"><td>Shares to buy (10,000 ÷ 20)</td><td>500</td></tr><tr><td>Position value</td><td>₹2,50,000</td></tr><tr class="loss"><td>Loss if stopped out</td><td>₹10,000</td></tr></table><div class="ticket-note">A wider stop means fewer shares. With the stop at ₹450, the same ₹10,000 risk allows only 200 shares.</div></div>
+
+<h2>Add a cap on position size</h2>
+<p>The formula can suggest very large positions when the stop is close. Add a second rule so no single stock dominates your account — for example, no position larger than 20–25% of capital. Take whichever gives the smaller number of shares.</p>
+
+<h2>Why 1–2% risk per trade?</h2>
+<p>Losing streaks happen to everyone. Risking 1% per trade, ten losses in a row costs you about 10% of your account — painful but recoverable. Risking 10% per trade, the same streak wipes out about two-thirds of it, and you'd need to triple what's left just to get back to where you started.</p>
+<table class="simple">
+  <thead><tr><th>Risk per trade</th><th>After 10 losses in a row</th><th>Gain needed to recover</th></tr></thead>
+  <tbody>
+    <tr><td>1%</td><td>≈ 90% of capital left</td><td>≈ 11%</td></tr>
+    <tr><td>2%</td><td>≈ 82% left</td><td>≈ 22%</td></tr>
+    <tr><td>5%</td><td>≈ 60% left</td><td>≈ 67%</td></tr>
+    <tr><td>10%</td><td>≈ 35% left</td><td>≈ 187%</td></tr>
+  </tbody>
+</table>
+
+<h2>Options are different</h2>
+<p>With options you buy whole lots, not single shares, so sizing happens in lots. One NIFTY lot is 65 units: an option priced at ₹120 costs ₹7,800 per lot. If you'd exit at ₹84 (a 30% fall in premium), the risk is ₹36 × 65 = ₹2,340 per lot. Divide your rupee risk by that number to get the lots to trade, and round down.</p>
+
+
+<section class="start">
+  <h2>Practise this on PaperRally</h2>
+  <p>PaperRally's order ticket shows each trade as a % of your capital and how much you'd lose at your stop before you buy. You get ₹10,00,000 of virtual cash, live NSE and BSE prices, and a Replay mode for any recent trading day. Sign up with Google or a username and mobile number — no demat account or card needed.</p>
+  <a class="cta" href="/">Start paper trading free</a>
+</section>
+
+<section class="faq">
+  <h2>Common questions</h2>
+  <h3>What percentage of capital should I risk per trade?</h3>
+  <p>Many traders risk 0.5–2% of their capital per trade. Beginners are usually better off at the low end until they have a tested method.</p>
+  <h3>Is position sizing the same as diversification?</h3>
+  <p>No. Diversification spreads money across different holdings. Position sizing decides how much to put into each trade based on how much you could lose.</p>
+  <h3>How do I size an options trade?</h3>
+  <p>Work out the rupee loss per lot at your exit price (premium drop × lot size), then divide your maximum risk by that amount and round down to whole lots.</p>
+</section>
+
+<section class="related">
+  <h2>Keep learning</h2>
+  <ul>
+    <li><a href="/how-to-set-stop-loss.html">How to set a stop-loss</a></li>
+    <li><a href="/nifty-options-for-beginners.html">NIFTY options for beginners</a></li>
+    <li><a href="/guides.html">All PaperRally guides</a></li>
+  </ul>
+</section>
+
+<p class="disclaimer">This guide is for education only. It isn't investment advice or a recommendation to buy or sell any security. Figures are worked examples; check your broker's current charges and the exchange's current rules before trading real money. PaperRally is a practice platform and doesn't execute real trades.</p>
+
+</article>
+</main>
+
+<footer>
+  <a href="/guides.html">All guides</a>
+  <a href="/">PaperRally home</a>
+  <a href="/privacy.html">Privacy</a>
+  <a href="/terms.html">Terms</a>
+  <a href="/contact.html">Contact</a>
+</footer>
+
+</body>
+</html>

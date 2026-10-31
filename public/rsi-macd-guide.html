@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en-IN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How to Use RSI and MACD (Without Overtrading) | PaperRally</title>
+<meta name="description" content="What RSI and MACD measure, the standard settings, how to read overbought, oversold, crossovers and divergence, and the common mistakes that make these indicators misleading.">
+<link rel="canonical" href="https://paperrally.in/rsi-macd-guide.html">
+<link rel="icon" type="image/png" href="/favicon.png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<meta property="og:title" content="How to use RSI and MACD without overtrading">
+<meta property="og:description" content="What RSI and MACD measure, the standard settings, how to read overbought, oversold, crossovers and divergence, and the common mistakes that make these indicators misleading.">
+<meta property="og:url" content="https://paperrally.in/rsi-macd-guide.html">
+<meta property="og:type" content="article">
+<meta property="og:image" content="https://paperrally.in/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "Article",
+ "headline": "How to use RSI and MACD without overtrading",
+ "description": "What RSI and MACD measure, the standard settings, how to read overbought, oversold, crossovers and divergence, and the common mistakes that make these indicators misleading.",
+ "datePublished": "2026-10-31",
+ "dateModified": "2026-10-31",
+ "image": "https://paperrally.in/og-image.png",
+ "author": {
+  "@type": "Organization",
+  "name": "PaperRally"
+ },
+ "publisher": {
+  "@type": "Organization",
+  "name": "PaperRally",
+  "url": "https://paperrally.in/"
+ },
+ "mainEntityOfPage": "https://paperrally.in/rsi-macd-guide.html"
+}
+</script>
+<script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "FAQPage",
+ "mainEntity": [
+  {
+   "@type": "Question",
+   "name": "What are the best RSI settings?",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "The standard 14-period RSI with 70/30 levels is a reasonable default. Changing settings rarely helps as much as using RSI in the context of the trend."
+   }
+  },
+  {
+   "@type": "Question",
+   "name": "Is MACD good for intraday trading?",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "It can be used intraday, but on very short timeframes it gives many false crossovers. Many traders check a higher timeframe for direction first."
+   }
+  },
+  {
+   "@type": "Question",
+   "name": "Should I sell when RSI is above 70?",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "Not automatically. In strong uptrends RSI can stay above 70 for a long time. Overbought readings are a caution sign, not a sell signal."
+   }
+  }
+ ]
+}
+</script>
+<style>
+:root{
+  --paper:#F6F7FA;
+  --ink:#141820;
+  --ink-soft:#4A5263;
+  --navy:#0C2354;
+  --navy-2:#163A86;
+  --mint:#0A9C6B;
+  --mint-bright:#14E8A0;
+  --loss:#C23B4E;
+  --rule:#DDE1E9;
+  --card:#FFFFFF;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --paper:#0D111A; --ink:#E8ECF4; --ink-soft:#A3ACBE; --navy:#081A40; --navy-2:#12306E;
+    --mint:#3FD9A3; --loss:#FF7088; --rule:#262E40; --card:#141A26;
+  }
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:"Source Serif 4",Georgia,"Times New Roman",serif;font-size:1.125rem;line-height:1.7}
+a{color:var(--mint);text-underline-offset:3px}
+a:focus-visible,.cta:focus-visible{outline:3px solid var(--mint-bright);outline-offset:3px;border-radius:4px}
+
+.site{background:var(--navy);color:#fff}
+.site-inner{max-width:68rem;margin:0 auto;padding:1rem 1.25rem;display:flex;align-items:center;justify-content:space-between;gap:1rem}
+.brand{font-family:"Instrument Sans",system-ui,sans-serif;font-weight:700;font-size:1.1rem;letter-spacing:.02em;color:#fff;text-decoration:none}
+.brand span{color:#FFB020}
+.site-link{font-family:"Instrument Sans",system-ui,sans-serif;font-weight:600;font-size:.95rem;color:#fff;background:rgba(255,255,255,.12);padding:.5rem .9rem;border-radius:8px;text-decoration:none}
+
+.hero{background:linear-gradient(180deg,var(--navy) 0%,var(--navy-2) 100%);color:#fff;padding:3.5rem 1.25rem 4.5rem}
+.hero-inner{max-width:44rem;margin:0 auto}
+h1{font-family:"Instrument Sans",system-ui,sans-serif;font-weight:700;font-size:clamp(2rem,5vw,3.1rem);line-height:1.12;letter-spacing:-.015em;margin:0 0 1.25rem}
+.lede{font-size:1.25rem;line-height:1.6;color:#D6DEEF;margin:0}
+.updated{margin-top:1.5rem;font-family:"Instrument Sans",system-ui,sans-serif;font-size:.9rem;color:#A9B6D3}
+
+main{max-width:44rem;margin:0 auto;padding:0 1.25rem 4rem}
+article{margin-top:-2.25rem;background:var(--card);border:1px solid var(--rule);border-radius:14px;padding:2.25rem clamp(1.25rem,4vw,2.75rem)}
+h2{font-family:"Instrument Sans",system-ui,sans-serif;font-weight:700;font-size:1.55rem;line-height:1.25;letter-spacing:-.01em;margin:2.75rem 0 .75rem}
+h2:first-child{margin-top:0}
+h3{font-family:"Instrument Sans",system-ui,sans-serif;font-weight:600;font-size:1.15rem;margin:1.75rem 0 .4rem}
+p{margin:0 0 1.1rem}
+ul,ol{padding-left:1.4rem;margin:0 0 1.2rem}
+li{margin-bottom:.5rem}
+strong{font-weight:600}
+
+/* the one memorable element: a trade worked out on paper */
+.ticket{margin:1.75rem 0 2rem;border:2px solid var(--ink);border-radius:10px;overflow:hidden;font-family:"Instrument Sans",system-ui,sans-serif}
+.ticket-head{display:flex;justify-content:space-between;align-items:baseline;gap:1rem;flex-wrap:wrap;padding:.9rem 1.1rem;border-bottom:2px solid var(--ink)}
+.ticket-head b{font-size:1.15rem}
+.ticket-head span{color:var(--ink-soft);font-size:.95rem}
+.ticket table{width:100%;border-collapse:collapse;font-size:1rem;font-variant-numeric:tabular-nums}
+.ticket td{padding:.65rem 1.1rem;border-bottom:1px dashed var(--rule)}
+.ticket td:last-child{text-align:right;font-weight:600;white-space:nowrap}
+.ticket tr.total td{border-bottom:none;border-top:2px solid var(--ink);font-size:1.1rem}
+.ticket tr.loss td:last-child{color:var(--loss)}
+.ticket tr.gain td:last-child{color:var(--mint)}
+.ticket-note{padding:.75rem 1.1rem;background:var(--paper);font-size:.92rem;color:var(--ink-soft);border-top:2px solid var(--ink)}
+
+.callout{border-left:4px solid var(--mint);padding:.25rem 0 .25rem 1.1rem;margin:1.5rem 0;color:var(--ink-soft)}
+
+.start{margin:2.75rem 0 0;padding:1.75rem;border-radius:12px;background:var(--navy);color:#fff}
+.start h2{margin-top:0;color:#fff}
+.start p{color:#D6DEEF}
+.cta{display:inline-block;margin-top:.5rem;background:var(--mint-bright);color:#06231A;font-family:"Instrument Sans",system-ui,sans-serif;font-weight:700;font-size:1.05rem;padding:.85rem 1.4rem;border-radius:10px;text-decoration:none}
+
+.faq h3{margin-top:1.5rem}
+.disclaimer{margin-top:2.5rem;padding-top:1.25rem;border-top:1px solid var(--rule);font-size:.95rem;color:var(--ink-soft)}
+
+footer{max-width:44rem;margin:0 auto;padding:0 1.25rem 3rem;font-family:"Instrument Sans",system-ui,sans-serif;font-size:.92rem;color:var(--ink-soft);display:flex;gap:1.25rem;flex-wrap:wrap}
+footer a{color:var(--ink-soft)}
+
+@media (max-width:560px){
+  body{font-size:1.06rem}
+  .hero{padding:2.5rem 1.25rem 3.75rem}
+  .ticket td{padding:.6rem .8rem}
+}
+
+.guide-grid{display:grid;gap:1rem;margin:0;padding:0;list-style:none}
+.guide-grid li{margin:0;border:1px solid var(--rule);border-radius:12px;padding:1.1rem 1.25rem;background:var(--card)}
+.guide-grid a{font-family:"Instrument Sans",system-ui,sans-serif;font-weight:700;font-size:1.12rem;text-decoration:none}
+.guide-grid p{margin:.35rem 0 0;font-size:1rem;color:var(--ink-soft)}
+.related{margin-top:2.5rem}
+.related ul{padding-left:1.2rem}
+table.simple{width:100%;border-collapse:collapse;margin:1rem 0 1.5rem;font-family:"Instrument Sans",system-ui,sans-serif;font-size:1rem}
+table.simple th,table.simple td{border-bottom:1px solid var(--rule);padding:.55rem .6rem;text-align:left;vertical-align:top}
+table.simple th{color:var(--ink-soft);font-weight:600}
+</style>
+</head>
+<body>
+
+<header class="site">
+  <div class="site-inner">
+    <a class="brand" href="/"><span>&#128293;</span> PAPERRALLY</a>
+    <a class="site-link" href="/">Open the trading terminal</a>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="hero-inner">
+    <h1>How to use RSI and MACD without overtrading</h1>
+    <p class="lede">RSI and MACD are the two most popular indicators on Indian trading screens. Both describe momentum — how strongly price has been moving — and both are easy to misuse.</p>
+    <p class="updated">Updated 31 October 2026</p>
+  </div>
+</section>
+
+<main>
+<article>
+
+<h2>RSI: Relative Strength Index</h2>
+<p>RSI compares recent gains with recent losses and scales the result from 0 to 100. The standard setting looks at the last 14 candles.</p>
+<ul>
+  <li><strong>Above 70:</strong> often called overbought — price has risen quickly.</li>
+  <li><strong>Below 30:</strong> often called oversold — price has fallen quickly.</li>
+  <li><strong>Around 50:</strong> momentum is balanced.</li>
+</ul>
+<p>The trap: "overbought" doesn't mean "about to fall". In a strong uptrend RSI can stay above 70 for weeks. Many traders instead use RSI to <em>confirm</em> a trend — buying pullbacks when RSI dips toward 40–50 in an uptrend rather than shorting every reading above 70.</p>
+<h3>Divergence</h3>
+<p>If price makes a new high but RSI makes a lower high, upward momentum is weakening. Divergence isn't a sell signal by itself, but it's a reason to tighten your stop or avoid adding.</p>
+
+<h2>MACD: Moving Average Convergence Divergence</h2>
+<p>MACD tracks the gap between two moving averages of price — by default the 12-period and 26-period exponential averages. It has three parts:</p>
+<ul>
+  <li><strong>MACD line:</strong> the 12 EMA minus the 26 EMA.</li>
+  <li><strong>Signal line:</strong> a 9-period average of the MACD line.</li>
+  <li><strong>Histogram:</strong> the distance between the two, shown as bars.</li>
+</ul>
+<p>A <strong>bullish crossover</strong> happens when the MACD line crosses above the signal line; a bearish one when it crosses below. Crossovers above the zero line (in an uptrend) tend to be more meaningful than those deep below it.</p>
+
+<h2>Using them together</h2>
+<ol>
+  <li>Decide the trend first, for example with price above a rising 50-day average.</li>
+  <li>Wait for a pullback where RSI cools toward 40–50.</li>
+  <li>Look for MACD's histogram to turn back up, or a bullish crossover.</li>
+  <li>Enter with a stop-loss below the pullback low.</li>
+</ol>
+
+<h2>Common mistakes</h2>
+<ul>
+  <li><strong>Indicator overload.</strong> RSI, MACD and stochastics all measure momentum. Adding more doesn't add information.</li>
+  <li><strong>Ignoring price.</strong> Indicators are calculated from price and always lag it.</li>
+  <li><strong>Trading every signal on a 1-minute chart.</strong> Short timeframes generate constant, mostly meaningless crossovers.</li>
+</ul>
+<div class="callout">Indicators describe what price has done; they don't predict what it will do. Test any rule over many past days before trusting it.</div>
+
+
+<section class="start">
+  <h2>Practise this on PaperRally</h2>
+  <p>PaperRally includes RSI, MACD, moving averages, Bollinger Bands, Supertrend, stochastics and ATR, with readings explained in plain language. You get ₹10,00,000 of virtual cash, live NSE and BSE prices, and a Replay mode for any recent trading day. Sign up with Google or a username and mobile number — no demat account or card needed.</p>
+  <a class="cta" href="/">Start paper trading free</a>
+</section>
+
+<section class="faq">
+  <h2>Common questions</h2>
+  <h3>What are the best RSI settings?</h3>
+  <p>The standard 14-period RSI with 70/30 levels is a reasonable default. Changing settings rarely helps as much as using RSI in the context of the trend.</p>
+  <h3>Is MACD good for intraday trading?</h3>
+  <p>It can be used intraday, but on very short timeframes it gives many false crossovers. Many traders check a higher timeframe for direction first.</p>
+  <h3>Should I sell when RSI is above 70?</h3>
+  <p>Not automatically. In strong uptrends RSI can stay above 70 for a long time. Overbought readings are a caution sign, not a sell signal.</p>
+</section>
+
+<section class="related">
+  <h2>Keep learning</h2>
+  <ul>
+    <li><a href="/candlestick-patterns.html">Candlestick patterns for beginners</a></li>
+    <li><a href="/position-sizing.html">Position sizing</a></li>
+    <li><a href="/guides.html">All PaperRally guides</a></li>
+  </ul>
+</section>
+
+<p class="disclaimer">This guide is for education only. It isn't investment advice or a recommendation to buy or sell any security. Figures are worked examples; check your broker's current charges and the exchange's current rules before trading real money. PaperRally is a practice platform and doesn't execute real trades.</p>
+
+</article>
+</main>
+
+<footer>
+  <a href="/guides.html">All guides</a>
+  <a href="/">PaperRally home</a>
+  <a href="/privacy.html">Privacy</a>
+  <a href="/terms.html">Terms</a>
+  <a href="/contact.html">Contact</a>
+</footer>
+
+</body>
+</html>
