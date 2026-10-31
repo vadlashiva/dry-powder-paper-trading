@@ -29,12 +29,16 @@ const PERIOD_DAYS = Number(Deno.env.get("PRO_PERIOD_DAYS") ?? 30);
 
 Deno.serve(async (req) => {
   if (req.method !== "POST") return new Response("Method not allowed", { status: 405 });
-  const secret = Deno.env.get("RAZORPAY_PAYMENT_WEBHOOK_SECRET") ?? Deno.env.get("RAZORPAY_WEBHOOK_SECRET");
+  // Trim: values pasted into the dashboard often pick up a trailing space or newline.
+  const secret = (Deno.env.get("RAZORPAY_PAYMENT_WEBHOOK_SECRET") ?? Deno.env.get("RAZORPAY_WEBHOOK_SECRET"))?.trim();
   if (!secret) return new Response("Webhook secret not configured", { status: 503 });
 
   const raw = await req.text();
-  const signature = req.headers.get("x-razorpay-signature") ?? "";
-  if (!safeEqual(await hmacHex(secret, raw), signature)) return new Response("Bad signature", { status: 401 });
+  const signature = (req.headers.get("x-razorpay-signature") ?? "").trim();
+  if (!safeEqual(await hmacHex(secret, raw), signature)) {
+    console.error("bad signature: the webhook secret in Razorpay and RAZORPAY_PAYMENT_WEBHOOK_SECRET differ", { secretLength: secret.length });
+    return new Response("Bad signature", { status: 401 });
+  }
 
   const event = JSON.parse(raw);
   if (event.event !== "payment_link.paid") return new Response("ignored", { status: 200 });
