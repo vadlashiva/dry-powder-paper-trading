@@ -3204,7 +3204,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, referral
     setCheckoutBusy(true);
     track("upgrade_click");
     // Preferred path: a personal payment link from the create-payment-link Edge Function, which
-    // lets the razorpay-webhook function switch Pro on automatically. Falls back to the static link.
+    // lets the razorpay-payment-webhook function switch Pro on automatically. Falls back to the static link.
     const win = window.open("", "_blank"); // open now, while we still have the click, so it isn't blocked
     try {
       const { data, error } = await supabase.functions.invoke("create-payment-link", { body: {} });

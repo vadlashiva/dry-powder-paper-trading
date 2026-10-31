@@ -1,5 +1,5 @@
 // Creates a one-time Razorpay Payment Link for the signed-in user, tagged with
-// their user id, so the razorpay-webhook function can switch Pro on automatically.
+// their user id, so the razorpay-payment-webhook function can switch Pro on automatically.
 //
 // Secrets (Supabase → Edge Functions → Secrets):
 //   RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET

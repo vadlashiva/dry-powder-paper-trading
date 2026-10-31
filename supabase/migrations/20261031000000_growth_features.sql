@@ -66,7 +66,7 @@ create policy "referrals: see your own" on public.referrals
   for select to authenticated using (auth.uid() = referred_id or auth.uid() = referrer_id);
 
 -- ---------------------------------------------------------------------------
--- Payments recorded by the razorpay-webhook Edge Function (service role only)
+-- Payments recorded by the razorpay-payment-webhook Edge Function (service role only)
 -- ---------------------------------------------------------------------------
 create table if not exists public.payments (
   payment_id   text primary key,

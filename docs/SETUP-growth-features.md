@@ -28,14 +28,16 @@ helper functions, and the row-level security rules that keep each user's data pr
 
 ## 2. Deploy the two Edge Functions (instant Pro activation)
 
+> Your project already has an older `razorpay-webhook` function (from the subscription setup). The new one is deliberately named `razorpay-payment-webhook` so the two never clash.
+
 Needs the Supabase CLI (`npm i -g supabase`) on your computer, inside this repo:
 
 ```bash
 supabase login
 supabase link --project-ref <your-project-ref>      # from Project Settings → General
-supabase secrets set RAZORPAY_KEY_ID=rzp_live_xxx RAZORPAY_KEY_SECRET=xxx RAZORPAY_WEBHOOK_SECRET=<long-random-string>
+supabase secrets set RAZORPAY_KEY_ID=rzp_live_xxx RAZORPAY_KEY_SECRET=xxx RAZORPAY_PAYMENT_WEBHOOK_SECRET=<long-random-string>
 supabase functions deploy create-payment-link
-supabase functions deploy razorpay-webhook --no-verify-jwt
+supabase functions deploy razorpay-payment-webhook --no-verify-jwt
 ```
 
 Optional secrets: `PRO_PRICE_PAISE` (default `9900` = ₹99) and `APP_URL` (default `https://paperrally.in`).
@@ -49,8 +51,8 @@ Optional secrets: `PRO_PRICE_PAISE` (default `9900` = ₹99) and `APP_URL` (defa
 
 Razorpay Dashboard → **Settings → Webhooks → + Add New Webhook**
 
-- **Webhook URL:** `https://<your-project-ref>.supabase.co/functions/v1/razorpay-webhook`
-- **Secret:** the same `RAZORPAY_WEBHOOK_SECRET` you set above
+- **Webhook URL:** `https://<your-project-ref>.supabase.co/functions/v1/razorpay-payment-webhook`
+- **Secret:** the same `RAZORPAY_PAYMENT_WEBHOOK_SECRET` you set above
 - **Active events:** `payment_link.paid`
 
 When someone pays, the webhook marks their subscription `active` for 30 days (extending any time

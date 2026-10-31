@@ -2,6 +2,6 @@
 [functions.create-payment-link]
 verify_jwt = true
 
-[functions.razorpay-webhook]
+[functions.razorpay-payment-webhook]
 # Razorpay calls this directly and signs the request instead of sending a Supabase token.
 verify_jwt = false

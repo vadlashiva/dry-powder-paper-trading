@@ -2,11 +2,12 @@
 // subscription active for 30 days (extending any time they still have left).
 //
 // Razorpay Dashboard → Settings → Webhooks → Add:
-//   URL:    https://<project-ref>.supabase.co/functions/v1/razorpay-webhook
+//   URL:    https://<project-ref>.supabase.co/functions/v1/razorpay-payment-webhook
 //   Events: payment_link.paid
-//   Secret: any long random string → also save it as the RAZORPAY_WEBHOOK_SECRET secret.
+//   Secret: any long random string → also save it as the RAZORPAY_PAYMENT_WEBHOOK_SECRET secret.
+// (Named separately from the older subscription-based "razorpay-webhook" so both can coexist.)
 // Deploy with JWT verification off (Razorpay can't send a Supabase token):
-//   supabase functions deploy razorpay-webhook --no-verify-jwt
+//   supabase functions deploy razorpay-payment-webhook --no-verify-jwt
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const encoder = new TextEncoder();
@@ -28,7 +29,7 @@ const PERIOD_DAYS = Number(Deno.env.get("PRO_PERIOD_DAYS") ?? 30);
 
 Deno.serve(async (req) => {
   if (req.method !== "POST") return new Response("Method not allowed", { status: 405 });
-  const secret = Deno.env.get("RAZORPAY_WEBHOOK_SECRET");
+  const secret = Deno.env.get("RAZORPAY_PAYMENT_WEBHOOK_SECRET") ?? Deno.env.get("RAZORPAY_WEBHOOK_SECRET");
   if (!secret) return new Response("Webhook secret not configured", { status: 503 });
 
   const raw = await req.text();
