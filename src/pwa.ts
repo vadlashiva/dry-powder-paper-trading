@@ -37,6 +37,17 @@ export function isIos() {
   return /iPhone|iPad|iPod/i.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 }
 
+// Which install instructions to show when the browser has no native install prompt.
+export function installPlatform() {
+  const ua = navigator.userAgent || "";
+  if (/FBAN|FBAV|Instagram|WhatsApp|Line\/|Snapchat|LinkedInApp|Twitter|; wv\)/i.test(ua)) return "inapp";
+  if (isIos()) return /CriOS|FxiOS|EdgiOS|OPiOS/i.test(ua) ? "ios-other" : "ios-safari";
+  if (/SamsungBrowser/i.test(ua)) return "samsung";
+  if (/Firefox/i.test(ua) && /Android/i.test(ua)) return "firefox";
+  if (/Android/i.test(ua)) return "android";
+  return "desktop";
+}
+
 export function canPromptInstall() { return !!deferredPrompt && !isStandalone(); }
 
 export async function promptInstall() {
@@ -56,7 +67,7 @@ export function useInstallPrompt() {
     listeners.add(fn);
     return () => { listeners.delete(fn); };
   }, []);
-  return { canInstall: canPromptInstall(), standalone: isStandalone(), ios: isIos(), promptInstall };
+  return { canInstall: canPromptInstall(), standalone: isStandalone(), ios: isIos(), platform: installPlatform(), promptInstall };
 }
 
 /* ---------------- notifications ---------------- */

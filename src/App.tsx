@@ -6,7 +6,7 @@ import {TrendingUp, TrendingDown, RotateCcw, X, Flame, Activity, LogOut, Lock, U
 } from "lucide-react";
 import { LEARN, LangSwitch, loadLang, saveLang } from "./i18n";
 import { useIsMobile, loadSetting, saveSetting, computeCharges, PerformancePanel } from "./extras";
-import { isoWeekIST, initTelemetry, track, tradeKey, TagChips, JournalModal, JournalStatsCard, computeAchievements, AchievementsGrid, ACHIEVEMENTS, makeShareImage, shareImage, captureReferralFromUrl, syncReferrals, InvitePanel, LeaderboardPanel, TourOverlay } from "./growth";
+import { isoWeekIST, initTelemetry, track, tradeKey, TagChips, JournalModal, JournalStatsCard, computeAchievements, AchievementsGrid, ACHIEVEMENTS, makeShareImage, shareImage, captureReferralFromUrl, syncReferrals, InvitePanel, LeaderboardPanel, TourOverlay, InstallHelp } from "./growth";
 import { useInstallPrompt, notify, requestNotifications, notificationPermission } from "./pwa";
 
 const SUPPORT_EMAIL = "adi.shiv999@gmail.com";
@@ -1640,6 +1640,13 @@ const FREE_FEATURES = ["₹10,00,000 virtual cash", "Live NSE & BSE prices", "Ma
 
 function LandingPage({ themeIdx, onEnter: onEnterRaw }) {
   const install = useInstallPrompt();
+  const isPhone = useIsMobile(760);
+  const [installHelp, setInstallHelp] = useState(false);
+  const landingInstall = () => {
+    if (install.canInstall) install.promptInstall().then((r) => track("install_prompt", { result: r, from: "landing" }));
+    else { setInstallHelp(true); track("install_help", { platform: install.platform, from: "landing" }); }
+  };
+  const showInstall = !install.standalone && (install.canInstall || isPhone);
   const onEnter = (mode) => { track(mode === "register" ? "signup_start" : "login_start"); onEnterRaw(mode); };
   useEffect(() => { track("landing_view", { ref: !!new URLSearchParams(window.location.search).get("ref") }); }, []);
   const [marketNow] = useState(() => getMarketStatus());
@@ -1675,6 +1682,7 @@ function LandingPage({ themeIdx, onEnter: onEnterRaw }) {
       <style>{CSS}</style>
 
       <LiveTicker />
+      {installHelp && <InstallHelp platform={install.platform} onClose={() => setInstallHelp(false)} />}
 
       <header className="landingNav">
         <div className="authBrand" style={{ justifyContent: "flex-start" }}>
@@ -1727,6 +1735,11 @@ function LandingPage({ themeIdx, onEnter: onEnterRaw }) {
             <button className="btn btnBull landingCta" onClick={() => onEnter("register")}><Sparkles size={15} /> Get Started Free</button>
             <button className="btn btnGhost landingCta" onClick={() => onEnter("login")}>Log In</button>
           </div>
+          {showInstall && (
+            <button type="button" className="heroInstall heroReveal heroReveal-4" onClick={landingInstall}>
+              <Smartphone size={15} /> Install the app on your phone
+            </button>
+          )}
           <div className="heroReveal heroReveal-5">
             <MiniHeroChart />
           </div>
@@ -1981,8 +1994,8 @@ function LandingPage({ themeIdx, onEnter: onEnterRaw }) {
           <a href="/contact.html">Contact</a>
           <a href="/privacy.html">Privacy</a>
           <a href="/terms.html">Terms</a>
-          {install.canInstall && (
-            <a href="#install" className="footerInstall" onClick={(e) => { e.preventDefault(); install.promptInstall().then((r) => track("install_prompt", { result: r, from: "landing" })); }}>
+          {showInstall && (
+            <a href="#install" className="footerInstall" onClick={(e) => { e.preventDefault(); landingInstall(); }}>
               <Smartphone size={15} /> Install app
             </a>
           )}
@@ -2415,6 +2428,9 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, referral
   const [tourOpen, setTourOpen] = useState(false);
   const [notifPerm, setNotifPerm] = useState(() => notificationPermission());
   const install = useInstallPrompt();
+  const [installHelpOpen, setInstallHelpOpen] = useState(false);
+  const installBannerKey = `pr_install_banner_dismissed_${userId}`;
+  const [installBannerDismissed, setInstallBannerDismissed] = useState(() => loadSetting(installBannerKey, false));
 
   // ---- Replay Mode ----
   const REPLAY_CASH = 1000000;
@@ -3779,11 +3795,15 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, referral
     if (r === "granted") { showToast("Notifications on — alerts, fills and stop-losses reach you even when the app is in the background", "bull"); notify("Notifications are on", "You'll hear from PaperRally when an alert or stop-loss fires.", { force: true }); }
     else if (r === "denied") showToast("Notifications are blocked — allow them for paperrally.in in your browser settings", "bear");
   };
+  // Native prompt when the browser offers one (Android Chrome/Edge); otherwise step-by-step help.
   const doInstall = async () => {
+    setMoreOpen(false);
+    if (!install.canInstall) { setInstallHelpOpen(true); track("install_help", { platform: install.platform }); return; }
     const r = await install.promptInstall();
     track("install_prompt", { result: r });
     if (r === "accepted") updatePrefs({ flags: { installed: true } });
   };
+  const dismissInstallBanner = () => { setInstallBannerDismissed(true); saveSetting(installBannerKey, true); };
 
   const TAB_DEFS = [
     ["trade", "Chart & Trade"],
@@ -3898,6 +3918,15 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, referral
             <a className="btn btnGhost" href={mailtoSupport("PaperRally Pro payment — please activate", `Hi, I've paid for PaperRally Pro.\n\nUsername: ${username}\nAccount ID: ${userId}\nRazorpay payment ID: \n\nThanks!`)}><Mail size={13} /> Email payment ID</a>
             <button className="iconBtn" onClick={dismissPaymentBanner} aria-label="Hide payment status"><X size={14} /></button>
           </div>
+        </div>
+      )}
+
+      {isMobile && !install.standalone && !installBannerDismissed && (
+        <div className="installBar">
+          <Smartphone size={18} className="installBarIcon" />
+          <div className="installBarText"><b>Get the PaperRally app</b><span className="dim">Opens full-screen, loads fast, sends alert notifications.</span></div>
+          <button className="btn btnBull" onClick={doInstall}>Install</button>
+          <button className="iconBtn" onClick={dismissInstallBanner} aria-label="Hide install suggestion"><X size={14} /></button>
         </div>
       )}
 
@@ -4885,6 +4914,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, referral
       )}
 
       {tourOpen && <TourOverlay steps={tourSteps} onDone={finishTour} />}
+      {installHelpOpen && <InstallHelp platform={install.platform} onClose={() => setInstallHelpOpen(false)} />}
       {journalEditing && (
         <JournalModal
           trade={journalEditing}
@@ -4964,7 +4994,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, referral
               )}
               <button className="btn btnGhost" onClick={() => { setMoreOpen(false); replayActive ? restartReplayDay() : practiceToday(); }} disabled={replayBusy}><Play size={14} /> {replayActive ? "Restart day" : "Practice today"}</button>
               {replayActive && <button className="btn btnGhost" onClick={() => { setMoreOpen(false); exitReplay(); }}>Exit replay</button>}
-              {install.canInstall && <button className="btn btnBull" onClick={doInstall}><Smartphone size={14} /> Install app</button>}
+              {!install.standalone && <button className="btn btnBull" onClick={doInstall}><Smartphone size={14} /> Install app</button>}
               <a className="btn btnGhost" href={feedbackHref}><MessageSquare size={14} /> Feedback</a>
               <button className="btn btnGhost" onClick={startTour}><Compass size={14} /> Take the tour</button>
               <button className="btn btnGhost" onClick={() => { setMoreOpen(false); popOutChart(); }}><Maximize2 size={14} /> Pop-out chart</button>
@@ -4972,9 +5002,6 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, referral
               <button className="btn btnGhost" onClick={() => { setMoreOpen(false); setConfirmReset(true); }}><RotateCcw size={14} /> Reset account</button>
               <button className="btn btnGhost" onClick={onLogout}><LogOut size={14} /> Log out</button>
             </div>
-            {!install.standalone && !install.canInstall && install.ios && (
-              <div className="iosHint dim"><Smartphone size={13} /> Install on iPhone: tap the <b>Share</b> button in Safari, then <b>Add to Home Screen</b>.</div>
-            )}
             <div className="sheetLang"><span className="dim">Learning language</span><LangSwitch lang={lang} onChange={setLang} /></div>
           </div>
         </div>
@@ -5902,7 +5929,7 @@ const CSS = `
 
 .orderCard { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px; height: fit-content; transition: box-shadow 0.2s ease; }
 .orderCard:hover { box-shadow: 0 10px 30px rgba(0,0,0,0.22); }
-.orderCard h3 { margin: 0; font-family: 'Instrument Sans'; font-size: 14px; }
+.orderCard h3 { margin: 0; font-family: 'Instrument Sans', 'Inter', system-ui, sans-serif; font-size: 14px; }
 .orderCardHead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
 .orderTypeTabs { display: flex; gap: 3px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 3px; margin-bottom: 14px; }
 .orderTypeTab { flex: 1; background: none; color: var(--text-dim); padding: 7px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; transition: background 0.15s ease, color 0.15s ease; }
@@ -5937,7 +5964,7 @@ const CSS = `
 
 .indTab { display: flex; flex-direction: column; gap: 18px; }
 .indTabHead { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
-.indTabHead h3 { margin: 0 0 4px; font-family: 'Instrument Sans'; font-size: 16px; }
+.indTabHead h3 { margin: 0 0 4px; font-family: 'Instrument Sans', 'Inter', system-ui, sans-serif; font-size: 16px; }
 .indTabHead p { margin: 0; font-size: 12.5px; max-width: 62ch; line-height: 1.5; }
 .indTabChartBtn { flex: none; padding: 9px 16px; }
 .indGroup { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
@@ -5958,7 +5985,7 @@ const CSS = `
 .indText.bull { color: var(--bull); } .indText.bear { color: var(--bear); }
 @media (max-width: 700px) { .indRow { grid-template-columns: auto auto 1fr; } .indRead { grid-column: 3; text-align: left; } }
 .pickEmpty { background: var(--surface); border: 1px dashed var(--border); border-radius: 12px; padding: 48px 24px; text-align: center; }
-.pickEmpty h3 { margin: 0 0 8px; font-family: 'Instrument Sans'; font-size: 17px; }
+.pickEmpty h3 { margin: 0 0 8px; font-family: 'Instrument Sans', 'Inter', system-ui, sans-serif; font-size: 17px; }
 .pickEmpty p { max-width: 46ch; margin: 0 auto 18px; font-size: 13px; line-height: 1.6; }
 .pickQuick { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
 .pickQuickBtn { flex: none; padding: 8px 16px; }
@@ -5995,7 +6022,7 @@ const CSS = `
 .replayProgress { flex: 1; min-width: 80px; height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; margin-right: 6px; }
 .replayProgress div { height: 100%; background: var(--amber); }
 .replayExitBtn { margin-left: auto; }
-.replayTitle { margin: 0 0 12px; font-family: 'Instrument Sans'; font-size: 16px; }
+.replayTitle { margin: 0 0 12px; font-family: 'Instrument Sans', 'Inter', system-ui, sans-serif; font-size: 16px; }
 .replaySlider { flex: 2; min-width: 140px; accent-color: var(--amber); cursor: pointer; }
 .rtl { flex-basis: 100%; padding: 22px 10px 2px; user-select: none; }
 .rtlTrack { position: relative; height: 22px; cursor: pointer; outline: none; touch-action: none; }
@@ -6031,7 +6058,7 @@ const CSS = `
 .popListRowActive { background: var(--surface-2); border-left-color: var(--accent); }
 .popMain { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 14px 20px; gap: 12px; }
 .popHead { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
-.popHead h1 { margin: 0; font-family: 'Instrument Sans'; font-size: 24px; }
+.popHead h1 { margin: 0; font-family: 'Instrument Sans', 'Inter', system-ui, sans-serif; font-size: 24px; }
 .popHead .dim { font-size: 12.5px; }
 .popPrice { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
 .popHL { font-size: 11px; }
@@ -6108,7 +6135,7 @@ const CSS = `
 .lockPanel p { max-width: 34ch; margin: 0 auto 18px; font-size: 13px; line-height: 1.6; }
 .lockPanelBtn { flex: none; display: inline-flex; padding: 9px 18px; }
 
-.posWrap h3, .histWrap h3 { font-family: 'Instrument Sans'; font-size: 14px; margin: 0 0 10px; }
+.posWrap h3, .histWrap h3 { font-family: 'Instrument Sans', 'Inter', system-ui, sans-serif; font-size: 14px; margin: 0 0 10px; }
 .histHead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .histHead h3 { margin: 0; }
 .exportBtn { display: inline-flex; align-items: center; gap: 6px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim); padding: 7px 12px; border-radius: 8px; font-size: 12px; cursor: pointer; transition: color 0.15s ease, border-color 0.15s ease; }
@@ -6160,7 +6187,7 @@ const CSS = `
 
 .modalOverlay { position: fixed; inset: 0; background: rgba(5,6,10,0.7); display: flex; align-items: center; justify-content: center; z-index: 50; backdrop-filter: blur(2px); }
 .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 22px; width: 340px; }
-.modal h3 { margin: 0 0 8px; font-family: 'Instrument Sans'; }
+.modal h3 { margin: 0 0 8px; font-family: 'Instrument Sans', 'Inter', system-ui, sans-serif; }
 .modal p { color: var(--text-dim); font-size: 13px; margin: 0 0 18px; }
 .modalBtns { display: flex; gap: 8px; }
 .upgradeModal h3 { display: flex; align-items: center; gap: 8px; }
@@ -6729,6 +6756,16 @@ a.resetBtn { text-decoration: none; }
 .tourNav { display: flex; gap: 8px; }
 .tourNav .btn { flex: none; padding: 9px 14px; }
 @media (prefers-reduced-motion: reduce) { .tourSpot, .tourCard { transition: none; } }
+
+.installBar { display: flex; align-items: center; gap: 10px; margin: 10px 14px 0; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--accent) 14%, var(--surface)); border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.installBarIcon { color: var(--accent); flex-shrink: 0; }
+.installBarText { flex: 1; display: flex; flex-direction: column; font-size: 13px; line-height: 1.35; min-width: 0; }
+.installBarText .dim { font-size: 11.5px; }
+.installBar .btn { flex: none; padding: 9px 14px; }
+.installModal { width: 400px; max-width: calc(100vw - 28px); }
+.installWhy { font-size: 13px; line-height: 1.5; margin: 0 0 10px; }
+.installSteps { margin: 0 0 6px; padding-left: 20px; font-size: 14px; line-height: 1.7; }
+.heroInstall { display: inline-flex; align-items: center; gap: 8px; margin-top: 12px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3); color: #fff; border-radius: 999px; padding: 9px 16px; font-size: 14px; font-weight: 600; cursor: pointer; }
 
 /* landing additions */
 .liveCount { display: inline-flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 13.5px; color: #E3E9F4; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.2); padding: 6px 12px; border-radius: 999px; }

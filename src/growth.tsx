@@ -483,3 +483,39 @@ export function TourOverlay({ steps, onDone }) {
     </div>
   );
 }
+
+/* ================= install help (when the browser has no native prompt) ================= */
+const INSTALL_STEPS = {
+  android: { title: "Install on Android", steps: ["Tap the ⋮ menu at the top-right of Chrome.", "Tap “Install app” (or “Add to Home screen”).", "Tap Install — PaperRally appears on your home screen."] },
+  samsung: { title: "Install in Samsung Internet", steps: ["Tap the ≡ menu at the bottom.", "Tap “Add page to”, then “Home screen”.", "Tap Add."] },
+  firefox: { title: "Install in Firefox", steps: ["Tap the ⋮ menu.", "Tap “Install” (or “Add to Home screen”).", "Confirm to add PaperRally to your home screen."] },
+  "ios-safari": { title: "Install on iPhone", steps: ["Tap the Share button (the square with an arrow) at the bottom of Safari.", "Scroll down and tap “Add to Home Screen”.", "Tap Add — PaperRally appears on your home screen."] },
+  "ios-other": { title: "Install on iPhone", steps: ["Tap the Share button in your browser (or open this page in Safari).", "Tap “Add to Home Screen”.", "Tap Add."] },
+  inapp: { title: "Open in your browser first", steps: ["You're inside an app's built-in browser (like WhatsApp or Instagram), which can't install apps.", "Tap ⋮ or ••• and choose “Open in Chrome” (or “Open in Safari” on iPhone).", "Then tap Install app again."] },
+  desktop: { title: "Install on your computer", steps: ["In Chrome or Edge, click the install icon at the right end of the address bar (a screen with a down arrow).", "Or open the browser menu and choose “Install PaperRally”.", "Click Install."] },
+};
+
+export function InstallHelp({ platform, onClose }) {
+  const info = INSTALL_STEPS[platform] || INSTALL_STEPS.android;
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  return (
+    <div className="modalOverlay" onClick={onClose}>
+      <div className="modal installModal" role="dialog" aria-modal="true" aria-label={info.title} onClick={(e) => e.stopPropagation()}>
+        <h3>📲 {info.title}</h3>
+        <p className="dim installWhy">Opens full-screen like a normal app, loads instantly and can send you price-alert notifications. Free — no Play Store needed.</p>
+        <ol className="installSteps">{info.steps.map((s) => <li key={s}>{s}</li>)}</ol>
+        <div className="modalBtns">
+          {platform === "inapp" && (
+            <button className="btn btnGhost" onClick={async () => { try { await navigator.clipboard.writeText(window.location.origin); setCopied(true); } catch { /* ignore */ } }}>{copied ? "Link copied" : "Copy link"}</button>
+          )}
+          <button className="btn btnBull" onClick={onClose}>Got it</button>
+        </div>
+      </div>
+    </div>
+  );
+}
