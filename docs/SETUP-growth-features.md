@@ -40,6 +40,8 @@ supabase functions deploy create-payment-link --no-verify-jwt   # it checks the 
 supabase functions deploy razorpay-payment-webhook --no-verify-jwt
 ```
 
+While you use **test keys** (`rzp_test_…`), payment links are only created for the accounts listed in the `TEST_PAYMENT_USER_IDS` secret (comma-separated user ids) — otherwise anyone could get Pro with a fake test payment. Everyone else gets the normal static link.
+
 Optional secrets: `PRO_PRICE_PAISE` (default `9900` = ₹99) and `APP_URL` (default `https://paperrally.in`).
 
 > **Razorpay account status.** Creating payment links through the API needs your Razorpay

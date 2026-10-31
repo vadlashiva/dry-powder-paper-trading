@@ -3,6 +3,7 @@
 //
 // Secrets (Supabase → Edge Functions → Secrets):
 //   RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET
+//   TEST_PAYMENT_USER_IDS — only needed while using rzp_test_ keys: who may make test payments
 // Optional: PRO_PRICE_PAISE (default 9900 = ₹99), APP_URL (default https://paperrally.in)
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders, json } from "../_shared/cors.ts";
@@ -22,6 +23,14 @@ Deno.serve(async (req) => {
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   const { data: { user }, error: userError } = await admin.auth.getUser(token);
   if (userError || !user) return json({ error: "Please log in again" }, 401);
+
+  // Test keys + a real user = free Pro (test payments always "succeed"). With test keys, only the
+  // accounts listed in TEST_PAYMENT_USER_IDS (comma-separated user ids) get a link; everyone else
+  // gets a 503 and the app falls back to the normal static payment link.
+  if (keyId.startsWith("rzp_test_")) {
+    const testers = (Deno.env.get("TEST_PAYMENT_USER_IDS") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+    if (!testers.includes(user.id)) return json({ error: "Payments are in test mode" }, 503);
+  }
 
   const amount = Number(Deno.env.get("PRO_PRICE_PAISE") ?? 9900);
   const appUrl = Deno.env.get("APP_URL") ?? "https://paperrally.in";
