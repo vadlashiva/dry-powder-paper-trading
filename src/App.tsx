@@ -1591,6 +1591,20 @@ function LandingPage({ themeIdx, onEnter }) {
   const [lang, setLangState] = useState(() => loadLang());
   const setLang = (code) => { setLangState(code); saveLang(code); };
   const L = LEARN[lang] || LEARN.en;
+  // The Guides dropdown is a <details> element, which only closes when its own summary is
+  // clicked. Close it on any click/tap outside it, on Escape, or after picking a link.
+  const guidesRef = useRef(null);
+  useEffect(() => {
+    const close = () => { if (guidesRef.current?.open) guidesRef.current.open = false; };
+    const onPointer = (e) => { if (guidesRef.current && !guidesRef.current.contains(e.target)) close(); };
+    const onKey = (e) => { if (e.key === "Escape" && guidesRef.current?.open) { close(); guidesRef.current.querySelector("summary")?.focus(); } };
+    document.addEventListener("pointerdown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, []);
   useEffect(() => {
     const els = document.querySelectorAll(".landingFeatureCard, .landingTrial, .whoForCard, .replaySpotlight, .mistakeRow, .faqItem, .newCard");
     const obs = new IntersectionObserver(
@@ -1617,9 +1631,9 @@ function LandingPage({ themeIdx, onEnter }) {
           <a href="#features">Features</a>
           <a href="#how-it-works">How it works</a>
           <a href="#replay">Replay</a>
-          <details className="landingMenuDrop">
+          <details className="landingMenuDrop" ref={guidesRef}>
             <summary>Guides</summary>
-            <div className="landingMenuPanel">
+            <div className="landingMenuPanel" onClick={() => { if (guidesRef.current) guidesRef.current.open = false; }}>
               <a href="/how-to-use.html">How to use PaperRally</a>
               <a href="/paper-trading-india.html">Paper trading in India</a>
               <a href="/how-to-read-options-chain.html">How to read an options chain</a>
