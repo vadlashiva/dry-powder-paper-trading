@@ -1,15 +1,48 @@
 // @ts-nocheck
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { createChart, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries } from "lightweight-charts";
 import { createClient } from "@supabase/supabase-js";
 import {TrendingUp, TrendingDown, RotateCcw, X, Flame, Activity, LogOut, Lock, User as UserIcon, Bell, Trash2, Maximize2, Download, Newspaper, Crosshair, Sparkles,Eye, EyeOff, LineChart, Layers, Play, GraduationCap, Phone,
-  List, BarChart3, Ellipsis, BookOpen, Briefcase, ListOrdered, Mail, KeyRound, Hourglass, MessageSquare,
+  List, BarChart3, Ellipsis, BookOpen, Briefcase, ListOrdered, Mail, KeyRound, Hourglass, MessageSquare, Trophy, Share2, Smartphone, Compass, NotebookPen,
 } from "lucide-react";
 import { LEARN, LangSwitch, loadLang, saveLang } from "./i18n";
 import { useIsMobile, loadSetting, saveSetting, computeCharges, PerformancePanel } from "./extras";
+import { isoWeekIST, initTelemetry, track, tradeKey, TagChips, JournalModal, JournalStatsCard, computeAchievements, AchievementsGrid, ACHIEVEMENTS, makeShareImage, shareImage, captureReferralFromUrl, syncReferrals, InvitePanel, LeaderboardPanel, TourOverlay } from "./growth";
+import { useInstallPrompt, notify, requestNotifications, notificationPermission } from "./pwa";
 
 const SUPPORT_EMAIL = "adi.shiv999@gmail.com";
 const mailtoSupport = (subject, body) => `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+
+/* ---------------- chart library, loaded as its own file ----------------
+   lightweight-charts is ~20% of the app's JavaScript. Loading it separately (the
+   download starts immediately, in parallel) lets the page render without waiting
+   for it; each chart mounts as soon as the library has arrived. */
+let LW = null;
+const lwListeners = new Set();
+const lwReady = import(/* webpackChunkName: "charts" */ "lightweight-charts").then((m) => {
+  LW = m;
+  lwListeners.forEach((fn) => fn());
+  lwListeners.clear();
+  return m;
+});
+lwReady.catch((e) => console.error("chart library failed to load", e));
+function withCharts(Impl, minHeight = 0) {
+  return function ChartGate(props) {
+    const [ready, setReady] = useState(!!LW);
+    useEffect(() => {
+      if (LW) { setReady(true); return; }
+      const fn = () => setReady(true);
+      lwListeners.add(fn);
+      return () => { lwListeners.delete(fn); };
+    }, []);
+    return ready ? <Impl {...props} /> : <div className="chartLoading" style={{ minHeight }} aria-busy="true" />;
+  };
+}
+const PriceChart = withCharts(PriceChartImpl, 360);
+const IndicatorPane = withCharts(IndicatorPaneImpl, 120);
+const RSIChart = withCharts(RSIChartImpl, 120);
+const MACDChart = withCharts(MACDChartImpl, 120);
+const MiniHeroChart = withCharts(MiniHeroChartImpl, 120);
+const PopoutCanvas = withCharts(PopoutCanvasImpl, 200);
 declare global { interface Window { Razorpay: any; } }
 /* ---------------- background themes ---------------- */
 const THEMES = [
@@ -64,11 +97,11 @@ const TRIAL_DAYS = 7;
 // During Replay the whole terminal runs on a simulated clock.
 let SIM_NOW = null;
 const nowMs = () => (SIM_NOW ?? Date.now());
-function trialDaysRemaining(createdAtIso) {
+function trialDaysRemaining(createdAtIso, bonusDays = 0) {
   if (!createdAtIso) return 0;
   const start = new Date(createdAtIso).getTime();
   const elapsedDays = (Date.now() - start) / 86400000;
-  return Math.max(0, Math.ceil(TRIAL_DAYS - elapsedDays));
+  return Math.max(0, Math.ceil(TRIAL_DAYS + bonusDays - elapsedDays));
 }
 
 const TIMEFRAMES = {
@@ -436,7 +469,7 @@ const DRAW_TOOLS = [
   { id: "erase", label: "Erase" },
 ];
 
-function PriceChart({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPrice, pendingLines, chartType, resetKey, overlays = [] }) {
+function PriceChartImpl({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPrice, pendingLines, chartType, resetKey, overlays = [] }) {
   const overlaySeriesRef = useRef(new Map());
   const fitKeyRef = useRef(null);
   const containerRef = useRef(null);
@@ -464,26 +497,26 @@ function PriceChart({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPr
 
   useEffect(() => {
     if (!containerRef.current) return;
-    const chart = createChart(containerRef.current, {
+    const chart = LW.createChart(containerRef.current, {
       width: containerRef.current.clientWidth,
       height: 340,
       layout: { background: { color: "transparent" }, textColor: LW_COLORS.text, fontFamily: "JetBrains Mono, monospace", fontSize: 11, attributionLogo: false },
       grid: { vertLines: { color: LW_COLORS.grid }, horzLines: { color: LW_COLORS.grid } },
-      crosshair: { mode: CrosshairMode.Normal },
+      crosshair: { mode: LW.CrosshairMode.Normal },
       rightPriceScale: { borderColor: LW_COLORS.grid },
       timeScale: { borderColor: LW_COLORS.grid, timeVisible: true, secondsVisible: false },
       handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: true },
       handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: true },
       kineticScroll: { touch: true, mouse: true },
     });
-    const candleSeries = chart.addSeries(CandlestickSeries, {
+    const candleSeries = chart.addSeries(LW.CandlestickSeries, {
       upColor: LW_COLORS.bull, downColor: LW_COLORS.bear, borderVisible: false,
       wickUpColor: LW_COLORS.bull, wickDownColor: LW_COLORS.bear,
     });
-    const lineSeries = chart.addSeries(LineSeries, {
+    const lineSeries = chart.addSeries(LW.LineSeries, {
       color: LW_COLORS.accent, lineWidth: 2, priceLineVisible: true, lastValueVisible: true, visible: false,
     });
-    const maSeries = chart.addSeries(LineSeries, { color: LW_COLORS.amber, lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+    const maSeries = chart.addSeries(LW.LineSeries, { color: LW_COLORS.amber, lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
 
     chart.subscribeCrosshairMove((param) => {
       if (!legendRef.current) return;
@@ -605,7 +638,7 @@ function PriceChart({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPr
     overlays.forEach((o) => {
       let series = overlaySeriesRef.current.get(o.id);
       if (!series) {
-        series = chart.addSeries(LineSeries, { color: o.color, lineWidth: o.width ?? 1.5, lineStyle: o.lineStyle ?? 0, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
+        series = chart.addSeries(LW.LineSeries, { color: o.color, lineWidth: o.width ?? 1.5, lineStyle: o.lineStyle ?? 0, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
         overlaySeriesRef.current.set(o.id, series);
       }
       series.setData(prepped.filter(({ d }) => d[o.field] != null).map(({ t, d }) => (
@@ -732,24 +765,24 @@ function PriceChart({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPr
   );
 }
 
-function IndicatorPane({ data, syncGroupRef, lines, levels = [] }) {
+function IndicatorPaneImpl({ data, syncGroupRef, lines, levels = [] }) {
   const containerRef = useRef(null);
   const seriesRefs = useRef([]);
 
   useEffect(() => {
     if (!containerRef.current) return;
-    const chart = createChart(containerRef.current, {
+    const chart = LW.createChart(containerRef.current, {
       width: containerRef.current.clientWidth,
       height: 110,
       layout: { background: { color: "transparent" }, textColor: LW_COLORS.text, fontFamily: "JetBrains Mono, monospace", fontSize: 10, attributionLogo: false },
       grid: { vertLines: { color: LW_COLORS.grid }, horzLines: { color: LW_COLORS.grid } },
-      crosshair: { mode: CrosshairMode.Normal },
+      crosshair: { mode: LW.CrosshairMode.Normal },
       rightPriceScale: { borderColor: LW_COLORS.grid },
       timeScale: { borderColor: LW_COLORS.grid, visible: false },
       handleScroll: { mouseWheel: true, pressedMouseMove: true },
       handleScale: { mouseWheel: true, pinch: true },
     });
-    seriesRefs.current = lines.map((l) => chart.addSeries(LineSeries, { color: l.color, lineWidth: 2, priceLineVisible: false, lastValueVisible: false }));
+    seriesRefs.current = lines.map((l) => chart.addSeries(LW.LineSeries, { color: l.color, lineWidth: 2, priceLineVisible: false, lastValueVisible: false }));
     levels.forEach((lv) => seriesRefs.current[0].createPriceLine({ price: lv.price, color: lv.color, lineWidth: 1, lineStyle: 2, axisLabelVisible: true }));
     joinSyncGroup(chart, syncGroupRef);
     const onResize = () => { if (containerRef.current) chart.applyOptions({ width: containerRef.current.clientWidth }); };
@@ -768,25 +801,25 @@ function IndicatorPane({ data, syncGroupRef, lines, levels = [] }) {
   return <div ref={containerRef} className="lwChart" />;
 }
 
-function RSIChart({ data, syncGroupRef }) {
+function RSIChartImpl({ data, syncGroupRef }) {
   const containerRef = useRef(null);
   const chartRef = useRef(null);
   const seriesRef = useRef(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
-    const chart = createChart(containerRef.current, {
+    const chart = LW.createChart(containerRef.current, {
       width: containerRef.current.clientWidth,
       height: 110,
       layout: { background: { color: "transparent" }, textColor: LW_COLORS.text, fontFamily: "JetBrains Mono, monospace", fontSize: 10, attributionLogo: false },
       grid: { vertLines: { color: LW_COLORS.grid }, horzLines: { color: LW_COLORS.grid } },
-      crosshair: { mode: CrosshairMode.Normal },
+      crosshair: { mode: LW.CrosshairMode.Normal },
       rightPriceScale: { borderColor: LW_COLORS.grid },
       timeScale: { borderColor: LW_COLORS.grid, visible: false },
       handleScroll: { mouseWheel: true, pressedMouseMove: true },
       handleScale: { mouseWheel: true, pinch: true },
     });
-    const series = chart.addSeries(LineSeries, { color: LW_COLORS.accent, lineWidth: 2, priceLineVisible: false, lastValueVisible: false });
+    const series = chart.addSeries(LW.LineSeries, { color: LW_COLORS.accent, lineWidth: 2, priceLineVisible: false, lastValueVisible: false });
     series.createPriceLine({ price: 70, color: LW_COLORS.bear, lineWidth: 1, lineStyle: 2, axisLabelVisible: true });
     series.createPriceLine({ price: 30, color: LW_COLORS.bull, lineWidth: 1, lineStyle: 2, axisLabelVisible: true });
 
@@ -812,7 +845,7 @@ function RSIChart({ data, syncGroupRef }) {
   return <div ref={containerRef} className="lwChart" />;
 }
 
-function MACDChart({ data, syncGroupRef }) {
+function MACDChartImpl({ data, syncGroupRef }) {
   const containerRef = useRef(null);
   const chartRef = useRef(null);
   const histRef = useRef(null);
@@ -821,20 +854,20 @@ function MACDChart({ data, syncGroupRef }) {
 
   useEffect(() => {
     if (!containerRef.current) return;
-    const chart = createChart(containerRef.current, {
+    const chart = LW.createChart(containerRef.current, {
       width: containerRef.current.clientWidth,
       height: 110,
       layout: { background: { color: "transparent" }, textColor: LW_COLORS.text, fontFamily: "JetBrains Mono, monospace", fontSize: 10, attributionLogo: false },
       grid: { vertLines: { color: LW_COLORS.grid }, horzLines: { color: LW_COLORS.grid } },
-      crosshair: { mode: CrosshairMode.Normal },
+      crosshair: { mode: LW.CrosshairMode.Normal },
       rightPriceScale: { borderColor: LW_COLORS.grid },
       timeScale: { borderColor: LW_COLORS.grid, timeVisible: true, secondsVisible: false },
       handleScroll: { mouseWheel: true, pressedMouseMove: true },
       handleScale: { mouseWheel: true, pinch: true },
     });
-    const hist = chart.addSeries(HistogramSeries, { priceLineVisible: false, lastValueVisible: false });
-    const macdLine = chart.addSeries(LineSeries, { color: LW_COLORS.bull, lineWidth: 2, priceLineVisible: false, lastValueVisible: false });
-    const signalLine = chart.addSeries(LineSeries, { color: LW_COLORS.bear, lineWidth: 2, priceLineVisible: false, lastValueVisible: false });
+    const hist = chart.addSeries(LW.HistogramSeries, { priceLineVisible: false, lastValueVisible: false });
+    const macdLine = chart.addSeries(LW.LineSeries, { color: LW_COLORS.bull, lineWidth: 2, priceLineVisible: false, lastValueVisible: false });
+    const signalLine = chart.addSeries(LW.LineSeries, { color: LW_COLORS.bear, lineWidth: 2, priceLineVisible: false, lastValueVisible: false });
 
     chartRef.current = chart;
     histRef.current = hist;
@@ -874,6 +907,8 @@ const SUPABASE_URL = "https://qfzepvorvvajqpnfwceq.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_-pw1tSkYhKymxQZHNqT66w_GOPnWEQN";
 const YAHOO_PROXY_URL = `${SUPABASE_URL}/functions/v1/yahoo-proxy`;
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+initTelemetry(supabase);
+captureReferralFromUrl();
 
 const usernameToEmail = (username) => `${username.trim().toLowerCase()}@gmail.com`;
 
@@ -959,6 +994,8 @@ function hydratePortfolio(raw) {
     alerts: base.alerts ?? [],
     pendingOrders: (base.pendingOrders || []).map((o) => ({ ...o, createdAt: new Date(o.createdAt) })),
     customInstruments: base.customInstruments ?? [],
+    prefs: base.prefs ?? {},
+    weekStart: base.weekStart ?? null,
   };
 }
 async function fetchPortfolio(userId) {
@@ -1417,14 +1454,14 @@ function LiveHeroPrice() {
   );
 }
 
-function MiniHeroChart() {
+function MiniHeroChartImpl() {
   const containerRef = useRef(null);
   const chartRef = useRef(null);
   const seriesRef = useRef(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
-    const chart = createChart(containerRef.current, {
+    const chart = LW.createChart(containerRef.current, {
       width: containerRef.current.clientWidth,
       height: 90,
       layout: { background: { color: "transparent" }, textColor: "transparent", attributionLogo: false },
@@ -1436,7 +1473,7 @@ function MiniHeroChart() {
       handleScale: false,
       crosshair: { vertLine: { visible: false }, horzLine: { visible: false } },
     });
-    const series = chart.addSeries(CandlestickSeries, {
+    const series = chart.addSeries(LW.CandlestickSeries, {
       upColor: "#14E8A0", downColor: "#FF5470", borderVisible: false,
       wickUpColor: "#14E8A0", wickDownColor: "#FF5470",
     });
@@ -1586,7 +1623,25 @@ function ReplaySpotlight() {
   );
 }
 
-function LandingPage({ themeIdx, onEnter }) {
+// "N traders practised this week" — shown only once the number is worth showing.
+function LiveTradersCount() {
+  const [n, setN] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    supabase.rpc("active_traders_this_week").then(({ data, error }) => { if (!cancelled && !error && typeof data === "number") setN(data); }, () => {});
+    return () => { cancelled = true; };
+  }, []);
+  if (n == null || n < 25) return null;
+  return <div className="liveCount heroReveal heroReveal-3"><span className="liveCountDot" /> {n.toLocaleString("en-IN")} traders practised on PaperRally this week</div>;
+}
+
+const PRO_FEATURES = ["Limit & stop-loss orders", "RSI, MACD and every chart timeframe", "Options chain with live Greeks", "Search & add any NSE/BSE stock", "Price alerts with phone notifications", "News tab", "Trade history CSV export"];
+const FREE_FEATURES = ["₹10,00,000 virtual cash", "Live NSE & BSE prices", "Market orders & positions", "Replay any recent trading day", "Performance stats, journal & leaderboard", "Learn section (English, हिंदी, ಕನ್ನಡ)"];
+
+function LandingPage({ themeIdx, onEnter: onEnterRaw }) {
+  const install = useInstallPrompt();
+  const onEnter = (mode) => { track(mode === "register" ? "signup_start" : "login_start"); onEnterRaw(mode); };
+  useEffect(() => { track("landing_view", { ref: !!new URLSearchParams(window.location.search).get("ref") }); }, []);
   const [marketNow] = useState(() => getMarketStatus());
   const [lang, setLangState] = useState(() => loadLang());
   const setLang = (code) => { setLangState(code); saveLang(code); };
@@ -1637,6 +1692,9 @@ function LandingPage({ themeIdx, onEnter }) {
               <a href="/how-to-use.html">How to use PaperRally</a>
               <a href="/paper-trading-india.html">Paper trading in India</a>
               <a href="/how-to-read-options-chain.html">How to read an options chain</a>
+              <a href="/how-to-set-stop-loss.html">How to set a stop-loss</a>
+              <a href="/nifty-options-for-beginners.html">NIFTY options for beginners</a>
+              <a href="/guides.html" className="landingMenuAll">All guides →</a>
             </div>
           </details>
           <a href="#faq">FAQ</a>
@@ -1659,6 +1717,7 @@ function LandingPage({ themeIdx, onEnter }) {
           <div className="heroTrust heroReveal heroReveal-3">
             <span>No demat account</span><span>No KYC</span><span>No real money</span>
           </div>
+          <LiveTradersCount />
           {!marketNow.isOpen && (
             <div className="heroClosedNote heroReveal heroReveal-3">
               <span className="heroClosedDot" /> <b>Market's closed right now — you can still trade.</b> Sign up and practise the last session from its 9:15 AM open right now.
@@ -1787,6 +1846,26 @@ function LandingPage({ themeIdx, onEnter }) {
         </div>
       </section>
 
+      <section className="demoSection" id="demo">
+        <div className="demoCopy">
+          <h2 className="landingH2" style={{ textAlign: "left", margin: "0 0 12px" }}>See PaperRally in 36 seconds</h2>
+          <p className="dim">Virtual capital, live prices, options with Greeks, replay of any recent day, the pop-out trading window and more — in one quick tour.</p>
+          <button className="btn btnBull landingCta" onClick={() => onEnter("register")}><Sparkles size={15} /> Try it yourself — free</button>
+        </div>
+        <div className="demoPhone">
+          <video
+            className="demoVideo"
+            src="/media/paperrally-demo.mp4"
+            poster="/media/paperrally-demo-poster.jpg"
+            controls
+            playsInline
+            preload="none"
+            onPlay={() => track("demo_play")}
+            aria-label="36-second demo video of the PaperRally app"
+          />
+        </div>
+      </section>
+
       <section className="howSteps" id="how-it-works">
         <LangSwitch lang={lang} onChange={setLang} className="landingLangSwitch" />
         <h2 className="landingH2">{L.howTitle}</h2>
@@ -1849,6 +1928,27 @@ function LandingPage({ themeIdx, onEnter }) {
         </div>
       </section>
 
+      <section className="pricingSection" id="pricing">
+        <h2 className="landingH2">Simple pricing</h2>
+        <p className="dim mistakesIntro">Everything is free for your first 7 days. After that, keep paper trading free — or unlock Pro.</p>
+        <div className="pricingGrid">
+          <div className="priceCard">
+            <div className="priceName">Free</div>
+            <div className="priceAmt">₹0<span>/forever</span></div>
+            <ul>{FREE_FEATURES.map((f) => <li key={f}>{f}</li>)}</ul>
+            <button className="btn btnGhost landingCta" onClick={() => onEnter("register")}>Start free</button>
+          </div>
+          <div className="priceCard priceCardPro">
+            <div className="priceBadge">First 7 days free</div>
+            <div className="priceName">Pro</div>
+            <div className="priceAmt">₹99<span>/month</span></div>
+            <ul><li><b>Everything in Free, plus:</b></li>{PRO_FEATURES.map((f) => <li key={f}>{f}</li>)}</ul>
+            <button className="btn btnMarigold landingCta" onClick={() => onEnter("register")}>Try Pro free for 7 days</button>
+            <div className="dim priceFine">No card needed for the trial. Pay by UPI or card via Razorpay when you upgrade. No auto-renewal.</div>
+          </div>
+        </div>
+      </section>
+
       <section className="landingFaq" id="faq">
         <h2 className="landingH2">Questions? Here's What People Usually Ask.</h2>
         <div className="faqList">
@@ -1877,6 +1977,7 @@ function LandingPage({ themeIdx, onEnter }) {
           <a href="/how-to-use.html">How to use</a>
           <a href="/paper-trading-india.html">Paper trading in India</a>
           <a href="/how-to-read-options-chain.html">How to read an options chain</a>
+          <a href="/guides.html">All guides</a>
           <a href="/contact.html">Contact</a>
           <a href="/privacy.html">Privacy</a>
           <a href="/terms.html">Terms</a>
@@ -1886,6 +1987,11 @@ function LandingPage({ themeIdx, onEnter }) {
           >
             <MessageSquare size={15} /> Give feedback
           </a>
+          {install.canInstall && (
+            <a href="#install" className="footerInstall" onClick={(e) => { e.preventDefault(); install.promptInstall().then((r) => track("install_prompt", { result: r, from: "landing" })); }}>
+              <Smartphone size={15} /> Install app
+            </a>
+          )}
         </div>
         <div className="dim landingFooterNote">PaperRally is a simulator for learning. No real money or securities are ever traded, virtual balances have no cash value, and nothing here is investment advice. PaperRally is not registered with SEBI and is not a broker.</div>
       </footer>
@@ -2172,7 +2278,7 @@ function PhoneGate({ userId, userEmail, themeIdx, cycleTheme, onDone, onCancel }
   );
 }
 
-function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPaidPro, inTrial, trialDaysLeft, onRefreshSubscription, onLogout, themeIdx, cycleTheme }) {
+function TradingApp({ username, userId, userEmail, contactEmail = null, referral = null, initialPortfolio, isPro, isPaidPro, inTrial, trialDaysLeft, onRefreshSubscription, onLogout, themeIdx, cycleTheme }) {
   const saved = initialPortfolio;
   const syncGroupRef = useRef([]);
 
@@ -2306,6 +2412,16 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
   const [paymentPendingAt, setPaymentPendingAt] = useState(() => loadSetting(paymentKey, null));
   const [paymentChecking, setPaymentChecking] = useState(false);
 
+  // ---- growth & retention ----
+  const [prefs, setPrefs] = useState(() => saved?.prefs ?? {}); // synced with the portfolio row
+  const updatePrefs = (patch) => setPrefs((p) => ({ ...p, ...patch, flags: { ...(p.flags || {}), ...(patch.flags || {}) } }));
+  const [weekStart, setWeekStart] = useState(() => saved?.weekStart ?? null); // { week, equity, reset? }
+  const [journalEditing, setJournalEditing] = useState(null);
+  const [lastTradeId, setLastTradeId] = useState(null);
+  const [tourOpen, setTourOpen] = useState(false);
+  const [notifPerm, setNotifPerm] = useState(() => notificationPermission());
+  const install = useInstallPrompt();
+
   // ---- Replay Mode ----
   const REPLAY_CASH = 1000000;
   const [replaySymbol, setReplaySymbol] = useState("RELIANCE.NS");
@@ -2432,10 +2548,10 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
     if (replayActive) return; // replay sessions are never saved over the real portfolio
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
-      upsertPortfolio(userId, { cash, stockPositions, optionPositions, trades, alerts, pendingOrders, customInstruments });
+      upsertPortfolio(userId, { cash, stockPositions, optionPositions, trades, alerts, pendingOrders, customInstruments, prefs, weekStart });
     }, 600);
     return () => clearTimeout(saveTimerRef.current);
-  }, [userId, cash, stockPositions, optionPositions, trades, alerts, pendingOrders, customInstruments, replayActive]);
+  }, [userId, cash, stockPositions, optionPositions, trades, alerts, pendingOrders, customInstruments, prefs, weekStart, replayActive]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2637,6 +2753,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
       if (hit) {
         changed = true;
         showToast(`Alert: ${displayTicker(a.symbol)} crossed ${a.direction} ${fmtMoney(a.target)}`, a.direction === "above" ? "bull" : "bear");
+        notify(`${displayTicker(a.symbol)} crossed ${fmtMoney(a.target)}`, `Price is now ${fmtMoney(price)} — your ${a.direction} alert on PaperRally fired.`, { tag: `alert-${a.id}` });
         return { ...a, triggered: true };
       }
       return a;
@@ -2716,6 +2833,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
       const label = `${o.kind.toUpperCase()} ${o.side.toUpperCase()} ${o.filledQty} ${displayTicker(o.symbol)} @ ${fmtMoney(o.fillPrice)}`;
       logTrade(label, o.side === "buy" ? -(o.fillPrice * o.filledQty) : o.fillPrice * o.filledQty, o.side === "sell" ? o.realized : null);
       showToast(`${o.kind === "limit" ? "Limit" : "Stop"} order filled: ${o.side} ${o.filledQty} ${displayTicker(o.symbol)}`, o.side === "buy" ? "bull" : "bear");
+      notify(`${o.kind === "limit" ? "Limit" : "Stop"} order filled`, `${o.side.toUpperCase()} ${o.filledQty} ${displayTicker(o.symbol)} @ ${fmtMoney(o.fillPrice)}`, { tag: `fill-${o.id}` });
     });
     partial.forEach((o) => {
       const label = `${o.kind.toUpperCase()} ${o.side.toUpperCase()} ${o.filledQty} ${displayTicker(o.symbol)} @ ${fmtMoney(o.fillPrice)} (partial)`;
@@ -2903,7 +3021,11 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
     const ch = chargesOnRef.current ? computeCharges(label, amount) : null;
     const charges = ch ? ch.total : 0;
     if (charges) setCash((c) => c - charges);
-    setTrades((prev) => [{ id: uid(), time: new Date(nowMs()), label, amount, realized, charges }, ...prev].slice(0, 200));
+    const id = uid();
+    setTrades((prev) => [{ id, time: new Date(nowMs()), label, amount, realized, charges, key: tradeKey(label) }, ...prev].slice(0, 200));
+    setLastTradeId(id);
+    if (replayActiveRef.current) updatePrefs({ flags: { replay: true } });
+    track("trade", { option: /\b(BTO|STO|STC|BTC)\b/.test(label), replay: replayActiveRef.current, close: realized != null });
   };
 
   // opts.focus: symbol to open once replay starts (e.g. RELIANCE.NS for a first trade).
@@ -3005,7 +3127,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
   };
 
   // Picking a symbol from the watchlist: on phones, jump straight to its chart.
-  const ACCOUNT_TABS = ["positions", "orders", "history", "perf", "replay", "learn"];
+  const ACCOUNT_TABS = ["positions", "orders", "history", "perf", "leaderboard", "replay", "learn"];
   const pickSymbol = (sym) => {
     setSelected(sym);
     if (isMobile) {
@@ -3016,12 +3138,13 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
   };
   // Escape closes whichever dialog or sheet is on top.
   const escStateRef = useRef({});
-  escStateRef.current = { closeConfirm, moreOpen, ticket, slEditing, editingOrder, upgradeModalOpen, checkoutBusy, confirmReset };
+  escStateRef.current = { journalEditing, closeConfirm, moreOpen, ticket, slEditing, editingOrder, upgradeModalOpen, checkoutBusy, confirmReset };
   useEffect(() => {
     const onKey = (e) => {
       if (e.key !== "Escape") return;
       const st = escStateRef.current;
-      if (st.closeConfirm) setCloseConfirm(null);
+      if (st.journalEditing) setJournalEditing(null);
+      else if (st.closeConfirm) setCloseConfirm(null);
       else if (st.moreOpen) setMoreOpen(false);
       else if (st.ticket) setTicket(null);
       else if (st.slEditing) setSlEditing(null);
@@ -3053,10 +3176,35 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
     showToast("Back to the live market and your real portfolio", "bull");
   };
 
-  const handleUpgrade = () => {
+  const handleUpgrade = async () => {
     setCheckoutBusy(true);
+    track("upgrade_click");
+    // Preferred path: a personal payment link from the create-payment-link Edge Function, which
+    // lets the razorpay-webhook function switch Pro on automatically. Falls back to the static link.
+    const win = window.open("", "_blank"); // open now, while we still have the click, so it isn't blocked
+    try {
+      const { data, error } = await supabase.functions.invoke("create-payment-link", { body: {} });
+      if (!error && data?.short_url) {
+        if (win) win.location.href = data.short_url; else window.open(data.short_url, "_blank", "noopener");
+        track("payment_link_opened", { auto: true });
+        showToast("Complete the payment in the new tab — Pro switches on automatically once it's paid.", "bull");
+        setUpgradeModalOpen(false);
+        const at = Date.now();
+        setPaymentPendingAt(at);
+        saveSetting(paymentKey, at);
+        let attempts = 0;
+        const poll = setInterval(async () => {
+          attempts++;
+          const sub = await onRefreshSubscription();
+          if (sub?.status === "active" || attempts >= 40) { clearInterval(poll); setCheckoutBusy(false); }
+        }, 5000);
+        return;
+      }
+    } catch { /* function not deployed yet — use the static link below */ }
+    if (win) win.close();
+    track("payment_link_opened", { auto: false });
     startProCheckout({
-      userEmail,
+      userEmail: contactEmail,
       onSuccess: () => {
         showToast("Complete the payment in the new tab — we'll show its status here.", "bull");
         setUpgradeModalOpen(false);
@@ -3375,6 +3523,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
     setOptionPositions((prev) => prev.filter((p) => p.id !== pos.id));
     logTrade(`${reason ? `${reason} ` : ""}${short ? "BTC" : "STC"} ${pos.qty}x ${pos.type.toUpperCase()} ${displayTicker(pos.symbol)} ${pos.strike} @ ${fmtMoney(price)}`, short ? -total : total, (short ? pos.avgPremium - price : price - pos.avgPremium) * posMultiplier(pos) * pos.qty);
     showToast(reason ? `${reason}: ${pos.type === "call" ? "C" : "P"} ${displayTicker(pos.symbol)} ${pos.strike} closed @ ${fmtMoney(price)}` : "Position closed", "bear");
+    if (reason) notify(`${reason}: ${displayTicker(pos.symbol)} ${pos.strike} ${pos.type.toUpperCase()}`, `Closed @ ${fmtMoney(price)}`, { tag: `sl-${pos.id}` });
   };
 
   const closeOptionFromPopout = (posId) => {
@@ -3460,6 +3609,10 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
   };
 
   const doReset = () => {
+    // A reset would wipe out a losing week, so it also takes you off this week's leaderboard.
+    const wk = isoWeekIST();
+    setWeekStart({ week: wk, equity: STARTING_CASH, reset: true });
+    if (prefs.lbJoined) supabase.from("leaderboard").delete().eq("user_id", userId).eq("week", wk).then(() => {}, () => {});
     setCash(STARTING_CASH);
     setStockPositions([]);
     setOptionPositions([]);
@@ -3516,6 +3669,128 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
   const chainStrikes = strikesAround(q?.price ?? meta.fallback, 9, chainStep);
   const T = currentExpiry ? (currentExpiry.getTime() - nowMs()) / (365 * 24 * 3600 * 1000) : 0;
 
+  // ---- weekly challenge: track the start-of-week equity, sync the leaderboard row ----
+  const weekKey = isoWeekIST(nowMs());
+  useEffect(() => {
+    if (replayActive || !pricesReady) return;
+    if (!weekStart || weekStart.week !== weekKey) {
+      if (weekStart && !weekStart.reset && equity > weekStart.equity) updatePrefs({ flags: { green_week: true } });
+      setWeekStart({ week: weekKey, equity });
+    }
+  }, [weekKey, pricesReady, replayActive]);
+  const weekValid = !!(weekStart && weekStart.week === weekKey && weekStart.equity > 0);
+  const weekReturn = weekValid && !replayActive ? ((equity - weekStart.equity) / weekStart.equity) * 100 : 0;
+  const weekTrades = replayActive ? 0 : trades.filter((t) => isoWeekIST(t.time) === weekKey).length;
+  const resetThisWeek = !!(weekStart?.reset && weekStart.week === weekKey);
+  const lbSyncRef = useRef(0);
+  const syncLeaderboard = (force = false, nameOverride = null) => {
+    const name = nameOverride || prefs.lbName;
+    if (!name || replayActive || !weekValid || resetThisWeek) return;
+    if (!force && Date.now() - lbSyncRef.current < 60000) return;
+    lbSyncRef.current = Date.now();
+    supabase.from("leaderboard").upsert({
+      user_id: userId, week: weekKey, display_name: name,
+      return_pct: Math.max(-100, Math.min(100000, +weekReturn.toFixed(3))), trades: weekTrades, updated_at: new Date().toISOString(),
+    }).then(() => {}, () => {});
+  };
+  useEffect(() => { if (prefs.lbJoined && pricesReady) syncLeaderboard(); }, [prefs.lbJoined, pricesReady, Math.round(weekReturn * 100), weekTrades]);
+  const joinLeaderboard = (name) => {
+    updatePrefs({ lbJoined: true, lbName: name, flags: { challenger: true } });
+    syncLeaderboard(true, name);
+    track("leaderboard_join");
+    showToast("You're on this week's leaderboard — good luck!", "bull");
+  };
+  const leaveLeaderboard = () => {
+    updatePrefs({ lbJoined: false });
+    supabase.from("leaderboard").delete().eq("user_id", userId).eq("week", weekKey).then(() => {}, () => {});
+    showToast("You've left the leaderboard", "bear");
+  };
+
+  // ---- share cards ----
+  const shareWeek = async () => {
+    const closes = trades.filter((t) => t.realized != null && isoWeekIST(t.time) === weekKey);
+    const wins = closes.filter((t) => t.realized > 0).length;
+    const pnl = weekValid ? equity - weekStart.equity : 0;
+    const blob = await makeShareImage({
+      title: "My week on PaperRally",
+      bigValue: fmtPct(weekReturn),
+      positive: weekReturn >= 0,
+      lines: [["Virtual P&L", fmtMoney(pnl, 0)], ["Trades this week", String(weekTrades)], ["Win rate", closes.length ? `${Math.round((wins / closes.length) * 100)}%` : "—"]],
+    });
+    const r = await shareImage(blob, `My paper-trading week: ${fmtPct(weekReturn)} on PaperRally. Practise NSE & NIFTY options free → https://paperrally.in/?ref=${userId}`);
+    track("share_card", { result: r });
+    if (r === "downloaded") showToast("Image saved — share it on WhatsApp or Instagram", "bull");
+  };
+
+  // ---- achievements ----
+  const unlockedNow = useMemo(() => computeAchievements(trades, { ...(prefs.flags || {}), installed: prefs.flags?.installed || install.standalone }), [trades, prefs.flags, install.standalone]);
+  useEffect(() => {
+    if (replayActive) return;
+    const stored = prefs.achievements;
+    const now = [...unlockedNow];
+    if (!stored) { updatePrefs({ achievements: now }); return; } // first run: record silently
+    const fresh = now.filter((id) => !stored.includes(id));
+    if (!fresh.length) return;
+    updatePrefs({ achievements: [...stored, ...fresh] });
+    const first = ACHIEVEMENTS.find((a) => a.id === fresh[0]);
+    showToast(`${first.icon} Achievement unlocked: ${first.title}${fresh.length > 1 ? ` (+${fresh.length - 1} more)` : ""}`, "bull");
+    track("achievement", { id: fresh[0] });
+  }, [unlockedNow, replayActive]);
+
+  // ---- links from outside: ?paid=1 after Razorpay, ?tab=… from home-screen shortcuts ----
+  useEffect(() => {
+    const qs = new URLSearchParams(window.location.search);
+    let changed = false;
+    if (qs.get("paid") === "1") {
+      qs.delete("paid"); changed = true;
+      if (!isPaidPro) { const at = Date.now(); setPaymentPendingAt(at); saveSetting(paymentKey, at); onRefreshSubscription(); }
+    }
+    const t = qs.get("tab");
+    if (t && ["positions", "orders", "replay", "perf", "leaderboard", "learn", "history"].includes(t)) { setTab(t); qs.delete("tab"); changed = true; }
+    if (qs.get("source") === "pwa") { updatePrefs({ flags: { installed: true } }); qs.delete("source"); changed = true; }
+    if (changed) window.history.replaceState(null, "", window.location.pathname + (qs.toString() ? `?${qs}` : "") + window.location.hash);
+    track("app_open", { standalone: install.standalone, mobile: isMobile });
+  }, []);
+
+  // ---- guided tour (once per account, on this browser) ----
+  const tourKey = `pr_tour_done_${userId}`;
+  const startTour = () => {
+    if (!selected) setSelected(allInstruments.some((s) => s.symbol === "RELIANCE.NS") ? "RELIANCE.NS" : allInstruments.find((s) => s.exchange !== "INDEX")?.symbol);
+    setTab("trade");
+    setMoreOpen(false);
+    if (isMobile) setMobilePane("main");
+    setTimeout(() => setTourOpen(true), 250);
+  };
+  useEffect(() => {
+    if (loadSetting(tourKey, false) || !neverTradedRef.current) return; // existing users can start it from More / Learn
+    const t = setTimeout(() => { if (!document.querySelector(".modalOverlay")) startTour(); }, 1800);
+    return () => clearTimeout(t);
+  }, []);
+  const finishTour = (completed) => {
+    setTourOpen(false);
+    saveSetting(tourKey, true);
+    track(completed ? "tour_complete" : "tour_skipped");
+  };
+  const tourSteps = [
+    { title: "Pick a stock", text: isMobile ? "Tap Watchlist to see live NSE & BSE prices. Tap any stock to open its chart." : "Your watchlist shows live NSE & BSE prices. Click any stock to open its chart, or search all 5,000+ BSE companies.", target: () => document.querySelector(isMobile ? ".bottomNav .bottomNavItem" : ".watchlist") },
+    { title: "Read the chart", text: "Switch timeframes, add indicators like RSI and MACD, and draw trendlines. Practice today replays the market from 9:15 AM.", target: () => document.querySelector(".chartCard") },
+    { title: "Place a practice trade", text: "Choose a quantity, keep the suggested stop-loss, and check how much you'd risk before you press Buy. It's all virtual money.", target: () => document.getElementById("stockOrderCard") },
+    { title: "Track and improve", text: isMobile ? "Positions shows your live P&L. Under More you'll find Performance, the weekly Leaderboard and Learn." : "Positions shows live P&L. Performance shows your win rate and habits, and the Leaderboard runs a new challenge every week.", target: () => document.querySelector(isMobile ? ".bottomNav" : ".tabs") },
+  ];
+
+  const feedbackHref = mailtoSupport("PaperRally feedback", `Hi PaperRally team,\n\nWhat I like:\n\nWhat's confusing or broken:\n\nWhat I'd love to see next:\n\n— ${username} (${isMobile ? "phone" : "desktop"})`);
+  const enableNotifications = async () => {
+    const r = await requestNotifications();
+    setNotifPerm(r);
+    if (r === "granted") { showToast("Notifications on — alerts, fills and stop-losses reach you even when the app is in the background", "bull"); notify("Notifications are on", "You'll hear from PaperRally when an alert or stop-loss fires.", { force: true }); }
+    else if (r === "denied") showToast("Notifications are blocked — allow them for paperrally.in in your browser settings", "bear");
+  };
+  const doInstall = async () => {
+    const r = await install.promptInstall();
+    track("install_prompt", { result: r });
+    if (r === "accepted") updatePrefs({ flags: { installed: true } });
+  };
+
   const TAB_DEFS = [
     ["trade", "Chart & Trade"],
     ["indicators", `Indicators${activeIndicatorCount ? ` (${activeIndicatorCount})` : ""}`],
@@ -3526,6 +3801,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
     ["news", "News"],
     ["history", "History"],
     ["perf", "Performance"],
+    ["leaderboard", "Leaderboard"],
     ["replay", "Replay"],
     ["learn", L.learnTab],
   ];
@@ -3575,6 +3851,8 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
           {!isPaidPro && !inTrial && (
             <button className="upgradeBtn" onClick={() => setUpgradeModalOpen(true)}><Sparkles size={13} /> Upgrade to Pro</button>
           )}
+          {install.canInstall && <button className="resetBtn installBtn" onClick={doInstall} title="Install PaperRally as an app"><Smartphone size={14} /> Install app</button>}
+          <a className="resetBtn" href={feedbackHref} title="Tell us what to improve"><MessageSquare size={14} /> Feedback</a>
           <button className="resetBtn" onClick={popOutChart} title="Open a full-day chart in a new window"><Maximize2 size={14} /> Pop-out chart</button>
           <button className="themeBtn" onClick={cycleTheme} title="Change background theme"><span className="themeEmoji">{THEMES[themeIdx].emoji}</span> {THEMES[themeIdx].name}</button>
           <button className="resetBtn" onClick={() => setConfirmReset(true)}><RotateCcw size={14} /> Reset</button>
@@ -4020,6 +4298,16 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                   {!marketStatus.isOpen && replayActive && (
                     <div className="orderHint dim" style={{ textAlign: "center", marginTop: "-6px" }}>This replay day has ended — press Restart day to go again</div>
                   )}
+                  {(() => {
+                    const lt = lastTradeId && trades[0]?.id === lastTradeId ? trades[0] : null;
+                    if (!lt || lt.realized != null) return null;
+                    return (
+                      <div className="tagPrompt">
+                        <div className="tagPromptQ">{lt.tag ? <>Tagged: <b>{lt.tag}</b></> : "Why did you take this trade?"}</div>
+                        <TagChips compact value={lt.tag} onPick={(tag) => { setTrades((prev) => prev.map((t) => (t.id === lt.id ? { ...t, tag } : t))); if (tag) track("trade_tagged", { tag }); }} />
+                      </div>
+                    );
+                  })()}
 
                   {(() => {
                     const pos = stockPositions.find((p) => p.symbol === selected);
@@ -4313,6 +4601,15 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                   <button className="btn btnBull alertAddBtn" onClick={addAlert}><Bell size={13} /> Add Alert</button>
                 </div>
                 <div className="dim alertHint">Alerts are checked against live prices and fire a notification here in the app — set one for the symbol currently selected in the watchlist.</div>
+                {notifPerm !== "unsupported" && (
+                  <div className="notifRow">
+                    {notifPerm === "granted"
+                      ? <span className="bull"><Bell size={13} /> Phone notifications are on — alerts reach you even when PaperRally is in the background.</span>
+                      : notifPerm === "denied"
+                        ? <span className="dim">Notifications are blocked for this site. Allow them in your browser settings to get alerts in the background.</span>
+                        : <><span className="dim">Get alerts as phone notifications, even when the app is in the background.</span><button className="btn btnGhost" onClick={enableNotifications}><Bell size={13} /> Turn on notifications</button></>}
+                  </div>
+                )}
               </div>
 
               {alerts.length === 0 ? (
@@ -4372,14 +4669,19 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                 <div className="empty">No trades yet. Your fills will show up here.</div>
               ) : (
                 <table className="posTable">
-                  <thead><tr><th>Time</th><th>Trade</th><th>Cash Impact</th><th>Realized P&amp;L</th></tr></thead>
+                  <thead><tr><th>Time</th><th>Trade</th><th>Cash Impact</th><th>Realized P&amp;L</th><th>Journal</th></tr></thead>
                   <tbody>
                     {trades.map((t) => (
                       <tr key={t.id}>
                         <td className="mono dim">{t.time.toLocaleTimeString()}</td>
-                        <td className="mono">{t.label}</td>
+                        <td className="mono">{t.label}{t.charges ? <div className="dim histCharges">charges {fmtMoney(t.charges)}</div> : null}</td>
                         <td className="mono">{fmtMoney(t.amount)}</td>
                         <td className={`mono ${t.realized == null ? "dim" : t.realized >= 0 ? "bull" : "bear"}`}>{t.realized == null ? "—" : fmtMoney(t.realized)}</td>
+                        <td>
+                          <button className={`closeBtn journalBtn ${t.tag ? "journalBtnOn" : ""}`} onClick={() => setJournalEditing(t)} aria-label={t.tag ? `Journal: ${t.tag}. Edit` : "Add a journal note"} title={t.note || ""}>
+                            <NotebookPen size={12} /> {t.tag || (t.note ? "Note" : "Add")}
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -4399,6 +4701,45 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                 showToast(chargesOn ? "Charges off — trades are commission-free again" : "Charges on — brokerage, STT, fees and GST will be deducted from now on", "bull");
               }}
             />
+          )}
+          {tab === "perf" && (
+            <div className="perfExtras">
+              {!replayActive && (
+                <div className="shareRow">
+                  <div>
+                    <b>This week: <span className={weekReturn >= 0 ? "bull" : "bear"}>{fmtPct(weekReturn)}</span></b>
+                    <span className="dim"> · {weekTrades} trade{weekTrades === 1 ? "" : "s"}</span>
+                  </div>
+                  <button className="btn btnBull" onClick={shareWeek}><Share2 size={14} /> Share my week</button>
+                </div>
+              )}
+              <JournalStatsCard trades={trades} fmtMoney={fmtMoney} />
+              <AchievementsGrid unlocked={prefs.achievements || [...unlockedNow]} />
+            </div>
+          )}
+
+          {tab === "leaderboard" && (
+            replayActive ? (
+              <div className="empty">The leaderboard uses your real portfolio. Exit replay to see this week's standings.</div>
+            ) : (
+              <>
+                <LeaderboardPanel
+                  supabase={supabase}
+                  userId={userId}
+                  prefs={prefs}
+                  defaultName={username.slice(0, 20).replace(/[^\p{L}\p{N} _.\-]/gu, "") || "Trader"}
+                  weekKey={weekKey}
+                  weekReturn={weekReturn}
+                  weekTrades={weekTrades}
+                  resetThisWeek={resetThisWeek}
+                  onJoin={joinLeaderboard}
+                  onLeave={leaveLeaderboard}
+                  onShare={shareWeek}
+                  fmtPct={fmtPct}
+                />
+                <InvitePanel userId={userId} referral={referral} inTrial={inTrial} isPaidPro={isPaidPro} showToast={showToast} />
+              </>
+            )
           )}
 
           {tab === "learn" && (
@@ -4428,6 +4769,8 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                 ))}
               </div>
               <div className="learnLinksRow">
+                <button className="btn btnBull" onClick={startTour}><Compass size={14} /> Take the 30-second tour</button>
+                <a className="btn btnGhost" href="/guides.html" target="_blank" rel="noopener noreferrer">All guides →</a>
                 {GUIDE_LINKS.map((l) => (
                   <a key={l.url} href={l.url} target="_blank" rel="noopener noreferrer" className="btn btnGhost">{l.label} →</a>
                 ))}
@@ -4547,6 +4890,20 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
         </div>
       )}
 
+      {tourOpen && <TourOverlay steps={tourSteps} onDone={finishTour} />}
+      {journalEditing && (
+        <JournalModal
+          trade={journalEditing}
+          onClose={() => setJournalEditing(null)}
+          onSave={({ tag, note }) => {
+            setTrades((prev) => prev.map((t) => (t.id === journalEditing.id ? { ...t, tag, note } : t)));
+            setJournalEditing(null);
+            if (tag) track("trade_tagged", { tag, from: "history" });
+            showToast("Journal saved", "bull");
+          }}
+        />
+      )}
+
       {closeConfirm && (() => {
         const { kind, pos } = closeConfirm;
         let title, detail, price, pnl;
@@ -4598,6 +4955,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                 ["news", "News", Newspaper],
                 ["history", "History", ListOrdered],
                 ["perf", "Performance", TrendingUp],
+                ["leaderboard", "Leaderboard", Trophy],
                 ["replay", "Replay", Play],
                 ["learn", L.learnTab, BookOpen],
               ].map(([id, label, Icon]) => (
@@ -4612,11 +4970,17 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
               )}
               <button className="btn btnGhost" onClick={() => { setMoreOpen(false); replayActive ? restartReplayDay() : practiceToday(); }} disabled={replayBusy}><Play size={14} /> {replayActive ? "Restart day" : "Practice today"}</button>
               {replayActive && <button className="btn btnGhost" onClick={() => { setMoreOpen(false); exitReplay(); }}>Exit replay</button>}
+              {install.canInstall && <button className="btn btnBull" onClick={doInstall}><Smartphone size={14} /> Install app</button>}
+              <a className="btn btnGhost" href={feedbackHref}><MessageSquare size={14} /> Feedback</a>
+              <button className="btn btnGhost" onClick={startTour}><Compass size={14} /> Take the tour</button>
               <button className="btn btnGhost" onClick={() => { setMoreOpen(false); popOutChart(); }}><Maximize2 size={14} /> Pop-out chart</button>
               <button className="btn btnGhost" onClick={cycleTheme}><span className="themeEmoji">{THEMES[themeIdx].emoji}</span> Theme: {THEMES[themeIdx].name}</button>
               <button className="btn btnGhost" onClick={() => { setMoreOpen(false); setConfirmReset(true); }}><RotateCcw size={14} /> Reset account</button>
               <button className="btn btnGhost" onClick={onLogout}><LogOut size={14} /> Log out</button>
             </div>
+            {!install.standalone && !install.canInstall && install.ios && (
+              <div className="iosHint dim"><Smartphone size={13} /> Install on iPhone: tap the <b>Share</b> button in Safari, then <b>Add to Home Screen</b>.</div>
+            )}
             <div className="sheetLang"><span className="dim">Learning language</span><LangSwitch lang={lang} onChange={setLang} /></div>
           </div>
         </div>
@@ -4646,7 +5010,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
             ["trade", "Chart", LineChart, mobilePane === "main" && ["trade", "indicators", "chain", "alerts", "news"].includes(tab) && !moreOpen, () => goTab("trade")],
             ["positions", "Positions", Briefcase, mobilePane === "main" && tab === "positions" && !moreOpen, () => goTab("positions")],
             ["orders", pendingOrders.length ? `Orders (${pendingOrders.length})` : "Orders", ListOrdered, mobilePane === "main" && tab === "orders" && !moreOpen, () => goTab("orders")],
-            ["more", "More", Ellipsis, moreOpen || (mobilePane === "main" && ["history", "perf", "replay", "learn"].includes(tab)), () => setMoreOpen((v) => !v)],
+            ["more", "More", Ellipsis, moreOpen || (mobilePane === "main" && ["history", "perf", "leaderboard", "replay", "learn"].includes(tab)), () => setMoreOpen((v) => !v)],
           ].map(([id, label, Icon, active, onClick]) => (
             <button key={id} className={`bottomNavItem ${active ? "bottomNavItemActive" : ""}`} aria-current={active ? "page" : undefined} onClick={onClick}>
               <Icon size={20} />
@@ -4799,7 +5163,7 @@ function SplashScreen({ label, themeIdx }) {
   );
 }
 
-function PopoutCanvas({ entry, clock, dayStart, dayEnd, fitKey, prevClose }) {
+function PopoutCanvasImpl({ entry, clock, dayStart, dayEnd, fitKey, prevClose }) {
   const ref = useRef(null);
   const chartRef = useRef(null);
   const seriesRef = useRef(null);
@@ -4808,16 +5172,16 @@ function PopoutCanvas({ entry, clock, dayStart, dayEnd, fitKey, prevClose }) {
 
   useEffect(() => {
     if (!ref.current) return;
-    const chart = createChart(ref.current, {
+    const chart = LW.createChart(ref.current, {
       width: ref.current.clientWidth,
       height: ref.current.clientHeight || 480,
       layout: { background: { color: "transparent" }, textColor: LW_COLORS.text, fontFamily: "JetBrains Mono, monospace", fontSize: 11, attributionLogo: false },
       grid: { vertLines: { color: LW_COLORS.grid }, horzLines: { color: LW_COLORS.grid } },
-      crosshair: { mode: CrosshairMode.Normal },
+      crosshair: { mode: LW.CrosshairMode.Normal },
       rightPriceScale: { borderColor: LW_COLORS.grid },
       timeScale: { borderColor: LW_COLORS.grid, timeVisible: true, secondsVisible: false, rightOffset: 0 },
     });
-    seriesRef.current = chart.addSeries(CandlestickSeries, {
+    seriesRef.current = chart.addSeries(LW.CandlestickSeries, {
       upColor: LW_COLORS.bull, downColor: LW_COLORS.bear, borderVisible: false, wickUpColor: LW_COLORS.bull, wickDownColor: LW_COLORS.bear,
     });
     chartRef.current = chart;
@@ -5259,6 +5623,7 @@ function MainApp() {
   const [showAuthForm, setShowAuthForm] = useState(false);
   const [authInitialMode, setAuthInitialMode] = useState("login");
   const [phoneStatus, setPhoneStatus] = useState("checking");
+  const [referral, setReferral] = useState(null); // { available, invited, wasReferred, bonusDays }
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -5285,6 +5650,22 @@ function MainApp() {
     });
     return () => { cancelled = true; };
   }, [session?.user?.id]);
+
+  // Referrals: record who invited a brand-new account, then load bonus trial days.
+  useEffect(() => {
+    const user = session?.user;
+    setReferral(null);
+    if (!user || phoneStatus !== "ok") return;
+    let cancelled = false;
+    syncReferrals(supabase, user.id).then((r) => { if (!cancelled) setReferral(r); });
+    // First session of a brand-new account counts as a completed sign-up.
+    const key = `pr_signup_tracked_${user.id}`;
+    if (Date.now() - new Date(user.created_at).getTime() < 15 * 60000 && !loadSetting(key, false)) {
+      saveSetting(key, true);
+      track("signup_complete", { provider: user.app_metadata?.provider || "password" });
+    }
+    return () => { cancelled = true; };
+  }, [session?.user?.id, phoneStatus]);
 
   const refreshSubscription = async () => {
     const userId = session?.user?.id;
@@ -5351,11 +5732,11 @@ function MainApp() {
       />
     );
   }
-  if (portfolioLoading || !portfolioData || !subscription) return <SplashScreen label="Loading your portfolio…" themeIdx={themeIdx} />;
+  if (portfolioLoading || !portfolioData || !subscription || referral === null) return <SplashScreen label="Loading your portfolio…" themeIdx={themeIdx} />;
 
   const username = session.user.user_metadata?.username || session.user.email.split("@")[0];
   const isPaidPro = subscription.status === "active";
-  const daysLeftInTrial = trialDaysRemaining(session.user.created_at);
+  const daysLeftInTrial = trialDaysRemaining(session.user.created_at, referral?.bonusDays || 0);
   const inTrial = !isPaidPro && daysLeftInTrial > 0;
   const isPro = isPaidPro || inTrial;
 
@@ -5365,6 +5746,8 @@ function MainApp() {
       username={username}
       userId={session.user.id}
       userEmail={session.user.email}
+      contactEmail={session.user.app_metadata?.provider === "google" ? session.user.email : null}
+      referral={referral}
       initialPortfolio={portfolioData}
       isPro={isPro}
       isPaidPro={isPaidPro}
@@ -6219,6 +6602,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .landingWrap .landingFooterLinks a.footerFeedback:hover { filter: brightness(1.08); background: var(--bull); color: #06281A !important; }
 @media (max-width: 560px) { .landingWrap .landingFooterLinks { justify-content: center; } .landingWrap .landingFooterLinks a { padding: 8px 13px; font-size: 13px; } }
 
+.tab { padding: 10px 12px; }
+@media (max-width: 1280px) { .tab { padding: 9px 9px; font-size: 12.5px; } }
+
 /* mobile-only pieces are hidden on desktop by default */
 .bottomNav, .mTradeBar, .mSectionHead { display: none; }
 
@@ -6266,8 +6652,120 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .sheetItem { display: flex; flex-direction: column; align-items: center; gap: 6px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; padding: 12px 4px; color: var(--text); font-size: 11px; cursor: pointer; text-align: center; }
   .sheetItemActive { border-color: var(--accent); color: var(--accent); }
   .sheetActions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  .sheetActions .btn { padding: 12px 8px; font-size: 12.5px; }
+  .sheetActions .btn { padding: 12px 8px; font-size: 12.5px; text-decoration: none; }
   .sheetLang { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 14px; font-size: 12px; flex-wrap: wrap; }
+}
+
+.chartLoading { border-radius: 10px; background: linear-gradient(90deg, var(--surface-2), color-mix(in srgb, var(--surface-2) 70%, var(--surface)), var(--surface-2)); background-size: 200% 100%; animation: chartShimmer 1.2s linear infinite; }
+@keyframes chartShimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .chartLoading { animation: none; } }
+
+/* ================= growth & retention ================= */
+.srOnly { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.linkBtn { background: none; border: none; color: var(--accent); cursor: pointer; padding: 0; font-size: inherit; text-decoration: underline; text-underline-offset: 2px; }
+a.resetBtn { text-decoration: none; }
+.installBtn { border-color: color-mix(in srgb, var(--bull) 55%, var(--border)) !important; color: var(--bull) !important; }
+.histCharges { font-size: 10.5px; margin-top: 2px; }
+.journalBtn { white-space: nowrap; }
+.journalBtnOn { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); }
+
+.tagChips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 12px; }
+.tagChip { background: var(--surface-2); border: 1px solid var(--border); color: var(--text); border-radius: 999px; padding: 6px 11px; font-size: 12px; cursor: pointer; }
+.tagChipsCompact .tagChip { padding: 4px 9px; font-size: 11.5px; }
+.tagChip:hover { border-color: var(--accent); }
+.tagChipActive { background: color-mix(in srgb, var(--accent) 24%, var(--surface-2)); border-color: var(--accent); font-weight: 600; }
+.tagChipWarn.tagChipActive { background: color-mix(in srgb, var(--bear) 18%, var(--surface-2)); border-color: var(--bear); }
+.tagPrompt { margin-top: 12px; padding: 10px 12px; border: 1px dashed var(--border); border-radius: 10px; }
+.tagPromptQ { font-size: 12.5px; font-weight: 600; }
+.tagPrompt .tagChips { margin-bottom: 0; }
+.journalModal { width: 420px; max-width: calc(100vw - 28px); }
+.journalLabel { font-size: 12px; margin: -4px 0 10px; word-break: break-word; }
+.journalQ { font-size: 12.5px; display: block; margin-top: 6px; }
+.journalNote { width: 100%; box-sizing: border-box; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 10px; font: inherit; font-size: 13px; margin: 6px 0 4px; resize: vertical; }
+
+.perfExtras { display: grid; gap: 14px; margin-top: 14px; }
+.shareRow { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; }
+.shareRow .btn { flex: none; padding: 9px 14px; }
+.journalCard, .achCard, .inviteCard { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+.journalCard h4, .achCard h4, .inviteCard h4 { margin: 0 0 8px; font-size: 14px; }
+.journalCard p { margin: 0; font-size: 13px; line-height: 1.5; }
+.journalTable { margin-top: 4px; }
+.journalInsight { margin-top: 10px !important; padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--bear) 10%, transparent); border: 1px solid color-mix(in srgb, var(--bear) 35%, transparent); }
+.achGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.achItem { display: flex; flex-direction: column; gap: 3px; padding: 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); opacity: 0.45; filter: grayscale(1); }
+.achOn { opacity: 1; filter: none; border-color: color-mix(in srgb, var(--amber) 55%, var(--border)); background: color-mix(in srgb, var(--amber) 8%, var(--surface-2)); }
+.achIcon { font-size: 22px; line-height: 1; }
+.achTitle { font-weight: 700; font-size: 12.5px; }
+.achDesc { font-size: 11px; line-height: 1.35; }
+
+.inviteCard { margin-top: 14px; }
+.inviteCard p { margin: 0 0 10px; font-size: 13px; line-height: 1.5; }
+.inviteLinkRow { display: flex; gap: 8px; align-items: center; margin: 6px 0; }
+.inviteLinkRow .qtyInput { flex: 1; min-width: 0; text-align: left; }
+.inviteLinkRow .btn { flex: none; padding: 9px 14px; }
+.inviteBtns { display: flex; gap: 8px; margin-top: 8px; }
+.inviteBtns .btn { flex: none; text-decoration: none; padding: 10px 16px; }
+.inviteStats { font-size: 12px; margin-top: 10px; }
+
+.lbWrap { display: grid; gap: 14px; }
+.lbHero { display: flex; gap: 16px; justify-content: space-between; flex-wrap: wrap; background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 22%, var(--surface)), var(--surface)); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
+.lbHero h3 { margin: 4px 0 6px; }
+.lbHero p { margin: 0; font-size: 13px; max-width: 520px; line-height: 1.5; }
+.lbKicker { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--amber); }
+.lbMine { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; min-width: 170px; font-size: 12px; }
+.lbMineVal { font-size: 26px; font-weight: 700; }
+.lbMine .btn { flex: none; padding: 8px 12px; margin-top: 4px; }
+.lbJoin { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; font-size: 13px; }
+.lbAgree { font-weight: 400; font-size: 12.5px; margin-top: 8px; }
+.lbTable td:first-child { width: 44px; }
+.lbMe td { background: color-mix(in srgb, var(--accent) 12%, transparent); font-weight: 600; }
+.lbFoot { font-size: 12px; }
+
+.notifRow { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 10px; font-size: 12.5px; }
+.notifRow .btn { flex: none; padding: 8px 12px; }
+.notifRow span { display: inline-flex; align-items: center; gap: 6px; }
+.iosHint { display: flex; align-items: center; gap: 6px; font-size: 12px; margin-top: 12px; line-height: 1.5; flex-wrap: wrap; }
+
+.tourLayer { position: fixed; inset: 0; z-index: 80; }
+.tourDim { position: absolute; inset: 0; background: rgba(4,6,12,0.7); }
+.tourSpot { position: fixed; border-radius: 12px; box-shadow: 0 0 0 9999px rgba(4,6,12,0.7), 0 0 0 3px var(--accent); transition: all 0.25s ease; pointer-events: none; }
+.tourCard { position: fixed; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; box-shadow: 0 18px 50px rgba(0,0,0,0.45); transition: top 0.25s ease, left 0.25s ease; }
+.tourCard h4 { margin: 4px 0 6px; font-size: 16px; }
+.tourCard p { margin: 0 0 14px; font-size: 13.5px; line-height: 1.55; }
+.tourStep { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+.tourBtns { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.tourNav { display: flex; gap: 8px; }
+.tourNav .btn { flex: none; padding: 9px 14px; }
+@media (prefers-reduced-motion: reduce) { .tourSpot, .tourCard { transition: none; } }
+
+/* landing additions */
+.liveCount { display: inline-flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 13.5px; color: #E3E9F4; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.2); padding: 6px 12px; border-radius: 999px; }
+.liveCountDot { width: 8px; height: 8px; border-radius: 50%; background: var(--bull); box-shadow: 0 0 0 4px color-mix(in srgb, var(--bull) 25%, transparent); }
+.landingMenuAll { font-weight: 700; }
+.demoSection { max-width: 980px; margin: 0 auto; padding: 30px 40px 70px; display: grid; grid-template-columns: 1fr 300px; gap: 40px; align-items: center; position: relative; z-index: 1; }
+.demoCopy p { font-size: 16px; line-height: 1.6; margin: 0 0 18px; }
+.demoCopy .landingCta { flex: none; }
+.demoPhone { justify-self: center; width: 280px; padding: 10px; border-radius: 34px; background: #05070D; box-shadow: 0 20px 60px rgba(0,0,0,0.45), inset 0 0 0 2px rgba(255,255,255,0.12); }
+.demoVideo { display: block; width: 100%; aspect-ratio: 9 / 16; border-radius: 26px; background: #000; object-fit: cover; }
+.pricingSection { max-width: 900px; margin: 0 auto; padding: 20px 40px 70px; text-align: center; position: relative; z-index: 1; }
+.pricingGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 22px; text-align: left; }
+.priceCard { position: relative; background: rgba(8,16,40,0.55); border: 1px solid rgba(255,255,255,0.18); border-radius: 16px; padding: 22px; display: flex; flex-direction: column; }
+.priceCardPro { border-color: var(--amber); box-shadow: 0 12px 40px rgba(0,0,0,0.25); }
+.priceBadge { position: absolute; top: -12px; right: 18px; background: var(--amber); color: #2A1A00; font-size: 11.5px; font-weight: 700; padding: 4px 10px; border-radius: 999px; }
+.priceName { font-weight: 700; font-size: 15px; color: #E3E9F4; }
+.priceAmt { font-family: 'Instrument Sans', sans-serif; font-weight: 700; font-size: 38px; color: #fff; margin: 4px 0 12px; }
+.priceAmt span { font-size: 14px; font-weight: 500; color: #D2DBEB; margin-left: 4px; }
+.priceCard ul { margin: 0 0 18px; padding-left: 18px; color: #E3E9F4; font-size: 14px; line-height: 1.75; flex: 1; }
+.priceCard .landingCta { width: 100%; }
+.priceFine { font-size: 12px; margin-top: 10px; line-height: 1.5; }
+.landingWrap .landingFooterLinks a.footerInstall { background: #fff; border-color: #fff; color: #0C2354 !important; }
+@media (max-width: 760px) {
+  .demoSection { grid-template-columns: 1fr; padding: 10px 20px 50px; gap: 24px; text-align: center; }
+  .demoCopy h2 { text-align: center !important; }
+  .pricingSection { padding: 10px 16px 50px; }
+  .pricingGrid { grid-template-columns: 1fr; }
+  .lbMine { min-width: 0; }
+  .shareRow .btn { width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) { .bottomNavItem, .qtyChip { transition: none; } }
 `;

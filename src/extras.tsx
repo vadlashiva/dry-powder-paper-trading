@@ -32,10 +32,11 @@ export function saveSetting(key, value) {
 /* ---------------- realistic charges ----------------
    Approximate discount-broker charges for Indian markets. Rates change with
    budgets and exchange circulars — keep them in this one table so they're easy
-   to update. Equity uses intraday-style rates; options are charged on premium. */
+   to update. Equity uses intraday-style rates; options are charged on premium.
+   STT checked Oct 2026: equity intraday 0.025% (sell), options 0.15% of premium (sell, from 1 Apr 2026). */
 export const CHARGE_RATES = {
   equity: { brokeragePct: 0.0003, brokerageCap: 20, sttSellPct: 0.00025, exchPct: 0.0000297, stampBuyPct: 0.00003 },
-  option: { brokerageFlat: 20, sttSellPct: 0.001, exchPct: 0.0003503, stampBuyPct: 0.00003 },
+  option: { brokerageFlat: 20, sttSellPct: 0.0015, exchPct: 0.0003503, stampBuyPct: 0.00003 },
   sebiPct: 0.000001, // ₹10 per crore
   gstPct: 0.18,       // on brokerage + exchange + SEBI fees
 };
@@ -153,10 +154,12 @@ export function PerformancePanel({ trades, fmtMoney, chargesOn, onToggleCharges,
             {card("Exits by stop-loss", `${p.slExits} of ${p.count}`)}
             {card("Longest losing streak", p.worstStreak)}
           </div>
-          <div className="perfCurveCard">
-            <div className="dim perfCurveLabel">Cumulative realised P&amp;L, trade by trade</div>
-            <Sparkline values={p.curve} />
-          </div>
+          {p.curve.length >= 2 && (
+            <div className="perfCurveCard">
+              <div className="dim perfCurveLabel">Cumulative realised P&amp;L, trade by trade</div>
+              <Sparkline values={p.curve} />
+            </div>
+          )}
           {tips.length > 0 && (
             <div className="perfTips">
               <h4>What your trades are telling you</h4>
