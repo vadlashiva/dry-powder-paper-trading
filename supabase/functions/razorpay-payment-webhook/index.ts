@@ -71,6 +71,8 @@ Deno.serve(async (req) => {
   );
   if (subErr) {
     console.error("subscription upsert failed", subErr);
+    // Undo the payment record so Razorpay's automatic retry can try again.
+    await admin.from("payments").delete().eq("payment_id", paymentId);
     return new Response("db error", { status: 500 });
   }
   return new Response("ok", { status: 200 });
