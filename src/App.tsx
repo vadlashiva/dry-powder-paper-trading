@@ -3,7 +3,13 @@ import React, { useState, useEffect, useRef, useMemo } from "react";
 import { createChart, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries } from "lightweight-charts";
 import { createClient } from "@supabase/supabase-js";
 import {TrendingUp, TrendingDown, RotateCcw, X, Flame, Activity, LogOut, Lock, User as UserIcon, Bell, Trash2, Maximize2, Download, Newspaper, Crosshair, Sparkles,Eye, EyeOff, LineChart, Layers, Play, GraduationCap, Phone,
+  List, BarChart3, Ellipsis, BookOpen, Briefcase, ListOrdered, Mail, KeyRound, Hourglass,
 } from "lucide-react";
+import { LEARN, LangSwitch, loadLang, saveLang } from "./i18n";
+import { useIsMobile, loadSetting, saveSetting, computeCharges, PerformancePanel } from "./extras";
+
+const SUPPORT_EMAIL = "adi.shiv999@gmail.com";
+const mailtoSupport = (subject, body) => `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 declare global { interface Window { Razorpay: any; } }
 /* ---------------- background themes ---------------- */
 const THEMES = [
@@ -1582,6 +1588,9 @@ function ReplaySpotlight() {
 
 function LandingPage({ themeIdx, onEnter }) {
   const [marketNow] = useState(() => getMarketStatus());
+  const [lang, setLangState] = useState(() => loadLang());
+  const setLang = (code) => { setLangState(code); saveLang(code); };
+  const L = LEARN[lang] || LEARN.en;
   useEffect(() => {
     const els = document.querySelectorAll(".landingFeatureCard, .landingTrial, .whoForCard, .replaySpotlight, .mistakeRow, .faqItem, .newCard");
     const obs = new IntersectionObserver(
@@ -1765,13 +1774,14 @@ function LandingPage({ themeIdx, onEnter }) {
       </section>
 
       <section className="howSteps" id="how-it-works">
-        <h2 className="landingH2">From sign-up to first trade in three steps</h2>
+        <LangSwitch lang={lang} onChange={setLang} className="landingLangSwitch" />
+        <h2 className="landingH2">{L.howTitle}</h2>
         <div className="howStepsRow">
-          {HOW_STEPS.map((st) => (
+          {HOW_STEPS.map((st, i) => (
             <div key={st.n} className="howStep whoForCard">
               <span className="howStepNum">{st.n}</span>
-              <h3>{st.title}</h3>
-              <p className="dim">{st.desc}</p>
+              <h3>{L.howSteps[i].title}</h3>
+              <p className="dim">{L.howSteps[i].desc}</p>
             </div>
           ))}
         </div>
@@ -1779,19 +1789,19 @@ function LandingPage({ themeIdx, onEnter }) {
       </section>
 
       <section className="mistakesSection">
-        <h2 className="landingH2">Mistakes Are Part of Learning to Trade.</h2>
-        <p className="dim mistakesIntro">They don't have to be expensive ones.</p>
+        <h2 className="landingH2">{L.mistakesTitle}</h2>
+        <p className="dim mistakesIntro">{L.mistakesIntro}</p>
         <div className="mistakesList">
-          {MISTAKES.map((m) => (
-            <div key={m.title} className="mistakeRow">
+          {L.mistakes.map((m, i) => (
+            <div key={i} className="mistakeRow">
               <h3>{m.title}</h3>
               <div className="mistakeCols">
                 <div className="mistakeCol mistakeColReal">
-                  <span className="mistakeColLabel bear">With real money</span>
+                  <span className="mistakeColLabel bear">{L.realLabel}</span>
                   <p className="dim">{m.real}</p>
                 </div>
                 <div className="mistakeCol mistakeColPractice">
-                  <span className="mistakeColLabel bull">On PaperRally</span>
+                  <span className="mistakeColLabel bull">{L.practiceLabel}</span>
                   <p className="dim">{m.practice}</p>
                 </div>
               </div>
@@ -1801,14 +1811,15 @@ function LandingPage({ themeIdx, onEnter }) {
       </section>
 
       <section className="landingLearn">
-        <h2 className="landingH2">New to Reading Charts? Start Here.</h2>
-        <p className="dim mistakesIntro">A 60-second primer on candlesticks, plus where to learn more about the exchanges themselves.</p>
+        <LangSwitch lang={lang} onChange={setLang} className="landingLangSwitch" />
+        <h2 className="landingH2">{L.chartsTitle}</h2>
+        <p className="dim mistakesIntro">{L.chartsIntro}</p>
         <div className="whoForGrid">
-          {CANDLE_BASICS.map((c) => (
+          {CANDLE_BASICS.map((c, i) => (
             <div key={c.title} className="whoForCard">
               <div className="whoForIcon"><c.icon size={17} /></div>
-              <h3>{c.title}</h3>
-              <p className="dim">{c.desc}</p>
+              <h3>{L.candles[i].title}</h3>
+              <p className="dim">{L.candles[i].desc}</p>
             </div>
           ))}
         </div>
@@ -1872,6 +1883,7 @@ function AuthGate({ themeIdx, cycleTheme, initialMode, onBack }) {
   const [busy, setBusy] = useState(false);
   const [showPw, setShowPw] = useState(false);
   const [googleBusy, setGoogleBusy] = useState(false);
+  const [forgotOpen, setForgotOpen] = useState(false);
 
   const normalizedPhone = () => normalizePhoneInput(phone);
 
@@ -1907,7 +1919,8 @@ function AuthGate({ themeIdx, cycleTheme, initialMode, onBack }) {
         const { data: signUpData, error: signUpError } = await signUpUser(uname, password);
         if (signUpError) {
           if (/registered/i.test(signUpError.message)) setError("That username is already taken.");
-          else setError(signUpError.message);
+          else if (/fetch|network/i.test(signUpError.message)) setError("Couldn't reach the server — check your internet connection and try again.");
+          else { console.error("sign-up failed", signUpError); setError("Could not create your account. Please try again."); }
           return;
         }
         const newUserId = signUpData?.user?.id;
@@ -1930,7 +1943,11 @@ function AuthGate({ themeIdx, cycleTheme, initialMode, onBack }) {
         const { error: signInError } = await signInUser(uname, password);
         if (signInError) {
           if (/confirm/i.test(signInError.message)) {
-            setError("Sign-in blocked pending email confirmation — turn off \"Confirm email\" in your Supabase project's Auth settings.");
+            // Server-side config issue (email confirmation switched on) — not something the user can fix.
+            console.error("Supabase sign-in blocked: 'Confirm email' is enabled in Auth settings", signInError);
+            setError("Something went wrong signing you in. Please try again in a minute, or use Continue with Google.");
+          } else if (/fetch|network/i.test(signInError.message)) {
+            setError("Couldn't reach the server — check your internet connection and try again.");
           } else {
             setError("Invalid username or password.");
           }
@@ -1971,6 +1988,7 @@ function AuthGate({ themeIdx, cycleTheme, initialMode, onBack }) {
           </svg>
           {googleBusy ? "Redirecting…" : "Continue with Google"}
         </button>
+        <div className="authGoogleNote">Recommended — Google keeps your account safe and you can never get locked out.</div>
 
         <div className="authDivider"><span>or</span></div>
 
@@ -1996,10 +2014,33 @@ function AuthGate({ themeIdx, cycleTheme, initialMode, onBack }) {
           <div className="authField">
             <Lock size={14} className="authIcon" />
             <input type={showPw ? "text" : "password"} placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={mode === "register" ? "new-password" : "current-password"} />
-            <button type="button" onClick={() => setShowPw((v) => !v)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-dim)", padding: 0 }}>
+            <button type="button" onClick={() => setShowPw((v) => !v)} aria-label={showPw ? "Hide password" : "Show password"} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-dim)", padding: 0 }}>
               {showPw ? <EyeOff size={14} /> : <Eye size={14} />}
             </button>
           </div>
+          {mode === "login" && (
+            <button type="button" className="authForgotLink" onClick={() => setForgotOpen((v) => !v)} aria-expanded={forgotOpen}>
+              Forgot password?
+            </button>
+          )}
+          {mode === "login" && forgotOpen && (
+            <div className="authForgot" role="region" aria-label="Reset your password">
+              <div className="authForgotTitle"><KeyRound size={14} /> Can't log in?</div>
+              <ol>
+                <li><b>Signed up with Google?</b> Use <i>Continue with Google</i> above — there's no password to remember.</li>
+                <li><b>Signed up with a username?</b> Email us from your phone with your username and registered mobile number. We'll reset your password, usually within a day.</li>
+              </ol>
+              <a
+                className="btn btnGhost authForgotBtn"
+                href={mailtoSupport(
+                  "PaperRally password reset",
+                  `Hi, I can't log in to PaperRally.\n\nUsername: ${username.trim() || "(your username)"}\nRegistered mobile number: \n\nPlease reset my password.`
+                )}
+              >
+                <Mail size={14} /> Email support to reset password
+              </a>
+            </div>
+          )}
           {mode === "register" && (
             <div className="authField">
               <Lock size={14} className="authIcon" />
@@ -2224,6 +2265,26 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
   const [pickingPriceFromChart, setPickingPriceFromChart] = useState(false);
   const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
+
+  // ---- usability additions ----
+  const isMobile = useIsMobile(760);
+  const [mobilePane, setMobilePane] = useState("main"); // "watchlist" | "main" (phones only)
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [closeConfirm, setCloseConfirm] = useState(null); // { kind: "stock" | "option", pos }
+  const [lang, setLangState] = useState(() => loadLang());
+  const setLang = (code) => { setLangState(code); saveLang(code); };
+  const L = LEARN[lang] || LEARN.en;
+  const chargesKey = `pr_charges_on_${userId}`;
+  const [chargesOn, setChargesOn] = useState(() => loadSetting(chargesKey, false));
+  const chargesOnRef = useRef(chargesOn);
+  useEffect(() => { chargesOnRef.current = chargesOn; saveSetting(chargesKey, chargesOn); }, [chargesOn]);
+  // Planned stop-loss on the stock order ticket ("" = use the suggested 2% stop).
+  const [slOn, setSlOn] = useState(true);
+  const [slPrice, setSlPrice] = useState("");
+  useEffect(() => { setSlPrice(""); }, [selected]);
+  const paymentKey = `pr_payment_pending_${userId}`;
+  const [paymentPendingAt, setPaymentPendingAt] = useState(() => loadSetting(paymentKey, null));
+  const [paymentChecking, setPaymentChecking] = useState(false);
 
   // ---- Replay Mode ----
   const REPLAY_CASH = 1000000;
@@ -2818,7 +2879,11 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
     setTimeout(() => setToast(null), 2600);
   };
   const logTrade = (label, amount, realized = null) => {
-    setTrades((prev) => [{ id: uid(), time: new Date(nowMs()), label, amount, realized }, ...prev].slice(0, 200));
+    // Optional realistic charges (brokerage, STT, fees, GST, stamp duty), deducted from cash.
+    const ch = chargesOnRef.current ? computeCharges(label, amount) : null;
+    const charges = ch ? ch.total : 0;
+    if (charges) setCash((c) => c - charges);
+    setTrades((prev) => [{ id: uid(), time: new Date(nowMs()), label, amount, realized, charges }, ...prev].slice(0, 200));
   };
 
   // opts.focus: symbol to open once replay starts (e.g. RELIANCE.NS for a first trade).
@@ -2919,6 +2984,41 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
     setTimeout(() => document.getElementById("stockOrderCard")?.scrollIntoView({ behavior: "smooth", block: "center" }), 150);
   };
 
+  // Picking a symbol from the watchlist: on phones, jump straight to its chart.
+  const ACCOUNT_TABS = ["positions", "orders", "history", "perf", "replay", "learn"];
+  const pickSymbol = (sym) => {
+    setSelected(sym);
+    if (isMobile) {
+      setMobilePane("main");
+      if (ACCOUNT_TABS.includes(tab)) setTab("trade");
+      window.scrollTo({ top: 0 });
+    }
+  };
+  // Escape closes whichever dialog or sheet is on top.
+  const escStateRef = useRef({});
+  escStateRef.current = { closeConfirm, moreOpen, ticket, slEditing, editingOrder, upgradeModalOpen, checkoutBusy, confirmReset };
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== "Escape") return;
+      const st = escStateRef.current;
+      if (st.closeConfirm) setCloseConfirm(null);
+      else if (st.moreOpen) setMoreOpen(false);
+      else if (st.ticket) setTicket(null);
+      else if (st.slEditing) setSlEditing(null);
+      else if (st.editingOrder) setEditingOrder(null);
+      else if (st.upgradeModalOpen && !st.checkoutBusy) setUpgradeModalOpen(false);
+      else if (st.confirmReset) setConfirmReset(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const goTab = (id) => {
+    setTab(id);
+    setMoreOpen(false);
+    if (isMobile) { setMobilePane("main"); window.scrollTo({ top: 0 }); }
+  };
+
   const exitReplay = () => {
     const st = liveStashRef.current;
     replayActiveRef.current = false;
@@ -2938,8 +3038,11 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
     startProCheckout({
       userEmail,
       onSuccess: () => {
-        showToast("Complete the payment in the new tab — Pro unlocks once it's confirmed (usually within a few hours).", "bull");
+        showToast("Complete the payment in the new tab — we'll show its status here.", "bull");
         setUpgradeModalOpen(false);
+        const at = Date.now();
+        setPaymentPendingAt(at);
+        saveSetting(paymentKey, at);
         // No webhook/backend here, so we just poll Supabase in case Pro was
         // activated manually (or by a webhook you add later). This is best-effort,
         // not instant — refresh the page after paying if it doesn't pick up.
@@ -2959,6 +3062,28 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
   };
 
   useEffect(() => { if (isPro) setCheckoutBusy(false); }, [isPro]);
+
+  // Payment status banner: shown after the user opens the payment link, until Pro is active.
+  useEffect(() => {
+    if (isPaidPro && paymentPendingAt) {
+      setPaymentPendingAt(null);
+      saveSetting(paymentKey, null);
+      showToast("Pro is active — thank you!", "bull");
+    }
+  }, [isPaidPro, paymentPendingAt]);
+  const checkPaymentNow = async () => {
+    setPaymentChecking(true);
+    let sub = null;
+    try { sub = await onRefreshSubscription(); } finally { setPaymentChecking(false); }
+    if (sub?.status !== "active") showToast("Not activated yet — we'll keep checking. Paid already? Email us your payment ID for faster activation.", "bear");
+  };
+  const dismissPaymentBanner = () => { setPaymentPendingAt(null); saveSetting(paymentKey, null); };
+  // Re-check every 2 minutes while a payment is pending and the tab is open.
+  useEffect(() => {
+    if (!paymentPendingAt || isPaidPro) return;
+    const iv = setInterval(() => { onRefreshSubscription(); }, 120000);
+    return () => clearInterval(iv);
+  }, [paymentPendingAt, isPaidPro]);
 
   // One-time nudge when the free trial has just run out (per-browser, since there's
   // no backend to track this server-side). Never fires for paid Pro users.
@@ -3014,8 +3139,30 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
   const executeStockOrderRef = useRef(executeStockOrder);
   executeStockOrderRef.current = executeStockOrder;
 
+  // Suggested stop-loss for a new buy: 2% below the entry, rounded down to a 5-paisa tick.
+  const suggestedStop = (price) => Math.floor(price * 0.98 * 20) / 20;
+  const plannedStopFor = (entry) => {
+    const manual = parseFloat(slPrice);
+    return manual > 0 ? manual : suggestedStop(entry);
+  };
+
   const placeStockOrder = (side) => {
+    const entry = quotes[selected]?.price;
+    const wantStop = side === "buy" && slOn && entry;
+    const stop = wantStop ? plannedStopFor(entry) : null;
+    if (wantStop && stop >= entry) return showToast(`Stop-loss must be below the current price (${fmtMoney(entry)})`, "bear");
     const r = executeStockOrder(selected, side, orderQty);
+    if (r.ok && wantStop) {
+      if (isPro) {
+        const qty = Math.floor(Number(orderQty));
+        setPendingOrders((prev) => [{ id: uid(), symbol: selected, side: "sell", kind: "stop", qty, price: +stop.toFixed(2), createdAt: new Date(nowMs()) }, ...prev]);
+        showToast(`${r.msg} · stop-loss set at ${fmtMoney(stop)}`, "bull");
+      } else {
+        showToast(`${r.msg} · automatic stop-loss orders need Pro — watch your ${fmtMoney(stop)} level`, "bull");
+      }
+      setSlPrice("");
+      return;
+    }
     showToast(r.msg, r.ok && side === "buy" ? "bull" : "bear");
   };
 
@@ -3258,6 +3405,31 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
     });
   }, [quotes]);
 
+  // Close buttons open a confirmation first — one stray tap on a phone shouldn't exit a trade.
+  const requestClose = (kind, pos) => {
+    if (!marketStatus.isOpen) {
+      return showToast(replayActive ? "This replay day has ended — press Restart day to trade it again" : "Market is closed — positions can be closed 9:15 AM–3:30 PM, Mon–Fri", "bear");
+    }
+    setCloseConfirm({ kind, pos });
+  };
+  const confirmClose = () => {
+    const c = closeConfirm;
+    setCloseConfirm(null);
+    if (!c) return;
+    if (!marketStatus.isOpen) return showToast("Market is closed — the position was not closed", "bear");
+    if (c.kind === "stock") {
+      const live = stockPositions.find((p) => p.id === c.pos.id);
+      if (live) {
+        closeStockPosition(live);
+        // The position is gone, so its protective stop orders have nothing left to sell.
+        setPendingOrders((prev) => prev.filter((o) => !(o.symbol === live.symbol && o.side === "sell" && o.kind === "stop")));
+      }
+    } else {
+      const live = optionPositions.find((p) => p.id === c.pos.id);
+      if (live) closeOptionPosition(live);
+    }
+  };
+
   const closeStockPosition = (pos) => {
     const price = quotes[pos.symbol]?.price ?? 0;
     const total = price * pos.qty;
@@ -3323,6 +3495,37 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
   const chainStep = EXPIRY_RULES[viewSym]?.step ?? strikeStep(q?.price ?? meta.fallback);
   const chainStrikes = strikesAround(q?.price ?? meta.fallback, 9, chainStep);
   const T = currentExpiry ? (currentExpiry.getTime() - nowMs()) / (365 * 24 * 3600 * 1000) : 0;
+
+  const TAB_DEFS = [
+    ["trade", "Chart & Trade"],
+    ["indicators", `Indicators${activeIndicatorCount ? ` (${activeIndicatorCount})` : ""}`],
+    ["chain", "Options Chain"],
+    ["positions", "Positions"],
+    ["orders", `Orders${pendingOrders.length ? ` (${pendingOrders.length})` : ""}`],
+    ["alerts", `Alerts${activeAlerts ? ` (${activeAlerts})` : ""}`],
+    ["news", "News"],
+    ["history", "History"],
+    ["perf", "Performance"],
+    ["replay", "Replay"],
+    ["learn", L.learnTab],
+  ];
+
+  // Order-ticket helpers: quantity shortcuts and the planned stop-loss / risk preview.
+  const tradePrice = selected ? (orderType === "market" ? q.price : parseFloat(orderPrice) || q.price) : 0;
+  const heldShares = selected ? (stockPositions.find((p) => p.symbol === selected)?.qty ?? 0) : 0;
+  const maxAffordable = tradePrice > 0 ? Math.max(0, Math.floor(cash / tradePrice)) : 0;
+  const qtyShortcuts = [
+    ["1", 1],
+    ["10", 10],
+    ["25%", Math.floor(maxAffordable * 0.25)],
+    ["50%", Math.floor(maxAffordable * 0.5)],
+    ["Max", maxAffordable],
+  ];
+  const plannedStop = selected && tradePrice ? plannedStopFor(tradePrice) : 0;
+  const riskAmount = slOn && plannedStop > 0 && plannedStop < tradePrice ? (tradePrice - plannedStop) * orderQty : null;
+  const capitalBase = Math.max(1, equity);
+  const positionPct = ((tradePrice * orderQty) / capitalBase) * 100;
+  const riskPct = riskAmount != null ? (riskAmount / capitalBase) * 100 : null;
 
   return (
     <div className="app" style={THEMES[themeIdx].vars}>
@@ -3391,19 +3594,37 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
         </div>
       )}
 
+      {paymentPendingAt && !isPaidPro && (
+        <div className="paymentBar" role="status">
+          <Hourglass size={15} className="paymentBarIcon" />
+          <div className="paymentBarText">
+            <b>Payment being verified.</b> Pro usually activates within a few hours of paying — this page checks automatically.
+            {" "}Paid already? Send us your Razorpay payment ID for faster activation.
+          </div>
+          <div className="paymentBarBtns">
+            <button className="btn btnGhost" onClick={checkPaymentNow} disabled={paymentChecking}>{paymentChecking ? "Checking…" : "Check now"}</button>
+            <a className="btn btnGhost" href={mailtoSupport("PaperRally Pro payment — please activate", `Hi, I've paid for PaperRally Pro.\n\nUsername: ${username}\nAccount ID: ${userId}\nRazorpay payment ID: \n\nThanks!`)}><Mail size={13} /> Email payment ID</a>
+            <button className="iconBtn" onClick={dismissPaymentBanner} aria-label="Hide payment status"><X size={14} /></button>
+          </div>
+        </div>
+      )}
+
       {!firstTradeDone && (
         <div className="firstTradeCard">
           <button className="firstTradeClose" onClick={markFirstTradeDone} aria-label="Dismiss"><X size={14} /></button>
-          <div className="firstTradeTitle"><GraduationCap size={16} /> Make your first practice trade</div>
+          <div className="firstTradeTitleRow">
+            <div className="firstTradeTitle"><GraduationCap size={16} /> {L.firstTrade.title}</div>
+            <LangSwitch lang={lang} onChange={setLang} />
+          </div>
           <p className="firstTradeText">
             {replayActive && replayData
-              ? <>The market is closed right now, so you're trading a replay of <b>{new Date(replayData.dayStart).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "short" })}</b> from the 9:15 AM open. Prices move exactly as they did that day, and you have <b>₹10,00,000</b> of practice money. Nothing here is real.</>
-              : <>You have <b>₹10,00,000</b> of practice money. Nothing here is real — try a trade and see how it feels.</>}
+              ? L.firstTrade.replayText(new Date(replayData.dayStart).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "short" }))
+              : L.firstTrade.liveText}
           </p>
           <ol className="firstTradeSteps">
-            <li><button className="btn btnBull firstTradeBtn" onClick={setUpFirstTrade}><TrendingUp size={14} /> Set up: buy 10 Reliance shares</button></li>
-            <li>Then press the glowing green <b>Buy</b> button.</li>
-            <li>Watch your profit or loss move in the <b>Positions</b> tab.</li>
+            <li><button className="btn btnBull firstTradeBtn" onClick={() => { setUpFirstTrade(); if (isMobile) setMobilePane("main"); }}><TrendingUp size={14} /> {L.firstTrade.setup}</button></li>
+            <li>{L.firstTrade.step2}</li>
+            <li>{L.firstTrade.step3}</li>
           </ol>
         </div>
       )}
@@ -3416,8 +3637,8 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
       )}
 
       <div className="body">
-        <div className="watchlist">
-          <input className="search" placeholder="Search symbol…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <div className={`watchlist ${isMobile && mobilePane !== "watchlist" ? "mHidden" : ""}`}>
+          <input className="search" placeholder="Search name or ticker, e.g. Tata Motors" aria-label="Search stocks by name or ticker" value={search} onChange={(e) => setSearch(e.target.value)} />
           <div className="exchangeTabs">
             {["ALL", "NSE", "BSE", "INDEX"].map((ex) => (
               <button key={ex} className={`exTab ${exchangeFilter === ex ? "exTabActive" : ""}`} onClick={() => setExchangeFilter(ex)}>{ex === "INDEX" ? "Index" : ex}</button>
@@ -3434,7 +3655,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                 const chg = qq.prevClose ? ((qq.price - qq.prevClose) / qq.prevClose) * 100 : 0;
                 const up = chg >= 0;
                 return (
-                  <button key={s.symbol} className={`wlRow ${selected === s.symbol ? "wlRowActive" : ""}`} onClick={() => setSelected(s.symbol)}>
+                  <button key={s.symbol} className={`wlRow ${selected === s.symbol ? "wlRowActive" : ""}`} aria-current={selected === s.symbol ? "true" : undefined} onClick={() => pickSymbol(s.symbol)}>
                     <div className="wlSym">
                       <span className="wlTicker">{displayTicker(s.symbol)}<span className={`exBadge exBadge-${s.exchange}`}>{exchangeBadge(s.exchange)}</span></span>
                       <span className="wlName">{s.name}</span>
@@ -3463,10 +3684,21 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                   </button>
                 ))}
               </>
-            ) : search.trim().length >= 2 ? (
-              <div className="wlEmpty dim">No symbols match &ldquo;{search}&rdquo; on NSE or BSE.</div>
+            ) : !search.trim() ? (
+              <div className="wlEmpty dim">Nothing in this list yet.</div>
             ) : (
-              <div className="wlEmpty dim">No symbols match &ldquo;{search}&rdquo;.</div>
+              <div className="wlEmpty">
+                <div className="wlEmptyTitle">No match for &ldquo;{search.trim()}&rdquo;{search.trim().length >= 2 ? " on NSE or BSE" : ""}</div>
+                <div className="dim wlEmptyTips">
+                  {search.trim().length < 2
+                    ? "Type at least 2 letters to search all NSE & BSE stocks."
+                    : <>Try the company name instead of the ticker (e.g. <i>Tata Motors</i>, <i>State Bank</i>), check the spelling, or browse the <b>BSE</b> tab for every listed company.</>}
+                </div>
+                <div className="wlEmptyBtns">
+                  <button className="btn btnGhost" onClick={() => setSearch("")}>Clear search</button>
+                  <button className="btn btnGhost" onClick={() => { setSearch(""); setExchangeFilter("BSE"); }}>Browse all BSE</button>
+                </div>
+              </div>
             )}
 
             {bseTab && (
@@ -3499,7 +3731,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
           </div>
         </div>
 
-        <div className="main">
+        <div className={`main ${isMobile && mobilePane === "watchlist" ? "mHidden" : ""}`}>
           {selected ? (
           <div className="mainHead">
             <div className="mainHeadLeft">
@@ -3524,11 +3756,16 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
             </div>
           )}
 
-          <div className="tabs">
-            {[["trade", "Chart & Trade"], ["indicators", `Indicators${activeIndicatorCount ? ` (${activeIndicatorCount})` : ""}`], ["chain", "Options Chain"], ["positions", "Positions"], ["orders", `Orders${pendingOrders.length ? ` (${pendingOrders.length})` : ""}`], ["alerts", `Alerts${activeAlerts ? ` (${activeAlerts})` : ""}`], ["news", "News"], ["history", "History"], ["replay", "Replay"]].map(([id, label]) => (
-              <button key={id} className={`tab ${tab === id ? "tabActive" : ""}`} onClick={() => setTab(id)}>{label}</button>
+          <div className="tabs" role="tablist" aria-label="Terminal sections">
+            {TAB_DEFS.map(([id, label]) => (
+              <button key={id} role="tab" aria-selected={tab === id} className={`tab ${tab === id ? "tabActive" : ""}`} onClick={() => setTab(id)}>{label}</button>
             ))}
           </div>
+          {isMobile && ["chain", "alerts", "news"].includes(tab) && (
+            <div className="mSectionHead">
+              <h2>{TAB_DEFS.find(([id]) => id === tab)?.[1]}</h2>
+            </div>
+          )}
 
           {!selected && ["trade", "indicators", "chain", "alerts", "news"].includes(tab) && (
             <div className="pickEmpty">
@@ -3665,8 +3902,23 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                   </div>
 
                   <div className="orderRow">
-                    <label>Quantity</label>
-                    <input type="number" min="1" className="qtyInput mono" value={orderQty} onChange={(e) => setOrderQty(Math.max(1, parseInt(e.target.value) || 1))} />
+                    <label htmlFor="orderQtyInput">Quantity</label>
+                    <input id="orderQtyInput" type="number" min="1" inputMode="numeric" className="qtyInput mono" value={orderQty} onChange={(e) => setOrderQty(Math.max(1, parseInt(e.target.value) || 1))} />
+                  </div>
+                  <div className="qtyChips" role="group" aria-label="Quick quantity">
+                    {qtyShortcuts.map(([label, n]) => (
+                      <button
+                        key={label}
+                        type="button"
+                        className={`qtyChip ${orderQty === n && n > 0 ? "qtyChipActive" : ""}`}
+                        disabled={n < 1}
+                        title={label.includes("%") || label === "Max" ? `${n} shares — ${label} of your available cash` : `${n} share${n > 1 ? "s" : ""}`}
+                        onClick={() => setOrderQty(n)}
+                      >{label}</button>
+                    ))}
+                    {heldShares > 0 && (
+                      <button type="button" className={`qtyChip ${orderQty === heldShares ? "qtyChipActive" : ""}`} title="Sell everything you hold" onClick={() => setOrderQty(heldShares)}>All held ({heldShares})</button>
+                    )}
                   </div>
 
                   {orderType !== "market" && (
@@ -3682,8 +3934,48 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
 
                   <div className="orderEst mono">
                     <span className="dim">Est. cost</span>
-                    <span>{fmtMoney((orderType === "market" ? q.price : parseFloat(orderPrice) || q.price) * orderQty)}</span>
+                    <span>{fmtMoney(tradePrice * orderQty)}</span>
                   </div>
+                  <div className="orderSizeHint dim">
+                    That's <b className={positionPct > 25 ? "bear" : ""}>{positionPct.toFixed(1)}%</b> of your capital{positionPct > 25 ? " — a large position for one stock" : ""}.
+                  </div>
+
+                  {orderType === "market" && (
+                    <div className="slPlan">
+                      <label className="slPlanToggle">
+                        <input type="checkbox" checked={slOn} onChange={(e) => setSlOn(e.target.checked)} />
+                        <span>Add a stop-loss when buying</span>
+                      </label>
+                      {slOn && (
+                        <>
+                          <div className="orderRow slPlanRow">
+                            <label htmlFor="slPlanInput">Stop-loss price</label>
+                            <input
+                              id="slPlanInput"
+                              type="number"
+                              min="0"
+                              step="0.05"
+                              inputMode="decimal"
+                              className="qtyInput mono"
+                              placeholder={plannedStop ? plannedStop.toFixed(2) : ""}
+                              value={slPrice}
+                              onChange={(e) => setSlPrice(e.target.value)}
+                            />
+                          </div>
+                          {riskAmount != null ? (
+                            <div className={`riskBox ${riskPct > 2 ? "riskBoxHigh" : ""}`} aria-live="polite">
+                              If the stop is hit you lose about <b className="mono">{fmtMoney(riskAmount, 0)}</b> — <b>{riskPct.toFixed(2)}%</b> of your capital.
+                              <span className="dim"> {riskPct > 2 ? "Many traders keep this under 1–2% per trade." : "A sensible risk for one trade."}</span>
+                              {!slPrice && <span className="dim"> Suggested stop: 2% below the price.</span>}
+                            </div>
+                          ) : (
+                            <div className="riskBox riskBoxHigh">Stop-loss must be below the current price.</div>
+                          )}
+                          {!isPro && <div className="orderHint dim"><Lock size={10} /> Automatic stop-loss orders are a Pro feature — you'll see the level, but it won't sell for you.</div>}
+                        </>
+                      )}
+                    </div>
+                  )}
 
                   {orderType !== "market" && (
                     <div className="orderHint dim">
@@ -3880,7 +4172,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                           <td className="orderRowActions">
                             <button className="closeBtn" onClick={() => { setSelected(p.symbol); setTab("trade"); }}><LineChart size={12} /> Chart</button>
                             <button className="closeBtn" onClick={() => startStopLossFromPosition(p)}><Crosshair size={12} /> Stop-Loss</button>
-                            <button className="closeBtn" onClick={() => closeStockPosition(p)}>Close</button>
+                            <button className="closeBtn closeBtnExit" onClick={() => requestClose("stock", p)}>Close</button>
                           </td>
                         </tr>
                       );
@@ -3916,7 +4208,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                           <td className="orderRowActions">
                             <button className="closeBtn" onClick={() => { setSelected(p.symbol); setTab("trade"); }}><LineChart size={12} /> Chart</button>
                             <button className="closeBtn" onClick={() => openStopLossEditor(p)}><Crosshair size={12} /> {p.stopLoss ? "Edit SL" : "Stop-Loss"}</button>
-                            <button className="closeBtn" onClick={() => closeOptionPosition(p)}>{short ? "Cover" : "Close"}</button>
+                            <button className="closeBtn closeBtnExit" onClick={() => requestClose("option", p)}>{short ? "Cover" : "Close"}</button>
                           </td>
                         </tr>
                       );
@@ -3945,7 +4237,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                         <td className="mono dim">{o.createdAt.toLocaleTimeString()}</td>
                         <td className="orderRowActions">
                           <button className="closeBtn" onClick={() => openEditOrder(o)}>Edit</button>
-                          <button className="closeBtn" onClick={() => cancelOrder(o.id)}><Trash2 size={12} /></button>
+                          <button className="closeBtn" onClick={() => cancelOrder(o.id)} aria-label={`Cancel ${o.side} order for ${displayTicker(o.symbol)}`}><Trash2 size={12} /></button>
                         </td>
                       </tr>
                     ))}
@@ -3970,7 +4262,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                             <td className="mono bear">{fmtMoney(p.stopLoss)}</td>
                             <td className="orderRowActions">
                               <button className="closeBtn" onClick={() => openStopLossEditor(p)}>Edit</button>
-                              <button className="closeBtn" onClick={() => removeStopLoss(p.id)}><Trash2 size={12} /></button>
+                              <button className="closeBtn" onClick={() => removeStopLoss(p.id)} aria-label="Remove stop-loss"><Trash2 size={12} /></button>
                             </td>
                           </tr>
                         );
@@ -4014,7 +4306,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
                         <td className="mono">{displayTicker(a.symbol)}</td>
                         <td className="mono">{a.direction === "above" ? "≥" : "≤"} {fmtMoney(a.target)}</td>
                         <td><span className={`alertStatus ${a.triggered ? "alertTriggered" : "alertActive"}`}>{a.triggered ? "Triggered" : "Active"}</span></td>
-                        <td><button className="closeBtn" onClick={() => deleteAlert(a.id)}><Trash2 size={12} /></button></td>
+                        <td><button className="closeBtn" onClick={() => deleteAlert(a.id)} aria-label={`Delete alert for ${displayTicker(a.symbol)}`}><Trash2 size={12} /></button></td>
                       </tr>
                     ))}
                   </tbody>
@@ -4076,6 +4368,53 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
             </div>
           )}
 
+          {tab === "perf" && (
+            <PerformancePanel
+              trades={trades}
+              fmtMoney={fmtMoney}
+              chargesOn={chargesOn}
+              replayActive={replayActive}
+              onToggleCharges={() => {
+                setChargesOn((v) => !v);
+                showToast(chargesOn ? "Charges off — trades are commission-free again" : "Charges on — brokerage, STT, fees and GST will be deducted from now on", "bull");
+              }}
+            />
+          )}
+
+          {tab === "learn" && (
+            <div className="learnTab">
+              <div className="learnTabHead">
+                <h3><BookOpen size={17} /> {L.chartsTitle}</h3>
+                <LangSwitch lang={lang} onChange={setLang} />
+              </div>
+              <p className="dim">{L.chartsIntro}</p>
+              <div className="learnGrid">
+                {L.candles.map((c, i) => (
+                  <div key={i} className="learnCard">
+                    <h4>{c.title}</h4>
+                    <p className="dim">{c.desc}</p>
+                  </div>
+                ))}
+              </div>
+              <h3 className="mt">{L.mistakesTitle}</h3>
+              <p className="dim">{L.mistakesIntro}</p>
+              <div className="learnMistakes">
+                {L.mistakes.map((m, i) => (
+                  <div key={i} className="learnCard">
+                    <h4>{m.title}</h4>
+                    <p><span className="bear learnLbl">{L.realLabel}:</span> <span className="dim">{m.real}</span></p>
+                    <p><span className="bull learnLbl">{L.practiceLabel}:</span> <span className="dim">{m.practice}</span></p>
+                  </div>
+                ))}
+              </div>
+              <div className="learnLinksRow">
+                {GUIDE_LINKS.map((l) => (
+                  <a key={l.url} href={l.url} target="_blank" rel="noopener noreferrer" className="btn btnGhost">{l.label} →</a>
+                ))}
+              </div>
+            </div>
+          )}
+
           {tab === "replay" && (
             <div className="replayWrap">
               <div className="replayControls">
@@ -4123,7 +4462,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
 
       {slEditing && (
         <div className="modalOverlay" onClick={() => setSlEditing(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
             <h3>Stop-Loss</h3>
             <p className="mono">{isShort(slEditing) ? "SHORT " : ""}{slEditing.type === "call" ? "C" : "P"} {displayTicker(slEditing.symbol)} {slEditing.strike} {fmtDate(new Date(slEditing.expiry))} · {slEditing.qty} lot{slEditing.qty > 1 ? "s" : ""}</p>
             <div className="orderHint dim mono">Entry {fmtMoney(slEditing.avgPremium)} · Now {slEditing.nowPremium != null ? fmtMoney(slEditing.nowPremium) : "—"}</div>
@@ -4146,7 +4485,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
 
       {editingOrder && (
         <div className="modalOverlay" onClick={() => setEditingOrder(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
             <h3>Edit {editingOrder.kind === "limit" ? "Limit" : "Stop"} Order</h3>
             <p>{editingOrder.side.toUpperCase()} {displayTicker(editingOrder.symbol)}</p>
             <div className="orderRow">
@@ -4167,7 +4506,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
 
       {upgradeModalOpen && (
         <div className="modalOverlay" onClick={() => !checkoutBusy && setUpgradeModalOpen(false)}>
-          <div className="modal upgradeModal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal upgradeModal" role="dialog" aria-modal="true" aria-label="Upgrade to Pro" onClick={(e) => e.stopPropagation()}>
             <h3><Sparkles size={17} className="proBadgeIcon" /> Upgrade to Pro</h3>
             <p>Everything in Free, plus:</p>
             <ul className="upgradeList">
@@ -4188,9 +4527,118 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
         </div>
       )}
 
+      {closeConfirm && (() => {
+        const { kind, pos } = closeConfirm;
+        let title, detail, price, pnl;
+        if (kind === "stock") {
+          price = quotes[pos.symbol]?.price ?? 0;
+          pnl = (price - pos.avgPrice) * pos.qty;
+          title = `Sell ${pos.qty} ${displayTicker(pos.symbol)}?`;
+          detail = `${pos.qty} shares at about ${fmtMoney(price)} (bought at ${fmtMoney(pos.avgPrice)})`;
+        } else {
+          price = optionPremiumNow(pos, quotes, allInstruments) ?? pos.avgPremium;
+          const short = isShort(pos);
+          pnl = (short ? pos.avgPremium - price : price - pos.avgPremium) * posMultiplier(pos) * pos.qty;
+          title = `${short ? "Cover" : "Close"} ${pos.type === "call" ? "CALL" : "PUT"} ${displayTicker(pos.symbol)} ${pos.strike}?`;
+          detail = `${pos.qty} ${pos.lotBased ? `lot${pos.qty > 1 ? "s" : ""}` : "contracts"} at about ${fmtMoney(price)} premium (entry ${fmtMoney(pos.avgPremium)})`;
+        }
+        return (
+          <div className="modalOverlay" onClick={() => setCloseConfirm(null)}>
+            <div className="modal" role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
+              <h3>{title}</h3>
+              <p className="dim">{detail}</p>
+              <div className="orderEst mono">
+                <span className="dim">Expected P&amp;L</span>
+                <span className={pnl >= 0 ? "bull" : "bear"}>{fmtMoney(pnl)}</span>
+              </div>
+              <div className="orderHint dim">Fills at the market price at the moment you confirm.</div>
+              <div className="modalBtns">
+                <button className="btn btnGhost" onClick={() => setCloseConfirm(null)} autoFocus>Keep position</button>
+                <button className="btn btnBear" onClick={confirmClose}>{kind === "option" && isShort(pos) ? "Cover now" : "Close now"}</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {isMobile && moreOpen && (
+        <div className="modalOverlay sheetOverlay" onClick={() => setMoreOpen(false)}>
+          <div className="sheet" role="dialog" aria-modal="true" aria-label="More" onClick={(e) => e.stopPropagation()}>
+            <div className="sheetGrab" aria-hidden="true" />
+            <div className="sheetUser">
+              <UserIcon size={14} /> {username}
+              {isPaidPro && <span className="proBadge">PRO</span>}
+              {inTrial && <span className="proBadge proBadgeTrial">ALL FREE · {trialDaysLeft}D LEFT</span>}
+            </div>
+            <div className="sheetGrid">
+              {[
+                ["indicators", "Indicators", Layers],
+                ["chain", "Options chain", BarChart3],
+                ["alerts", "Alerts", Bell],
+                ["news", "News", Newspaper],
+                ["history", "History", ListOrdered],
+                ["perf", "Performance", TrendingUp],
+                ["replay", "Replay", Play],
+                ["learn", L.learnTab, BookOpen],
+              ].map(([id, label, Icon]) => (
+                <button key={id} className={`sheetItem ${tab === id ? "sheetItemActive" : ""}`} onClick={() => goTab(id)}>
+                  <Icon size={18} /><span>{label}</span>
+                </button>
+              ))}
+            </div>
+            <div className="sheetActions">
+              {!isPaidPro && !inTrial && (
+                <button className="btn btnMarigold" onClick={() => { setMoreOpen(false); setUpgradeModalOpen(true); }}><Sparkles size={14} /> Upgrade to Pro</button>
+              )}
+              <button className="btn btnGhost" onClick={() => { setMoreOpen(false); replayActive ? restartReplayDay() : practiceToday(); }} disabled={replayBusy}><Play size={14} /> {replayActive ? "Restart day" : "Practice today"}</button>
+              {replayActive && <button className="btn btnGhost" onClick={() => { setMoreOpen(false); exitReplay(); }}>Exit replay</button>}
+              <button className="btn btnGhost" onClick={() => { setMoreOpen(false); popOutChart(); }}><Maximize2 size={14} /> Pop-out chart</button>
+              <button className="btn btnGhost" onClick={cycleTheme}><span className="themeEmoji">{THEMES[themeIdx].emoji}</span> Theme: {THEMES[themeIdx].name}</button>
+              <button className="btn btnGhost" onClick={() => { setMoreOpen(false); setConfirmReset(true); }}><RotateCcw size={14} /> Reset account</button>
+              <button className="btn btnGhost" onClick={onLogout}><LogOut size={14} /> Log out</button>
+            </div>
+            <div className="sheetLang"><span className="dim">Learning language</span><LangSwitch lang={lang} onChange={setLang} /></div>
+          </div>
+        </div>
+      )}
+
+      {isMobile && tab === "trade" && selected && mobilePane === "main" && !ticket && (
+        <div className="mTradeBar">
+          <div className="mTradeBarPrice">
+            <span className="mono">{displayTicker(selected)}</span>
+            <span className="mono">{fmtMoney(q.price)} <span className={q.price >= q.prevClose ? "bull" : "bear"}>{fmtPct(((q.price - q.prevClose) / q.prevClose) * 100)}</span></span>
+          </div>
+          {isIndex ? (
+            <button className="btn btnBull" onClick={() => setTab("chain")}>Trade options</button>
+          ) : (
+            <>
+              <button className="btn btnBull" onClick={() => { setHighlightBuy(true); document.getElementById("stockOrderCard")?.scrollIntoView({ behavior: "smooth", block: "start" }); }}>Buy</button>
+              <button className="btn btnBear" onClick={() => document.getElementById("stockOrderCard")?.scrollIntoView({ behavior: "smooth", block: "start" })}>Sell</button>
+            </>
+          )}
+        </div>
+      )}
+
+      {isMobile && (
+        <nav className="bottomNav" aria-label="Main navigation">
+          {[
+            ["watchlist", "Watchlist", List, mobilePane === "watchlist", () => { setMobilePane("watchlist"); setMoreOpen(false); window.scrollTo({ top: 0 }); }],
+            ["trade", "Chart", LineChart, mobilePane === "main" && ["trade", "indicators", "chain", "alerts", "news"].includes(tab) && !moreOpen, () => goTab("trade")],
+            ["positions", "Positions", Briefcase, mobilePane === "main" && tab === "positions" && !moreOpen, () => goTab("positions")],
+            ["orders", pendingOrders.length ? `Orders (${pendingOrders.length})` : "Orders", ListOrdered, mobilePane === "main" && tab === "orders" && !moreOpen, () => goTab("orders")],
+            ["more", "More", Ellipsis, moreOpen || (mobilePane === "main" && ["history", "perf", "replay", "learn"].includes(tab)), () => setMoreOpen((v) => !v)],
+          ].map(([id, label, Icon, active, onClick]) => (
+            <button key={id} className={`bottomNavItem ${active ? "bottomNavItemActive" : ""}`} aria-current={active ? "page" : undefined} onClick={onClick}>
+              <Icon size={20} />
+              <span>{label}</span>
+            </button>
+          ))}
+        </nav>
+      )}
+
       {confirmReset && (
         <div className="modalOverlay" onClick={() => setConfirmReset(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
             <h3>Reset account?</h3>
             <p>This clears all positions, cash, and trade history back to {fmtMoney(STARTING_CASH, 0)}.</p>
             <div className="modalBtns">
@@ -4201,7 +4649,7 @@ function TradingApp({ username, userId, userEmail, initialPortfolio, isPro, isPa
         </div>
       )}
 
-      {toast && <div className={`toast toast-${toast.kind}`}>{toast.msg}</div>}
+      {toast && <div className={`toast toast-${toast.kind} ${isMobile ? "toastMobile" : ""}`} role="status" aria-live="polite">{toast.msg}</div>}
     </div>
   );
 }
@@ -4241,14 +4689,14 @@ function OptionTicket({ ticket, quotes, instruments, onClose, onSubmit, heldQty,
 
   return (
     <div className="modalOverlay" onClick={onClose}>
-      <div className="modal ticketModal" onClick={(e) => e.stopPropagation()}>
+      <div className="modal ticketModal" role="dialog" aria-modal="true" aria-label="Option order ticket" onClick={(e) => e.stopPropagation()}>
         <div className="ticketHead">
           <div>
             <span className={`typeBadge ${ticket.type}`}>{ticket.type.toUpperCase()}</span>
             <h3>{displayTicker(ticket.symbol)} {ticket.strike}</h3>
             <span className="dim">Exp {fmtDate(new Date(ticket.expiry))}</span>
           </div>
-          <button className="iconBtn" onClick={onClose}><X size={16} /></button>
+          <button className="iconBtn" onClick={onClose} aria-label="Close order ticket"><X size={16} /></button>
         </div>
 
         <div className="greeksGrid mono">
@@ -4262,8 +4710,16 @@ function OptionTicket({ ticket, quotes, instruments, onClose, onSubmit, heldQty,
 
         <div className="orderRow">
           <label>Lots <span className="dim">(1 lot = {lot})</span></label>
-          <input type="number" min="1" className="qtyInput mono" value={qty} onChange={(e) => setQty(Math.max(1, parseInt(e.target.value) || 1))} />
+          <input type="number" min="1" inputMode="numeric" aria-label="Number of lots" className="qtyInput mono" value={qty} onChange={(e) => setQty(Math.max(1, parseInt(e.target.value) || 1))} />
         </div>
+        <div className="qtyChips" role="group" aria-label="Quick lots">
+          {[1, 2, 5, 10].map((n) => (
+            <button key={n} type="button" className={`qtyChip ${qty === n ? "qtyChipActive" : ""}`} onClick={() => setQty(n)}>{n} lot{n > 1 ? "s" : ""}</button>
+          ))}
+          {heldQty > 0 && <button type="button" className={`qtyChip ${qty === heldQty ? "qtyChipActive" : ""}`} onClick={() => setQty(heldQty)}>All long ({heldQty})</button>}
+          {shortQty > 0 && <button type="button" className={`qtyChip ${qty === shortQty ? "qtyChipActive" : ""}`} onClick={() => setQty(shortQty)}>All short ({shortQty})</button>}
+        </div>
+        <div className="lotExplain dim">1 lot = {lot} units, so {qty} lot{qty > 1 ? "s" : ""} = <b className="mono">{(qty * lot).toLocaleString("en-IN")} units</b></div>
         <div className="orderEst mono">Premium ({qty * lot} units): <span>{fmtMoney(greeks.price * lot * qty)}</span></div>
         <div className="orderHint dim mono" style={{ marginTop: "-8px" }}>Long: {heldQty} lot{heldQty === 1 ? "" : "s"} · Short: {shortQty} lot{shortQty === 1 ? "" : "s"} · Margin to short ≈ {fmtMoney(marginEst, 0)}</div>
 
@@ -4812,8 +5268,10 @@ function MainApp() {
 
   const refreshSubscription = async () => {
     const userId = session?.user?.id;
-    if (!userId) return;
-    setSubscription(await fetchSubscription(userId));
+    if (!userId) return null;
+    const sub = await fetchSubscription(userId);
+    setSubscription(sub);
+    return sub;
   };
 
   useEffect(() => {
@@ -5652,4 +6110,135 @@ html, body { overflow-x: clip; }
   .watchlist { width: 100%; max-height: 260px; }
   .tradeGrid { grid-template-columns: 1fr; }
 }
+
+/* ================= usability additions ================= */
+/* keyboard focus is always visible */
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, [role="tab"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* auth */
+.authGoogleNote { font-size: 11px; color: var(--text-dim); text-align: center; margin: -8px 0 14px; }
+.authForgotLink { display: block; margin: -4px 0 12px auto; background: none; border: none; color: var(--accent); font-size: 12px; cursor: pointer; padding: 2px 0; }
+.authForgot { background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; font-size: 12px; line-height: 1.55; color: var(--text); }
+.authForgotTitle { display: flex; align-items: center; gap: 6px; font-weight: 700; margin-bottom: 6px; }
+.authForgot ol { margin: 0 0 10px; padding-left: 18px; color: var(--text-dim); }
+.authForgot ol b { color: var(--text); }
+.authForgotBtn { width: 100%; box-sizing: border-box; text-decoration: none; }
+
+/* payment status */
+.paymentBar { display: flex; align-items: center; gap: 12px; margin: 12px 24px 0; padding: 12px 16px; border-radius: 12px; background: color-mix(in srgb, var(--amber) 12%, var(--surface)); border: 1px solid color-mix(in srgb, var(--amber) 45%, var(--border)); font-size: 13px; line-height: 1.5; flex-wrap: wrap; }
+.paymentBarIcon { color: var(--amber); flex-shrink: 0; }
+.paymentBarText { flex: 1; min-width: 220px; }
+.paymentBarBtns { display: flex; gap: 8px; align-items: center; }
+.paymentBarBtns .btn { flex: none; padding: 8px 12px; font-size: 12px; text-decoration: none; }
+
+/* language switch */
+.firstTradeTitleRow { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.langSwitch { display: inline-flex; gap: 2px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; padding: 2px; }
+.langBtn { background: none; border: none; color: var(--text-dim); font-size: 12px; padding: 5px 11px; border-radius: 999px; cursor: pointer; }
+.langBtnActive { background: var(--accent); color: #fff; font-weight: 600; }
+.landingLangSwitch { display: flex; width: fit-content; margin: 0 auto 14px; }
+
+/* watchlist empty state */
+.wlEmptyTitle { font-weight: 600; color: var(--text); margin-bottom: 6px; }
+.wlEmptyTips { font-size: 12px; margin-bottom: 12px; }
+.wlEmptyBtns { display: flex; gap: 8px; }
+.wlEmptyBtns .btn { padding: 8px; font-size: 12px; }
+
+/* order ticket */
+.qtyChips { display: flex; flex-wrap: wrap; gap: 6px; margin: -4px 0 12px; }
+.qtyChip { background: var(--surface-2); border: 1px solid var(--border); color: var(--text); border-radius: 999px; padding: 6px 11px; font-size: 12px; cursor: pointer; font-family: inherit; }
+.qtyChip:hover:not(:disabled) { border-color: var(--accent); }
+.qtyChip:disabled { opacity: 0.4; cursor: not-allowed; }
+.qtyChipActive { background: color-mix(in srgb, var(--accent) 22%, var(--surface-2)); border-color: var(--accent); font-weight: 600; }
+.lotExplain { font-size: 12px; margin: -4px 0 10px; }
+.orderSizeHint { font-size: 12px; margin: -6px 0 12px; }
+.slPlan { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin-bottom: 14px; background: var(--surface-2); }
+.slPlanToggle { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; cursor: pointer; }
+.slPlanToggle input { width: 16px; height: 16px; accent-color: var(--bull); }
+.slPlanRow { margin: 10px 0 8px; }
+.riskBox { font-size: 12px; line-height: 1.5; padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--bull) 10%, transparent); border: 1px solid color-mix(in srgb, var(--bull) 35%, transparent); }
+.riskBoxHigh { background: color-mix(in srgb, var(--bear) 10%, transparent); border-color: color-mix(in srgb, var(--bear) 40%, transparent); }
+.closeBtnExit { color: var(--bear); }
+
+/* performance */
+.perfGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.perfStat { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+.perfVal { font-size: 18px; font-weight: 700; color: var(--text); }
+.perfVal.bull { color: var(--bull); } .perfVal.bear { color: var(--bear); }
+.perfCurveCard { margin-top: 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+.perfCurveLabel { font-size: 12px; margin-bottom: 6px; }
+.perfCurve { width: 100%; height: 140px; display: block; }
+.perfTips { margin-top: 14px; background: color-mix(in srgb, var(--accent) 8%, var(--surface)); border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border)); border-radius: 10px; padding: 12px 16px; }
+.perfTips h4 { margin: 0 0 6px; font-size: 13px; }
+.perfTips ul { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.6; }
+.chargesCard { margin-top: 18px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+.chargesHead { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.chargesHead h4 { margin: 0 0 4px; font-size: 14px; }
+.chargesHead p { margin: 0; font-size: 12.5px; line-height: 1.5; }
+.chargesHead .indSwitch { flex-shrink: 0; margin-top: 2px; }
+.chargesTotal { margin-top: 10px; font-size: 12px; }
+
+/* learn tab */
+.learnTabHead { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.learnTabHead h3 { display: flex; align-items: center; gap: 8px; margin: 0; }
+.learnGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; margin-top: 10px; }
+.learnMistakes { display: grid; gap: 10px; margin-top: 10px; }
+.learnCard { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+.learnCard h4 { margin: 0 0 6px; font-size: 14px; }
+.learnCard p { margin: 4px 0; font-size: 13px; line-height: 1.55; }
+.learnLbl { font-weight: 600; }
+.learnLinksRow { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.learnLinksRow .btn { flex: none; text-decoration: none; }
+
+/* mobile-only pieces are hidden on desktop by default */
+.bottomNav, .mTradeBar, .mSectionHead { display: none; }
+
+@media (max-width: 760px) {
+  .mHidden { display: none !important; }
+  .topbar { padding: 10px 14px; gap: 8px; }
+  .brandSub { display: none; }
+  .topbarActions { display: none; }
+  .stats { gap: 4px; flex-wrap: nowrap; overflow-x: auto; width: 100%; scrollbar-width: none; }
+  .stats::-webkit-scrollbar { display: none; }
+  .stat { flex-shrink: 0; }
+  .replayBar { overflow-x: auto; flex-wrap: nowrap; }
+  .firstTradeCard, .paymentBar { margin: 10px 14px 0; }
+  .body { flex-direction: column; }
+  .watchlist { width: 100%; max-height: none; border-right: none; min-height: calc(100vh - 200px); }
+  .wlRow { padding-top: 12px; padding-bottom: 12px; }
+  .main { padding: 14px 14px 150px; }
+  .tabs { display: none; }
+  .mSectionHead { display: block; margin-bottom: 12px; }
+  .mSectionHead h2 { margin: 0; font-size: 18px; }
+  .tradeGrid { grid-template-columns: 1fr; }
+  .posWrap, .ordersWrap, .histWrap, .alertsWrap { overflow-x: auto; }
+  .posTable { min-width: 560px; }
+  .closeBtn { padding: 8px 12px; font-size: 12px; }
+  .qtyChip { padding: 8px 13px; font-size: 13px; }
+  .modal { width: calc(100vw - 28px); max-width: 420px; }
+  .toastMobile { bottom: 140px; }
+  .paymentBarBtns { width: 100%; }
+  .paymentBarBtns .btn { flex: 1; }
+
+  .bottomNav { display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; background: var(--surface); border-top: 1px solid var(--border); padding: 4px 4px calc(4px + env(safe-area-inset-bottom)); }
+  .bottomNavItem { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; background: none; border: none; color: var(--text-dim); font-size: 10.5px; padding: 6px 2px; cursor: pointer; border-radius: 8px; min-height: 52px; justify-content: center; }
+  .bottomNavItemActive { color: var(--accent); font-weight: 600; background: color-mix(in srgb, var(--accent) 10%, transparent); }
+
+  .mTradeBar { display: flex; align-items: center; gap: 8px; position: fixed; left: 0; right: 0; bottom: calc(62px + env(safe-area-inset-bottom)); z-index: 39; background: var(--surface); border-top: 1px solid var(--border); padding: 8px 12px; box-shadow: 0 -6px 18px rgba(0,0,0,0.18); }
+  .mTradeBarPrice { flex: 1.4; display: flex; flex-direction: column; font-size: 12px; line-height: 1.3; min-width: 0; }
+  .mTradeBarPrice span:first-child { font-weight: 700; font-size: 13px; }
+  .mTradeBar .btn { padding: 12px 10px; font-size: 14px; }
+
+  .sheetOverlay { align-items: flex-end; }
+  .sheet { width: 100%; background: var(--surface); border-top-left-radius: 18px; border-top-right-radius: 18px; border: 1px solid var(--border); padding: 8px 16px calc(80px + env(safe-area-inset-bottom)); max-height: 85vh; overflow-y: auto; }
+  .sheetGrab { width: 40px; height: 4px; border-radius: 4px; background: var(--border); margin: 4px auto 12px; }
+  .sheetUser { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; margin-bottom: 12px; flex-wrap: wrap; }
+  .sheetGrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 14px; }
+  .sheetItem { display: flex; flex-direction: column; align-items: center; gap: 6px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; padding: 12px 4px; color: var(--text); font-size: 11px; cursor: pointer; text-align: center; }
+  .sheetItemActive { border-color: var(--accent); color: var(--accent); }
+  .sheetActions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .sheetActions .btn { padding: 12px 8px; font-size: 12.5px; }
+  .sheetLang { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 14px; font-size: 12px; flex-wrap: wrap; }
+}
+@media (prefers-reduced-motion: reduce) { .bottomNavItem, .qtyChip { transition: none; } }
 `;
