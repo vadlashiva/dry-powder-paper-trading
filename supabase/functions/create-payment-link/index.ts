@@ -15,11 +15,12 @@ Deno.serve(async (req) => {
   const keySecret = Deno.env.get("RAZORPAY_KEY_SECRET");
   if (!keyId || !keySecret) return json({ error: "Payments are not configured yet" }, 503);
 
-  // Who is paying? Verified from their Supabase session token.
-  const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, {
-    global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } },
-  });
-  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  // Who is paying? Verified here from their Supabase session token (works with both the
+  // legacy and the new publishable/secret API keys, so gateway JWT checks can stay off).
+  const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
+  if (!token) return json({ error: "Please log in again" }, 401);
+  const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+  const { data: { user }, error: userError } = await admin.auth.getUser(token);
   if (userError || !user) return json({ error: "Please log in again" }, 401);
 
   const amount = Number(Deno.env.get("PRO_PRICE_PAISE") ?? 9900);

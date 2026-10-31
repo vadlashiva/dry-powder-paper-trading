@@ -1,6 +1,7 @@
 # Edge Function settings used by `supabase functions deploy`.
 [functions.create-payment-link]
-verify_jwt = true
+# The function verifies the user's session itself (compatible with the new API keys).
+verify_jwt = false
 
 [functions.razorpay-payment-webhook]
 # Razorpay calls this directly and signs the request instead of sending a Supabase token.

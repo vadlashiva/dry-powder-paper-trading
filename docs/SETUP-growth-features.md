@@ -36,7 +36,7 @@ Needs the Supabase CLI (`npm i -g supabase`) on your computer, inside this repo:
 supabase login
 supabase link --project-ref <your-project-ref>      # from Project Settings → General
 supabase secrets set RAZORPAY_KEY_ID=rzp_live_xxx RAZORPAY_KEY_SECRET=xxx RAZORPAY_PAYMENT_WEBHOOK_SECRET=<long-random-string>
-supabase functions deploy create-payment-link
+supabase functions deploy create-payment-link --no-verify-jwt   # it checks the login itself
 supabase functions deploy razorpay-payment-webhook --no-verify-jwt
 ```
 
