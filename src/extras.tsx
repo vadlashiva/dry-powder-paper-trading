@@ -2,8 +2,9 @@
 import { useEffect, useMemo, useState } from "react";
 
 /* ---------------- viewport ---------------- */
+// Phones in portrait, plus phones held sideways (touch screen, short height).
 export function useIsMobile(maxWidth = 760) {
-  const query = `(max-width: ${maxWidth}px)`;
+  const query = `(max-width: ${maxWidth}px), (pointer: coarse) and (max-height: 500px)`;
   const [isMobile, setIsMobile] = useState(() => {
     try { return window.matchMedia(query).matches; } catch { return false; }
   });

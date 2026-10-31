@@ -3146,6 +3146,20 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, referral
       window.scrollTo({ top: 0 });
     }
   };
+  // On phones, tables are shown as cards: each cell gets its column heading as a label.
+  useEffect(() => {
+    if (!isMobile) return;
+    document.querySelectorAll(".posTable").forEach((t) => {
+      const heads = [...t.querySelectorAll("thead th")].map((th) => th.textContent.trim());
+      t.querySelectorAll("tbody tr").forEach((tr) => {
+        [...tr.children].forEach((td, i) => {
+          const label = heads[i] ?? "";
+          if (td.getAttribute("data-label") !== label) td.setAttribute("data-label", label);
+        });
+      });
+    });
+  });
+
   // Escape closes whichever dialog or sheet is on top.
   const escStateRef = useRef({});
   escStateRef.current = { journalEditing, closeConfirm, moreOpen, ticket, slEditing, editingOrder, upgradeModalOpen, checkoutBusy, confirmReset };
@@ -3852,8 +3866,8 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, referral
           <Stat label="Cash" value={fmtMoney(cash, 0)} />
           <Stat label="Equity" value={pricesReady ? fmtMoney(equity, 0) : "Loading…"} pulse={pulse} />
           <Stat label="Total P&L" value={pricesReady ? fmtMoney(dayPnl, 0) : "Loading…"} tone={pricesReady ? (dayPnl >= 0 ? "bull" : "bear") : ""} />
-          <Stat label="Realized" value={pricesReady ? fmtMoney(realizedPnl, 0) : "…"} tone={pricesReady ? (realizedPnl >= 0 ? "bull" : "bear") : ""} />
-          <Stat label="Unrealized" value={pricesReady ? fmtMoney(unrealizedPnl, 0) : "…"} tone={pricesReady ? (unrealizedPnl >= 0 ? "bull" : "bear") : ""} />
+          <Stat className="statSecondary" label="Realized" value={pricesReady ? fmtMoney(realizedPnl, 0) : "…"} tone={pricesReady ? (realizedPnl >= 0 ? "bull" : "bear") : ""} />
+          <Stat className="statSecondary" label="Unrealized" value={pricesReady ? fmtMoney(unrealizedPnl, 0) : "…"} tone={pricesReady ? (unrealizedPnl >= 0 ? "bull" : "bear") : ""} />
         </div>
         <div className="topbarActions">
           <div className="userBadge">
@@ -3865,8 +3879,8 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, referral
           {!isPaidPro && !inTrial && (
             <button className="upgradeBtn" onClick={() => setUpgradeModalOpen(true)}><Sparkles size={13} /> Upgrade to Pro</button>
           )}
-          {!install.standalone && (install.canInstall || install.platform !== "desktop") && <button className="resetBtn installBtn" onClick={doInstall} title="Install PaperRally as an app"><Smartphone size={14} /> Install app</button>}
-          <a className="resetBtn" href={feedbackHref} title="Tell us what to improve"><MessageSquare size={14} /> Feedback</a>
+          {!install.standalone && (install.canInstall || install.platform !== "desktop") && <button className="resetBtn installBtn hlBtn" onClick={doInstall} title="Install PaperRally as an app"><Smartphone size={14} /> Install app</button>}
+          <a className="resetBtn feedbackBtn hlBtn" href={feedbackHref} title="Tell us what to improve"><MessageSquare size={14} /> Feedback</a>
           <button className="resetBtn" onClick={popOutChart} title="Open a full-day chart in a new window"><Maximize2 size={14} /> Pop-out chart</button>
           <button className="themeBtn" onClick={cycleTheme} title="Change background theme"><span className="themeEmoji">{THEMES[themeIdx].emoji}</span> {THEMES[themeIdx].name}</button>
           <button className="resetBtn" onClick={() => setConfirmReset(true)}><RotateCcw size={14} /> Reset</button>
@@ -4407,19 +4421,19 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, referral
                 <table className="chainTable">
                   <thead>
                     <tr>
-                      <th colSpan={5} className="chainSideHead callHead">CALLS</th>
+                      <th colSpan={isMobile ? 2 : 5} className="chainSideHead callHead">CALLS</th>
                       <th className="strikeHead">STRIKE</th>
-                      <th colSpan={5} className="chainSideHead putHead">PUTS</th>
+                      <th colSpan={isMobile ? 2 : 5} className="chainSideHead putHead">PUTS</th>
                     </tr>
                     <tr className="subhead">
                       <th title="Delta — how much the premium moves for a ₹1 move in the underlying. A call delta of 0.50 means the option gains roughly ₹0.50 for every ₹1 the stock rises.">Δ</th>
-                      <th title="Theta — how much value the option loses per day, all else equal, purely from time passing. A theta of -0.80 means the premium erodes about ₹0.80 per day.">Θ</th>
-                      <th title="Implied Volatility (IV) — the market's expectation of how much the underlying will swing, expressed as an annualized percentage. Higher IV means a pricier option.">IV</th>
-                      <th>Premium</th><th></th>
+                      {!isMobile && <th title="Theta — how much value the option loses per day, all else equal, purely from time passing. A theta of -0.80 means the premium erodes about ₹0.80 per day.">Θ</th>}
+                      {!isMobile && <th title="Implied Volatility (IV) — the market's expectation of how much the underlying will swing, expressed as an annualized percentage. Higher IV means a pricier option.">IV</th>}
+                      <th>Premium</th>{!isMobile && <th></th>}
                       <th></th>
-                      <th></th><th>Premium</th>
-                      <th title="Implied Volatility (IV) — the market's expectation of how much the underlying will swing, expressed as an annualized percentage. Higher IV means a pricier option.">IV</th>
-                      <th title="Theta — how much value the option loses per day, all else equal, purely from time passing. A theta of -0.80 means the premium erodes about ₹0.80 per day.">Θ</th>
+                      {!isMobile && <th></th>}<th>Premium</th>
+                      {!isMobile && <th title="Implied Volatility (IV) — the market's expectation of how much the underlying will swing, expressed as an annualized percentage. Higher IV means a pricier option.">IV</th>}
+                      {!isMobile && <th title="Theta — how much value the option loses per day, all else equal, purely from time passing. A theta of -0.80 means the premium erodes about ₹0.80 per day.">Θ</th>}
                       <th title="Delta — how much the premium moves for a ₹1 move in the underlying. A put delta of -0.50 means the option gains roughly ₹0.50 for every ₹1 the stock falls.">Δ</th>
                     </tr>
                   </thead>
@@ -4435,15 +4449,15 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, referral
                       return (
                         <tr key={strike} className={isATM ? "atmRow" : ""}>
                           <td className="mono callSide">{call.delta.toFixed(2)}</td>
-                          <td className="mono callSide">{call.theta.toFixed(2)}</td>
-                          <td className="mono callSide">{(sigma * 100).toFixed(0)}%</td>
+                          {!isMobile && <td className="mono callSide">{call.theta.toFixed(2)}</td>}
+                          {!isMobile && <td className="mono callSide">{(sigma * 100).toFixed(0)}%</td>}
                           <td className={`mono premCell callSide ${callITM ? "itmCall" : "otmCall"}`} onClick={() => openTicket("call", strike, currentExpiry)}>{fmtMoney(call.price)}</td>
-                          <td className="chainGutter" />
+                          {!isMobile && <td className="chainGutter" />}
                           <td className="strikeCell mono">{strike}</td>
-                          <td className="chainGutter" />
+                          {!isMobile && <td className="chainGutter" />}
                           <td className={`mono premCell putSide ${putITM ? "itmPut" : "otmPut"}`} onClick={() => openTicket("put", strike, currentExpiry)}>{fmtMoney(put.price)}</td>
-                          <td className="mono putSide">{(sigma * 100).toFixed(0)}%</td>
-                          <td className="mono putSide">{put.theta.toFixed(2)}</td>
+                          {!isMobile && <td className="mono putSide">{(sigma * 100).toFixed(0)}%</td>}
+                          {!isMobile && <td className="mono putSide">{put.theta.toFixed(2)}</td>}
                           <td className="mono putSide">{put.delta.toFixed(2)}</td>
                         </tr>
                       );
@@ -4451,6 +4465,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, referral
                   </tbody>
                 </table>
               </div>
+              {isMobile && <div className="chainNote chainTapHint">Tap any premium to buy or sell that option. Theta and IV are in the order ticket.</div>}
               <div className="chainNote">Premiums &amp; Greeks are modeled live from the underlying price via Black-Scholes — not a live exchange options feed. Index IV follows India VIX{indiaVix ? ` (now ${indiaVix.toFixed(2)})` : ""}, so premiums are close to, but not exactly, market prices. Quantities are in exchange lots (NIFTY 65, BANKNIFTY 30, SENSEX 20). You can buy or sell (short) options; selling blocks an estimated margin from your cash.</div>
               {!marketStatus.isOpen && (
                 <div className="chainNote" style={{ color: "var(--bear)", fontWeight: 600 }}>Market Closed — you can browse the chain, but new orders are disabled until 9:15 AM Mon–Fri.</div>
@@ -4995,7 +5010,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, referral
               <button className="btn btnGhost" onClick={() => { setMoreOpen(false); replayActive ? restartReplayDay() : practiceToday(); }} disabled={replayBusy}><Play size={14} /> {replayActive ? "Restart day" : "Practice today"}</button>
               {replayActive && <button className="btn btnGhost" onClick={() => { setMoreOpen(false); exitReplay(); }}>Exit replay</button>}
               {!install.standalone && <button className="btn btnBull" onClick={doInstall}><Smartphone size={14} /> Install app</button>}
-              <a className="btn btnGhost" href={feedbackHref}><MessageSquare size={14} /> Feedback</a>
+              <a className="btn feedbackSheetBtn" href={feedbackHref}><MessageSquare size={14} /> Feedback</a>
               <button className="btn btnGhost" onClick={startTour}><Compass size={14} /> Take the tour</button>
               <button className="btn btnGhost" onClick={() => { setMoreOpen(false); popOutChart(); }}><Maximize2 size={14} /> Pop-out chart</button>
               <button className="btn btnGhost" onClick={cycleTheme}><span className="themeEmoji">{THEMES[themeIdx].emoji}</span> Theme: {THEMES[themeIdx].name}</button>
@@ -5059,9 +5074,9 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, referral
   );
 }
 
-function Stat({ label, value, tone, pulse }) {
+function Stat({ label, value, tone, pulse, className = "" }) {
   return (
-    <div className={`stat ${pulse ? `pulse-${pulse}` : ""}`}>
+    <div className={`stat ${pulse ? `pulse-${pulse}` : ""} ${className}`}>
       <span className="statLabel">{label}</span>
       <span className={`statValue mono ${tone ? tone : ""}`}>{value}</span>
     </div>
@@ -6627,7 +6642,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 /* mobile-only pieces are hidden on desktop by default */
 .bottomNav, .mTradeBar, .mSectionHead { display: none; }
 
-@media (max-width: 760px) {
+@media (max-width: 760px), (pointer: coarse) and (max-height: 500px) {
   .mHidden { display: none !important; }
   .topbar { padding: 10px 14px; gap: 8px; }
   .brandSub { display: none; }
@@ -6646,10 +6661,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .mSectionHead h2 { margin: 0; font-size: 18px; }
   .tradeGrid { grid-template-columns: 1fr; }
   .posWrap, .ordersWrap, .histWrap, .alertsWrap { overflow-x: auto; }
-  .posTable { min-width: 560px; }
   .closeBtn { padding: 8px 12px; font-size: 12px; }
   .qtyChip { padding: 8px 13px; font-size: 13px; }
-  .modal { width: calc(100vw - 28px); max-width: 420px; }
   .toastMobile { bottom: 140px; }
   .paymentBarBtns { width: 100%; }
   .paymentBarBtns .btn { flex: 1; }
@@ -6767,6 +6780,20 @@ a.resetBtn { text-decoration: none; }
 .installSteps { margin: 0 0 6px; padding-left: 20px; font-size: 14px; line-height: 1.7; }
 .heroInstall { display: inline-flex; align-items: center; gap: 8px; margin-top: 12px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3); color: #fff; border-radius: 999px; padding: 9px 16px; font-size: 14px; font-weight: 600; cursor: pointer; }
 
+.topbarActions { flex-wrap: wrap; row-gap: 8px; }
+.topbarActions > * { white-space: nowrap; flex-shrink: 0; }
+.userBadge .proBadge { white-space: nowrap; }
+
+/* highlighted in-app links: Install app (green) and Feedback (purple) */
+.hlBtn { font-weight: 700 !important; }
+.installBtn.hlBtn { background: var(--bull) !important; border-color: var(--bull) !important; color: #06281A !important; box-shadow: 0 2px 10px color-mix(in srgb, var(--bull) 35%, transparent); }
+.installBtn.hlBtn:hover { filter: brightness(1.07); }
+.feedbackBtn.hlBtn { background: color-mix(in srgb, var(--accent) 18%, var(--surface-2)) !important; border-color: var(--accent) !important; color: var(--text) !important; }
+.feedbackBtn.hlBtn svg { color: var(--accent); }
+.feedbackBtn.hlBtn:hover { background: color-mix(in srgb, var(--accent) 28%, var(--surface-2)) !important; }
+.feedbackSheetBtn { background: color-mix(in srgb, var(--accent) 18%, var(--surface-2)); border: 1px solid var(--accent); color: var(--text); font-weight: 700; text-decoration: none; }
+.feedbackSheetBtn svg { color: var(--accent); }
+
 /* landing additions */
 .liveCount { display: inline-flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 13.5px; color: #E3E9F4; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.2); padding: 6px 12px; border-radius: 999px; }
 .liveCountDot { width: 8px; height: 8px; border-radius: 50%; background: var(--bull); box-shadow: 0 0 0 4px color-mix(in srgb, var(--bull) 25%, transparent); }
@@ -6797,4 +6824,88 @@ a.resetBtn { text-decoration: none; }
   .shareRow .btn { width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) { .bottomNavItem, .qtyChip { transition: none; } }
+
+/* ================= phone friendliness ================= */
+@media (max-width: 760px), (pointer: coarse) and (max-height: 500px) {
+  /* no zoom-in when tapping a text box on iPhone (needs 16px+) */
+  input, select, textarea { font-size: 16px !important; }
+  button, a, input, select, textarea { touch-action: manipulation; }
+  html { -webkit-text-size-adjust: 100%; }
+
+  /* header: three key numbers in a tidy row instead of a cut-off strip */
+  .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px 6px; overflow: visible; }
+  .statSecondary { display: none !important; }
+  .stat { padding: 2px 0; min-width: 0; }
+  .statLabel { font-size: 10px; }
+  .statValue { font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* trade screen fits the phone width (the chart can't push the order ticket off-screen) */
+  .tradeGrid { grid-template-columns: minmax(0, 1fr) !important; }
+  .tradeGrid > *, .chartCard, .orderCard { min-width: 0; max-width: 100%; }
+  .orderCard { padding: 14px; }
+  .orderRow { gap: 10px; }
+  .orderRow .qtyInput { width: 130px; min-width: 0; }
+  .mainHead h1 { font-size: 23px; }
+  .bigPrice { font-size: 20px; }
+  .firstTradeCard { padding: 12px 40px 10px 14px; }
+  .firstTradeText { font-size: 13px; margin: 6px 0; }
+  .chartHint { display: none; }
+
+  /* tables become easy-to-read cards */
+  .posTable:not(.lbTable):not(.journalTable) { border: none; background: transparent; }
+  .posTable:not(.lbTable):not(.journalTable) thead { display: none; }
+  .posTable:not(.lbTable):not(.journalTable) tbody tr { display: block; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 8px 12px; margin-bottom: 10px; }
+  .posTable:not(.lbTable):not(.journalTable) td { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 5px 0 !important; border: none !important; text-align: right; font-size: 13.5px; min-height: 26px; }
+  .posTable:not(.lbTable):not(.journalTable) td::before { content: attr(data-label); color: var(--text-dim); font-family: 'Inter', sans-serif; font-size: 12px; text-align: left; flex-shrink: 0; }
+  .posTable:not(.lbTable):not(.journalTable) td:first-child { font-size: 15px; font-weight: 700; padding-bottom: 8px !important; border-bottom: 1px solid var(--border) !important; margin-bottom: 4px; justify-content: flex-start; text-align: left; flex-wrap: wrap; }
+  .posTable:not(.lbTable):not(.journalTable) td:first-child::before { display: none; }
+  .posTable:not(.lbTable):not(.journalTable) td[data-label=""]::before { display: none; }
+  .posTable:not(.lbTable):not(.journalTable) td.orderRowActions, .posTable:not(.lbTable):not(.journalTable) td[data-label=""] { justify-content: flex-start; flex-wrap: wrap; gap: 8px; padding-top: 10px !important; }
+  .posTable:not(.lbTable):not(.journalTable) td .closeBtn { padding: 9px 14px; font-size: 13px; }
+  .posWrap, .ordersWrap, .histWrap, .alertsWrap { overflow-x: visible; }
+  .allocLegendItem { font-size: 12.5px; }
+
+  /* options chain: calls and puts both visible, bigger tap targets */
+  .chainTable { width: 100%; font-size: 13px; }
+  .chainTable td, .chainTable th { padding: 9px 4px !important; }
+  .premCell { font-weight: 600; }
+  .expiryTabs { overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; }
+  .expiryTab { flex-shrink: 0; }
+  .chainTapHint { color: var(--text); }
+
+  /* popups slide up from the bottom, easy to reach with one thumb */
+  .modalOverlay:not(.sheetOverlay) { align-items: flex-end; }
+  .modalOverlay:not(.sheetOverlay) > .modal { width: 100%; max-width: none; box-sizing: border-box; border-radius: 18px 18px 0 0; max-height: 90vh; overflow-y: auto; padding: 20px 18px calc(20px + env(safe-area-inset-bottom)); animation: sheetUp 0.22s ease-out; }
+  .modalBtns .btn { padding: 13px 10px; font-size: 14px; }
+  .ticketModal .orderBtns .btn { padding: 13px 8px; }
+
+  /* section tabs inside screens scroll sideways instead of wrapping */
+  .tfTabs, .indToggles, .exchangeTabs, .orderTypeTabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .tfTabs::-webkit-scrollbar, .indToggles::-webkit-scrollbar, .expiryTabs::-webkit-scrollbar { display: none; }
+  .tfTab, .indToggle { flex-shrink: 0; min-height: 34px; }
+  .exTab { min-height: 36px; }
+  .orderTypeTab { min-height: 40px; }
+}
+@keyframes sheetUp { from { transform: translateY(24px); opacity: 0.6; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .modal { animation: none !important; } }
+
+/* phone held sideways: keep the screen for content */
+@media (pointer: coarse) and (max-height: 500px) {
+  .mTradeBar { display: none !important; }
+  .main { padding-bottom: 90px; }
+  .bottomNavItem { min-height: 44px; flex-direction: row; gap: 6px; font-size: 12px; }
+  .toastMobile { bottom: 70px; }
+  .installBar, .firstTradeCard { margin-top: 6px; }
+  .topbar { flex-wrap: nowrap; padding: 6px 14px; gap: 16px; }
+  .topbar .brand { flex-shrink: 0; }
+  .stats { width: auto; flex: 1; max-width: 520px; margin-left: auto; }
+  .installBar { padding: 6px 10px; }
+  .installBarText .dim { display: none; }
+}
+
+/* landing menu on phones: two tidy rows instead of a cut-off strip */
+@media (max-width: 560px) {
+  .landingWrap .landingMenu { flex-wrap: wrap !important; overflow: visible !important; gap: 8px 18px !important; white-space: nowrap; }
+  .landingNavActions .landingNavBtn { padding: 9px 14px; }
+}
 `;
