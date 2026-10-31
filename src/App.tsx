@@ -3865,8 +3865,8 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, referral
           {!isPaidPro && !inTrial && (
             <button className="upgradeBtn" onClick={() => setUpgradeModalOpen(true)}><Sparkles size={13} /> Upgrade to Pro</button>
           )}
-          {!install.standalone && (install.canInstall || install.platform !== "desktop") && <button className="resetBtn installBtn" onClick={doInstall} title="Install PaperRally as an app"><Smartphone size={14} /> Install app</button>}
-          <a className="resetBtn" href={feedbackHref} title="Tell us what to improve"><MessageSquare size={14} /> Feedback</a>
+          {!install.standalone && (install.canInstall || install.platform !== "desktop") && <button className="resetBtn installBtn hlBtn" onClick={doInstall} title="Install PaperRally as an app"><Smartphone size={14} /> Install app</button>}
+          <a className="resetBtn feedbackBtn hlBtn" href={feedbackHref} title="Tell us what to improve"><MessageSquare size={14} /> Feedback</a>
           <button className="resetBtn" onClick={popOutChart} title="Open a full-day chart in a new window"><Maximize2 size={14} /> Pop-out chart</button>
           <button className="themeBtn" onClick={cycleTheme} title="Change background theme"><span className="themeEmoji">{THEMES[themeIdx].emoji}</span> {THEMES[themeIdx].name}</button>
           <button className="resetBtn" onClick={() => setConfirmReset(true)}><RotateCcw size={14} /> Reset</button>
@@ -4995,7 +4995,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, referral
               <button className="btn btnGhost" onClick={() => { setMoreOpen(false); replayActive ? restartReplayDay() : practiceToday(); }} disabled={replayBusy}><Play size={14} /> {replayActive ? "Restart day" : "Practice today"}</button>
               {replayActive && <button className="btn btnGhost" onClick={() => { setMoreOpen(false); exitReplay(); }}>Exit replay</button>}
               {!install.standalone && <button className="btn btnBull" onClick={doInstall}><Smartphone size={14} /> Install app</button>}
-              <a className="btn btnGhost" href={feedbackHref}><MessageSquare size={14} /> Feedback</a>
+              <a className="btn feedbackSheetBtn" href={feedbackHref}><MessageSquare size={14} /> Feedback</a>
               <button className="btn btnGhost" onClick={startTour}><Compass size={14} /> Take the tour</button>
               <button className="btn btnGhost" onClick={() => { setMoreOpen(false); popOutChart(); }}><Maximize2 size={14} /> Pop-out chart</button>
               <button className="btn btnGhost" onClick={cycleTheme}><span className="themeEmoji">{THEMES[themeIdx].emoji}</span> Theme: {THEMES[themeIdx].name}</button>
@@ -6766,6 +6766,20 @@ a.resetBtn { text-decoration: none; }
 .installWhy { font-size: 13px; line-height: 1.5; margin: 0 0 10px; }
 .installSteps { margin: 0 0 6px; padding-left: 20px; font-size: 14px; line-height: 1.7; }
 .heroInstall { display: inline-flex; align-items: center; gap: 8px; margin-top: 12px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3); color: #fff; border-radius: 999px; padding: 9px 16px; font-size: 14px; font-weight: 600; cursor: pointer; }
+
+.topbarActions { flex-wrap: wrap; row-gap: 8px; }
+.topbarActions > * { white-space: nowrap; flex-shrink: 0; }
+.userBadge .proBadge { white-space: nowrap; }
+
+/* highlighted in-app links: Install app (green) and Feedback (purple) */
+.hlBtn { font-weight: 700 !important; }
+.installBtn.hlBtn { background: var(--bull) !important; border-color: var(--bull) !important; color: #06281A !important; box-shadow: 0 2px 10px color-mix(in srgb, var(--bull) 35%, transparent); }
+.installBtn.hlBtn:hover { filter: brightness(1.07); }
+.feedbackBtn.hlBtn { background: color-mix(in srgb, var(--accent) 18%, var(--surface-2)) !important; border-color: var(--accent) !important; color: var(--text) !important; }
+.feedbackBtn.hlBtn svg { color: var(--accent); }
+.feedbackBtn.hlBtn:hover { background: color-mix(in srgb, var(--accent) 28%, var(--surface-2)) !important; }
+.feedbackSheetBtn { background: color-mix(in srgb, var(--accent) 18%, var(--surface-2)); border: 1px solid var(--accent); color: var(--text); font-weight: 700; text-decoration: none; }
+.feedbackSheetBtn svg { color: var(--accent); }
 
 /* landing additions */
 .liveCount { display: inline-flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 13.5px; color: #E3E9F4; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.2); padding: 6px 12px; border-radius: 999px; }
