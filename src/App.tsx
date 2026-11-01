@@ -2285,7 +2285,7 @@ function PhoneGate({ userId, userEmail, themeIdx, cycleTheme, onDone, onCancel }
   );
 }
 
-function TradingApp({ username, userId, userEmail, contactEmail = null, referral = null, initialPortfolio, isPro, isPaidPro, inTrial, trialDaysLeft, onRefreshSubscription, onLogout, themeIdx, cycleTheme }) {
+function TradingApp({ username, userId, userEmail, contactEmail = null, memberSince = null, proUntil = null, signInMethod = "password", referral = null, initialPortfolio, isPro, isPaidPro, inTrial, trialDaysLeft, onRefreshSubscription, onLogout, themeIdx, cycleTheme }) {
   const saved = initialPortfolio;
   const syncGroupRef = useRef([]);
 
@@ -2397,6 +2397,14 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, referral
   const [slInput, setSlInput] = useState("");
   const [pickingPriceFromChart, setPickingPriceFromChart] = useState(false);
   const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [accountPhone, setAccountPhone] = useState(null);
+  const openAccount = async () => {
+    setAccountOpen(true);
+    if (accountPhone) return;
+    const { data, error } = await supabase.from("phone_registry").select("phone").eq("user_id", userId).maybeSingle();
+    setAccountPhone(error ? "—" : (data?.phone || "Not added"));
+  };
   const [checkoutBusy, setCheckoutBusy] = useState(false);
 
   // ---- usability additions ----
@@ -3870,11 +3878,11 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, referral
           <Stat className="statSecondary" label="Unrealized" value={pricesReady ? fmtMoney(unrealizedPnl, 0) : "…"} tone={pricesReady ? (unrealizedPnl >= 0 ? "bull" : "bear") : ""} />
         </div>
         <div className="topbarActions">
-          <div className="userBadge">
+          <button type="button" className="userBadge userBadgeBtn" onClick={openAccount} title="View your account details">
             <UserIcon size={13} />{username}
             {isPaidPro && <span className="proBadge">PRO</span>}
             {inTrial && <span className="proBadge proBadgeTrial" title="Every feature is free during your first week">ALL FREE · {trialDaysLeft}D LEFT</span>}
-          </div>
+          </button>
           {/* No upgrade prompts during the free first week — only once it's over. */}
           {!isPaidPro && !inTrial && (
             <button className="upgradeBtn" onClick={() => setUpgradeModalOpen(true)}><Sparkles size={13} /> Upgrade to Pro</button>
@@ -4928,6 +4936,36 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, referral
         </div>
       )}
 
+      {accountOpen && (() => {
+        const fmt = (iso) => { try { return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }); } catch { return "—"; } };
+        const lifetime = proUntil && new Date(proUntil).getFullYear() >= 2090;
+        const plan = isPaidPro ? (lifetime ? "Pro · no expiry" : `Pro · active till ${fmt(proUntil)}`)
+          : inTrial ? `Free trial · ${trialDaysLeft} day${trialDaysLeft === 1 ? "" : "s"} left` : "Free";
+        const rows = [
+          ["Username", username],
+          ["Email", contactEmail || "— (signed up with username)"],
+          ["Mobile", accountPhone || "Loading…"],
+          ["Sign-in", signInMethod === "google" ? "Google" : "Username & password"],
+          ["Plan", plan],
+          ["Member since", memberSince ? fmt(memberSince) : "—"],
+        ];
+        return (
+          <div className="modalOverlay" onClick={() => setAccountOpen(false)}>
+            <div className="modal accountModal" role="dialog" aria-modal="true" aria-label="Account details" onClick={(e) => e.stopPropagation()}>
+              <h3><UserIcon size={17} /> Account details</h3>
+              <dl className="accountList">
+                {rows.map(([k, v]) => (<div key={k} className="accountRow"><dt>{k}</dt><dd>{v}</dd></div>))}
+              </dl>
+              <p className="dim accountNote">Need to change your mobile number or email? Use Feedback and we'll update it for you.</p>
+              <div className="modalBtns">
+                {!isPaidPro && <button className="btn btnMarigold" onClick={() => { setAccountOpen(false); setUpgradeModalOpen(true); }}><Sparkles size={14} /> Upgrade to Pro</button>}
+                <button className="btn btnGhost" onClick={() => setAccountOpen(false)}>Close</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {tourOpen && <TourOverlay steps={tourSteps} onDone={finishTour} />}
       {installHelpOpen && <InstallHelp platform={install.platform} onClose={() => setInstallHelpOpen(false)} />}
       {journalEditing && (
@@ -5783,6 +5821,9 @@ function MainApp() {
       userId={session.user.id}
       userEmail={session.user.email}
       contactEmail={session.user.app_metadata?.provider === "google" ? session.user.email : null}
+      memberSince={session.user.created_at}
+      proUntil={isPaidPro ? subscription.current_period_end : null}
+      signInMethod={session.user.app_metadata?.provider === "google" ? "google" : "password"}
       referral={referral}
       initialPortfolio={portfolioData}
       isPro={isPro}
@@ -6908,4 +6949,40 @@ a.resetBtn { text-decoration: none; }
   .landingWrap .landingMenu { flex-wrap: wrap !important; overflow: visible !important; gap: 8px 18px !important; white-space: nowrap; }
   .landingNavActions .landingNavBtn { padding: 9px 14px; }
 }
+
+/* ---- 3D top-bar buttons ---- */
+.topbarActions .resetBtn, .topbarActions .themeBtn, .topbarActions .upgradeBtn, .topbarActions .userBadgeBtn {
+  position: relative;
+  background-image: linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0) 55%);
+  box-shadow: 0 3px 0 color-mix(in srgb, var(--border) 70%, #000), 0 6px 14px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.14);
+  transform: translateY(0);
+  transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.15s ease, color 0.15s, border-color 0.15s;
+}
+.topbarActions .resetBtn:hover:not(:disabled), .topbarActions .themeBtn:hover, .topbarActions .upgradeBtn:hover, .topbarActions .userBadgeBtn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 5px 0 color-mix(in srgb, var(--border) 70%, #000), 0 10px 20px rgba(0,0,0,0.26), inset 0 1px 0 rgba(255,255,255,0.18);
+}
+.topbarActions .resetBtn:active:not(:disabled), .topbarActions .themeBtn:active, .topbarActions .upgradeBtn:active, .topbarActions .userBadgeBtn:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--border) 70%, #000), 0 2px 6px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.1);
+}
+.topbarActions .installBtn.hlBtn { box-shadow: 0 3px 0 color-mix(in srgb, var(--bull) 55%, #000), 0 8px 18px color-mix(in srgb, var(--bull) 35%, transparent), inset 0 1px 0 rgba(255,255,255,0.35) !important; }
+.topbarActions .installBtn.hlBtn:hover { box-shadow: 0 5px 0 color-mix(in srgb, var(--bull) 55%, #000), 0 12px 22px color-mix(in srgb, var(--bull) 40%, transparent), inset 0 1px 0 rgba(255,255,255,0.35) !important; }
+.topbarActions .practiceTopBtn { box-shadow: 0 3px 0 color-mix(in srgb, var(--accent) 55%, #000), 0 8px 18px color-mix(in srgb, var(--accent) 35%, transparent), inset 0 1px 0 rgba(255,255,255,0.3); }
+.topbarActions .practiceTopBtn:hover:not(:disabled) { box-shadow: 0 5px 0 color-mix(in srgb, var(--accent) 55%, #000), 0 12px 22px color-mix(in srgb, var(--accent) 40%, transparent), inset 0 1px 0 rgba(255,255,255,0.3); }
+.topbarActions .feedbackBtn.hlBtn { box-shadow: 0 3px 0 color-mix(in srgb, var(--accent) 45%, #000), 0 6px 14px color-mix(in srgb, var(--accent) 22%, transparent), inset 0 1px 0 rgba(255,255,255,0.18); }
+.topbarActions .upgradeBtn { box-shadow: 0 3px 0 color-mix(in srgb, var(--amber) 55%, #000), 0 8px 18px color-mix(in srgb, var(--amber) 30%, transparent), inset 0 1px 0 rgba(255,255,255,0.4); }
+.userBadgeBtn { cursor: pointer; font: inherit; font-size: 12px; }
+.userBadgeBtn:hover { color: var(--text); border-color: var(--accent); }
+@media (prefers-reduced-motion: reduce) { .topbarActions .resetBtn, .topbarActions .themeBtn, .topbarActions .upgradeBtn, .topbarActions .userBadgeBtn { transition: none; transform: none !important; } }
+
+/* ---- Account details panel ---- */
+.accountModal { width: min(380px, calc(100vw - 32px)); }
+.accountModal h3 { display: flex; align-items: center; gap: 8px; }
+.accountList { margin: 6px 0 14px; display: grid; gap: 2px; }
+.accountRow { display: flex; justify-content: space-between; gap: 14px; padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.accountRow:last-child { border-bottom: none; }
+.accountRow dt { color: var(--text-dim); flex-shrink: 0; }
+.accountRow dd { margin: 0; color: var(--text); font-weight: 600; text-align: right; word-break: break-word; }
+.modal p.accountNote { font-size: 12px; margin: 0 0 14px; }
 `;
