@@ -2045,6 +2045,7 @@ function LandingPage({ themeIdx, onEnter: onEnterRaw }) {
           <a href="/contact.html">Contact</a>
           <a href="/privacy.html">Privacy</a>
           <a href="/terms.html">Terms</a>
+          <a href="/refund.html">Refunds</a>
           {showInstall && (
             <a href="#install" className="footerInstall" onClick={(e) => { e.preventDefault(); landingInstall(); }}>
               <Smartphone size={15} /> Install app
