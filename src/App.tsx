@@ -906,6 +906,37 @@ const uid = () => Math.random().toString(36).slice(2, 10);
 const SUPABASE_URL = "https://qfzepvorvvajqpnfwceq.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_-pw1tSkYhKymxQZHNqT66w_GOPnWEQN";
 const YAHOO_PROXY_URL = `${SUPABASE_URL}/functions/v1/yahoo-proxy`;
+
+// ---- Shared price-feed fetcher ---------------------------------------------
+// Many widgets ask for the same symbol at nearly the same moment (ticker, hero
+// chart, watchlist, main chart). This keeps one request in flight per URL and
+// reuses a fresh answer for a few seconds, so the proxy isn't flooded and the
+// browser's connection limit doesn't queue requests for seconds.
+const proxyCache = new Map(); // url -> { at, promise }
+function proxyJson(url, ttlMs) {
+  const now = Date.now();
+  const hit = proxyCache.get(url);
+  if (hit && (hit.pending || now - hit.at < ttlMs)) return hit.promise;
+  const entry = { at: now, pending: true, promise: null };
+  entry.promise = fetch(url)
+    .then((res) => { if (!res.ok) throw new Error("bad response"); return res.json(); })
+    .then((json) => { entry.pending = false; entry.at = Date.now(); return json; })
+    .catch((e) => { if (proxyCache.get(url) === entry) proxyCache.delete(url); throw e; });
+  proxyCache.set(url, entry);
+  if (proxyCache.size > 300) { const cutoff = Date.now() - 10 * 60 * 1000; for (const [k, v] of proxyCache) if (!v.pending && v.at < cutoff) proxyCache.delete(k); }
+  return entry.promise;
+}
+const LIVE_TTL = 6000, HISTORY_TTL = 5 * 60 * 1000, SEARCH_TTL = 60 * 1000, NEWS_TTL = 2 * 60 * 1000;
+
+// setInterval that skips ticks while the tab is hidden and catches up the
+// moment the user comes back — saves data and battery on phones.
+function visibleInterval(fn, ms) {
+  let missed = false;
+  const iv = setInterval(() => { if (document.hidden) { missed = true; return; } fn(); }, ms);
+  const onVis = () => { if (!document.hidden && missed) { missed = false; fn(); } };
+  document.addEventListener("visibilitychange", onVis);
+  return () => { clearInterval(iv); document.removeEventListener("visibilitychange", onVis); };
+}
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 initTelemetry(supabase);
 captureReferralFromUrl();
@@ -1048,9 +1079,8 @@ async function startProCheckout({ userEmail, onSuccess, onError }) {
 async function fetchYahooDay(symbol, dateISO) {
   const p1 = Math.floor(new Date(dateISO + "T00:00:00+05:30").getTime() / 1000);
   const from = p1 - 6 * 86400; // include the previous trading session for chart context
-  const res = await fetch(`${YAHOO_PROXY_URL}?type=chart&symbol=${encodeURIComponent(symbol)}&interval=5m&period1=${from}&period2=${p1 + 86400}`);
-  if (!res.ok) throw new Error("bad response");
-  const json = await res.json();
+  const isPast = Date.now() > Date.parse(dateISO + "T16:00:00+05:30");
+  const json = await proxyJson(`${YAHOO_PROXY_URL}?type=chart&symbol=${encodeURIComponent(symbol)}&interval=5m&period1=${from}&period2=${p1 + 86400}`, isPast ? HISTORY_TTL : LIVE_TTL);
   const result = json.chart?.result?.[0];
   if (!result) throw new Error("no data");
   const ts = result.timestamp || [];
@@ -1145,11 +1175,10 @@ function aggregateCandles(hist, minutes, dayStart) {
 }
 
 async function fetchYahooRange(symbol, interval, period1, period2) {
-  const res = await fetch(
-    `${YAHOO_PROXY_URL}?type=chart&symbol=${encodeURIComponent(symbol)}&interval=${interval}&period1=${period1}&period2=${period2}`
+  const json = await proxyJson(
+    `${YAHOO_PROXY_URL}?type=chart&symbol=${encodeURIComponent(symbol)}&interval=${interval}&period1=${period1}&period2=${period2}`,
+    period2 * 1000 < Date.now() - 60 * 60 * 1000 ? HISTORY_TTL : LIVE_TTL
   );
-  if (!res.ok) throw new Error("bad response");
-  const json = await res.json();
   const result = json.chart?.result?.[0];
   if (!result) throw new Error("no data for this date");
   const ts = result.timestamp || [];
@@ -1161,11 +1190,10 @@ async function fetchYahooRange(symbol, interval, period1, period2) {
 }
 
 async function fetchYahoo(symbol, interval = "5m", range = "1d") {
-  const res = await fetch(
-    `${YAHOO_PROXY_URL}?type=chart&symbol=${encodeURIComponent(symbol)}&interval=${interval}&range=${range}`
+  const json = await proxyJson(
+    `${YAHOO_PROXY_URL}?type=chart&symbol=${encodeURIComponent(symbol)}&interval=${interval}&range=${range}`,
+    range === "1d" || range === "5d" ? LIVE_TTL : HISTORY_TTL
   );
-  if (!res.ok) throw new Error("bad response");
-  const json = await res.json();
   const result = json.chart.result[0];
   const meta = result.meta;
   const ts = result.timestamp || [];
@@ -1183,11 +1211,7 @@ async function fetchYahoo(symbol, interval = "5m", range = "1d") {
 }
 
 async function searchYahooSymbols(query) {
-  const res = await fetch(
-    `${YAHOO_PROXY_URL}?type=search&q=${encodeURIComponent(query)}&quotesCount=8&newsCount=0`
-  );
-  if (!res.ok) throw new Error("search failed");
-  const json = await res.json();
+  const json = await proxyJson(`${YAHOO_PROXY_URL}?type=search&q=${encodeURIComponent(query)}&quotesCount=8&newsCount=0`, SEARCH_TTL);
   const quotes = json.quotes || [];
   return quotes
     .filter((r) => r.symbol && r.quoteType === "EQUITY" && (r.symbol.endsWith(".NS") || r.symbol.endsWith(".BO")))
@@ -1199,11 +1223,7 @@ async function searchYahooSymbols(query) {
 }
 
 async function fetchSymbolNews(query) {
-  const res = await fetch(
-    `${YAHOO_PROXY_URL}?type=search&q=${encodeURIComponent(query)}&quotesCount=0&newsCount=8`
-  );
-  if (!res.ok) throw new Error("news fetch failed");
-  const json = await res.json();
+  const json = await proxyJson(`${YAHOO_PROXY_URL}?type=search&q=${encodeURIComponent(query)}&quotesCount=0&newsCount=8`, NEWS_TTL);
   const news = json.news || [];
   return news.map((n) => ({
     title: n.title,
@@ -1345,8 +1365,8 @@ function LiveTicker() {
       );
     };
     pull();
-    const iv = setInterval(pull, 20000);
-    return () => { cancelled = true; clearInterval(iv); };
+    const stop = visibleInterval(pull, 20000);
+    return () => { cancelled = true; stop(); };
   }, []);
 
   const valid = rows.filter((r) => r.price != null);
@@ -1392,8 +1412,8 @@ function MoversStrip() {
       setRows(next);
     };
     pull();
-    const iv = setInterval(pull, 30000);
-    return () => { cancelled = true; clearInterval(iv); };
+    const stop = visibleInterval(pull, 30000);
+    return () => { cancelled = true; stop(); };
   }, []);
 
   if (rows.length < 2) return null;
@@ -1439,8 +1459,8 @@ function LiveHeroPrice() {
       } catch { /* keep showing last known value on a transient failure */ }
     };
     pull();
-    const iv = setInterval(pull, 8000);
-    return () => { cancelled = true; clearInterval(iv); };
+    const stop = visibleInterval(pull, 8000);
+    return () => { cancelled = true; stop(); };
   }, []);
   if (!q) return null;
   const chg = q.prevClose ? ((q.price - q.prevClose) / q.prevClose) * 100 : 0;
@@ -1498,8 +1518,8 @@ function MiniHeroChartImpl() {
       } catch { /* keep last rendered candles on a transient fetch failure */ }
     };
     load();
-    const iv = setInterval(load, 20000);
-    return () => { cancelled = true; clearInterval(iv); };
+    const stop = visibleInterval(load, 20000);
+    return () => { cancelled = true; stop(); };
   }, []);
 
   return <div ref={containerRef} className="miniHeroChart" />;
@@ -2350,8 +2370,8 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
       } catch { /* keep the last value */ }
     };
     pull();
-    const iv = setInterval(pull, 60000);
-    return () => { cancelled = true; clearInterval(iv); };
+    const stop = visibleInterval(pull, 60000);
+    return () => { cancelled = true; stop(); };
   }, []);
   const VIX_SCALE = { "^NSEI": 1, "^BSESN": 1, "^NSEBANK": 1.2 };
   const allInstruments = useMemo(
@@ -2591,8 +2611,8 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
       });
     };
     pull();
-    const iv = setInterval(pull, 10000);
-    return () => { cancelled = true; clearInterval(iv); };
+    const stop = visibleInterval(pull, 10000);
+    return () => { cancelled = true; stop(); };
   }, []);
 
   // Prices come only from the real feed (no simulated ticks), so fills and P&L use real prices.
@@ -2619,8 +2639,8 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
       }
     };
     load();
-    const iv = setInterval(load, 30000);
-    return () => { cancelled = true; clearInterval(iv); };
+    const stop = visibleInterval(load, 30000);
+    return () => { cancelled = true; stop(); };
   }, [selected, timeframe, replayActive]);
 
   // Live: the newest candle on the chart follows every price tick
@@ -3281,8 +3301,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
   // Re-check every 2 minutes while a payment is pending and the tab is open.
   useEffect(() => {
     if (!paymentPendingAt || isPaidPro) return;
-    const iv = setInterval(() => { onRefreshSubscription(); }, 120000);
-    return () => clearInterval(iv);
+    return visibleInterval(() => { onRefreshSubscription(); }, 120000);
   }, [paymentPendingAt, isPaidPro]);
 
   // One-time nudge when the free trial has just run out (per-browser, since there's

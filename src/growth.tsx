@@ -332,7 +332,7 @@ export function LeaderboardPanel({ supabase, userId, prefs, defaultName, weekKey
   };
   useEffect(() => {
     load();
-    const iv = setInterval(load, 60000);
+    const iv = setInterval(() => { if (!document.hidden) load(); }, 60000);
     return () => clearInterval(iv);
   }, [weekKey, joined]);
 
