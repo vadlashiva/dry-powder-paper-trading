@@ -1189,11 +1189,7 @@ async function fetchYahooRange(symbol, interval, period1, period2) {
     .filter((p) => typeof p.price === "number" && typeof p.open === "number" && typeof p.high === "number" && typeof p.low === "number");
 }
 
-async function fetchYahoo(symbol, interval = "5m", range = "1d") {
-  const json = await proxyJson(
-    `${YAHOO_PROXY_URL}?type=chart&symbol=${encodeURIComponent(symbol)}&interval=${interval}&range=${range}`,
-    range === "1d" || range === "5d" ? LIVE_TTL : HISTORY_TTL
-  );
+function parseYahooChart(json) {
   const result = json.chart.result[0];
   const meta = result.meta;
   const ts = result.timestamp || [];
@@ -1208,6 +1204,41 @@ async function fetchYahoo(symbol, interval = "5m", range = "1d") {
     history,
     live: true,
   };
+}
+
+const chartUrl = (symbol, interval, range) =>
+  `${YAHOO_PROXY_URL}?type=chart&symbol=${encodeURIComponent(symbol)}&interval=${interval}&range=${range}`;
+
+async function fetchYahoo(symbol, interval = "5m", range = "1d") {
+  const json = await proxyJson(chartUrl(symbol, interval, range), range === "1d" || range === "5d" ? LIVE_TTL : HISTORY_TTL);
+  return parseYahooChart(json);
+}
+
+// Live quotes for many symbols in as few requests as possible (type=multi on the
+// proxy, up to 30 per call). Returns the same shape as Promise.allSettled over
+// fetchYahoo, and quietly falls back to one-by-one if the proxy is an older version.
+let multiSupported = true;
+async function fetchYahooAll(symbols, interval = "5m", range = "1d") {
+  const ttl = range === "1d" || range === "5d" ? LIVE_TTL : HISTORY_TTL;
+  const fresh = (s) => { const h = proxyCache.get(chartUrl(s, interval, range)); return h && !h.pending && Date.now() - h.at < ttl; };
+  const need = [...new Set(symbols.filter((s) => !fresh(s)))];
+  if (multiSupported && need.length > 1) {
+    try {
+      for (let k = 0; k < need.length; k += 30) {
+        const chunk = need.slice(k, k + 30);
+        const res = await fetch(`${YAHOO_PROXY_URL}?type=multi&symbols=${chunk.map(encodeURIComponent).join(",")}&interval=${interval}&range=${range}`);
+        if (res.status === 400) { multiSupported = false; break; }
+        if (!res.ok) throw new Error("bad response");
+        const { results } = await res.json();
+        const at = Date.now();
+        chunk.forEach((s) => {
+          const j = results?.[s];
+          if (j && j.chart?.result?.[0]) proxyCache.set(chartUrl(s, interval, range), { at, pending: false, promise: Promise.resolve(j) });
+        });
+      }
+    } catch { /* fall through to per-symbol fetches below */ }
+  }
+  return Promise.allSettled(symbols.map((s) => fetchYahoo(s, interval, range)));
 }
 
 async function searchYahooSymbols(query) {
@@ -1353,7 +1384,7 @@ function LiveTicker() {
   useEffect(() => {
     let cancelled = false;
     const pull = async () => {
-      const results = await Promise.allSettled(symbols.map((s) => fetchYahoo(s)));
+      const results = await fetchYahooAll(symbols);
       if (cancelled) return;
       setRows(
         symbols.map((s, i) => {
@@ -1401,7 +1432,7 @@ function MoversStrip() {
   useEffect(() => {
     let cancelled = false;
     const pull = async () => {
-      const results = await Promise.allSettled(MOVERS_SYMBOLS.map((s) => fetchYahoo(s)));
+      const results = await fetchYahooAll(MOVERS_SYMBOLS);
       if (cancelled) return;
       const next = MOVERS_SYMBOLS.map((s, i) => {
         const r = results[i];
@@ -2595,7 +2626,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
     let cancelled = false;
     const pull = async () => {
       const list = allInstrumentsRef.current;
-      const results = await Promise.allSettled(list.map((s) => fetchYahoo(s.symbol)));
+      const results = await fetchYahooAll(list.map((s) => s.symbol));
       if (cancelled) return;
       setQuotes((prev) => {
         if (replayActiveRef.current) return prev;
