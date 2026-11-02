@@ -3164,6 +3164,28 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
     try { return localStorage.getItem(firstTradeKey) === "1"; } catch { return false; }
   });
   const [highlightBuy, setHighlightBuy] = useState(false);
+  // Phones: Buy/Sell open a full-screen order screen ("buy" | "sell" | null) with its own
+  // history entry, so the phone's back button closes it.
+  const [orderScreen, setOrderScreen] = useState(null);
+  const openOrderScreen = (side) => {
+    if (side === "buy") setHighlightBuy(true);
+    window.history.pushState({ ...window.history.state, prOrder: side }, "");
+    setOrderScreen(side);
+  };
+  const closeOrderScreen = () => {
+    if (window.history.state?.prOrder) window.history.back();
+    else setOrderScreen(null);
+  };
+  useEffect(() => {
+    const state = window.history.state; // a reload starts with the order screen closed
+    if (state?.prOrder) { const { prOrder, ...rest } = state; window.history.replaceState(rest, ""); }
+  }, []);
+  useEffect(() => {
+    if (!orderScreen) return;
+    const before = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = before; };
+  }, [orderScreen]);
   const lastSessionISO = lastTradingDayISO();
   const lastSessionLabel = new Date(lastSessionISO + "T12:00:00+05:30").toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" });
 
@@ -3194,7 +3216,8 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
     setOrderType("market");
     setOrderQty(10);
     setHighlightBuy(true);
-    setTimeout(() => document.getElementById("stockOrderCard")?.scrollIntoView({ behavior: "smooth", block: "center" }), 150);
+    if (isMobile) setTimeout(() => openOrderScreen("buy"), 150);
+    else setTimeout(() => document.getElementById("stockOrderCard")?.scrollIntoView({ behavior: "smooth", block: "center" }), 150);
   };
 
   // Picking a symbol from the watchlist: on phones, jump straight to its chart.
@@ -3223,12 +3246,14 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
 
   // Escape closes whichever dialog or sheet is on top.
   const escStateRef = useRef({});
-  escStateRef.current = { journalEditing, closeConfirm, moreOpen, ticket, slEditing, editingOrder, upgradeModalOpen, checkoutBusy, confirmReset };
+  escStateRef.current = { orderScreen, journalEditing, closeConfirm, moreOpen, ticket, slEditing, editingOrder, upgradeModalOpen, checkoutBusy, confirmReset };
   useEffect(() => {
     const onKey = (e) => {
       if (e.key !== "Escape") return;
       const st = escStateRef.current;
-      if (st.journalEditing) setJournalEditing(null);
+      if (st.upgradeModalOpen && st.orderScreen) { if (!st.checkoutBusy) setUpgradeModalOpen(false); }
+      else if (st.orderScreen) closeOrderScreen();
+      else if (st.journalEditing) setJournalEditing(null);
       else if (st.closeConfirm) setCloseConfirm(null);
       else if (st.moreOpen) setMoreOpen(false);
       else if (st.ticket) setTicket(null);
@@ -3267,6 +3292,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
   }, [tab, mobilePane]);
   useEffect(() => {
     const onPop = (e) => {
+      setOrderScreen(e.state?.prOrder || null);
       const nav = e.state?.prNav;
       if (!nav) return;
       setTab(nav.tab);
@@ -3436,6 +3462,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
     const stop = wantStop ? plannedStopFor(entry) : null;
     if (wantStop && stop >= entry) return showToast(`Stop-loss must be below the current price (${fmtMoney(entry)})`, "bear");
     const r = executeStockOrder(selected, side, orderQty);
+    if (r.ok) closeOrderScreen();
     if (r.ok && wantStop) {
       if (isPro) {
         const qty = Math.floor(Number(orderQty));
@@ -3467,6 +3494,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
     const order = { id: uid(), symbol: selected, side, kind: orderType, qty, price, createdAt: new Date() };
     setPendingOrders((prev) => [order, ...prev]);
     setOrderPrice("");
+    closeOrderScreen();
     showToast(`${orderType === "limit" ? "Limit" : "Stop"} order placed: ${side} ${qty} ${displayTicker(selected)} @ ${fmtMoney(price)}`, side === "buy" ? "bull" : "bear");
   };
 
@@ -3890,7 +3918,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
   const tourSteps = [
     { title: "Pick a stock", text: isMobile ? "Tap Watchlist to see live NSE & BSE prices. Tap any stock to open its chart." : "Your watchlist shows live NSE & BSE prices. Click any stock to open its chart, or search all 5,000+ BSE companies.", target: () => document.querySelector(isMobile ? ".bottomNav .bottomNavItem" : ".watchlist") },
     { title: "Read the chart", text: "Switch timeframes, add indicators like RSI and MACD, and draw trendlines. Practice today replays the market from 9:15 AM.", target: () => document.querySelector(".chartCard") },
-    { title: "Place a practice trade", text: "Choose a quantity, keep the suggested stop-loss, and check how much you'd risk before you press Buy. It's all virtual money.", target: () => document.getElementById("stockOrderCard") },
+    { title: "Place a practice trade", text: `${isMobile ? "Tap Buy, then choose" : "Choose"} a quantity, keep the suggested stop-loss, and check how much you'd risk before you press Buy. It's all virtual money.`, target: () => (isMobile ? document.querySelector(".mTradeBar") : document.getElementById("stockOrderCard")) },
     { title: "Track and improve", text: isMobile ? "Positions shows your live P&L. Under More you'll find Performance, the weekly Leaderboard and Learn." : "Positions shows live P&L. Performance shows your win rate and habits, and the Leaderboard runs a new challenge every week.", target: () => document.querySelector(isMobile ? ".bottomNav" : ".tabs") },
   ];
 
@@ -3925,6 +3953,17 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
     ["replay", "Replay"],
     ["learn", L.learnTab],
   ];
+  // "Why did you take this trade?" sits in the order box, or below the chart once the phone order screen has closed.
+  const renderTagPrompt = () => {
+    const lt = lastTradeId && trades[0]?.id === lastTradeId ? trades[0] : null;
+    if (!lt || lt.realized != null) return null;
+    return (
+      <div className="tagPrompt">
+        <div className="tagPromptQ">{lt.tag ? <>Tagged: <b>{lt.tag}</b></> : "Why did you take this trade?"}</div>
+        <TagChips compact value={lt.tag} onPick={(tag) => { setTrades((prev) => prev.map((t) => (t.id === lt.id ? { ...t, tag } : t))); if (tag) track("trade_tagged", { tag }); }} />
+      </div>
+    );
+  };
   const navBackLink = navBack && (
     <button type="button" className="navBackBtn" onClick={() => window.history.back()}>
       <ArrowLeft size={14} /> Back to {navBack.pane === "watchlist" ? "Watchlist" : TAB_DEFS.find(([id]) => id === navBack.tab)?.[1] || "previous screen"}
@@ -4317,7 +4356,16 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
                   <p className="dim indexNote">{meta.name} isn't traded as a cash position here — head to the <b>Options Chain</b> tab to trade {displayTicker(selected)} options.</p>
                 </div>
               ) : (
-                <div className="orderCard" id="stockOrderCard">
+                <div className={`orderCard ${isMobile ? (orderScreen ? "orderScreen" : "mOrderClosed") : ""}`} id="stockOrderCard">
+                  {isMobile && orderScreen && (
+                    <div className="orderScreenTop">
+                      <button type="button" className="orderScreenBack" aria-label="Back to chart" onClick={closeOrderScreen}><ArrowLeft size={20} /></button>
+                      <div className="orderScreenTitle">
+                        <b>{orderScreen === "buy" ? "Buy" : "Sell"} {displayTicker(selected)}</b>
+                        <span className="mono">{fmtMoney(q.price)} <span className={q.price >= q.prevClose ? "bull" : "bear"}>{fmtPct(((q.price - q.prevClose) / q.prevClose) * 100)}</span></span>
+                      </div>
+                    </div>
+                  )}
                   <div className="orderCardHead">
                     <h3>{orderType === "market" ? "Market Order" : orderType === "limit" ? "Limit Order" : "Stop Order"}</h3>
                     <span className="orderCardSym mono">{displayTicker(selected)}</span>
@@ -4420,8 +4468,8 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
                   )}
 
                   <div className="orderBtns">
-                    <button className={`btn btnBull ${highlightBuy && marketStatus.isOpen && !firstTradeDone ? "buyGlow" : ""}`} disabled={!marketStatus.isOpen} onClick={() => (orderType === "market" ? placeStockOrder("buy") : placeConditionalOrder("buy"))}><TrendingUp size={14} /> Buy</button>
-                    <button className="btn btnBear" disabled={!marketStatus.isOpen} onClick={() => (orderType === "market" ? placeStockOrder("sell") : placeConditionalOrder("sell"))}><TrendingDown size={14} /> Sell</button>
+                    {orderScreen !== "sell" && <button className={`btn btnBull ${highlightBuy && marketStatus.isOpen && !firstTradeDone ? "buyGlow" : ""}`} disabled={!marketStatus.isOpen} onClick={() => (orderType === "market" ? placeStockOrder("buy") : placeConditionalOrder("buy"))}><TrendingUp size={14} /> Buy</button>}
+                    {orderScreen !== "buy" && <button className="btn btnBear" disabled={!marketStatus.isOpen} onClick={() => (orderType === "market" ? placeStockOrder("sell") : placeConditionalOrder("sell"))}><TrendingDown size={14} /> Sell</button>}
                   </div>
                   {!marketStatus.isOpen && !replayActive && (
                     <div className="closedOrderHint">
@@ -4434,16 +4482,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
                   {!marketStatus.isOpen && replayActive && (
                     <div className="orderHint dim" style={{ textAlign: "center", marginTop: "-6px" }}>This replay day has ended — press Restart day to go again</div>
                   )}
-                  {(() => {
-                    const lt = lastTradeId && trades[0]?.id === lastTradeId ? trades[0] : null;
-                    if (!lt || lt.realized != null) return null;
-                    return (
-                      <div className="tagPrompt">
-                        <div className="tagPromptQ">{lt.tag ? <>Tagged: <b>{lt.tag}</b></> : "Why did you take this trade?"}</div>
-                        <TagChips compact value={lt.tag} onPick={(tag) => { setTrades((prev) => prev.map((t) => (t.id === lt.id ? { ...t, tag } : t))); if (tag) track("trade_tagged", { tag }); }} />
-                      </div>
-                    );
-                  })()}
+                  {renderTagPrompt()}
 
                   {(() => {
                     const pos = stockPositions.find((p) => p.symbol === selected);
@@ -4465,6 +4504,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
                   })()}
                 </div>
               )}
+              {isMobile && !orderScreen && renderTagPrompt()}
             </div>
           )}
 
@@ -5161,8 +5201,8 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
             <button className="btn btnBull" onClick={() => setTab("chain")}>Trade options</button>
           ) : (
             <>
-              <button className="btn btnBull" onClick={() => { setHighlightBuy(true); document.getElementById("stockOrderCard")?.scrollIntoView({ behavior: "smooth", block: "start" }); }}>Buy</button>
-              <button className="btn btnBear" onClick={() => document.getElementById("stockOrderCard")?.scrollIntoView({ behavior: "smooth", block: "start" })}>Sell</button>
+              <button className="btn btnBull" onClick={() => openOrderScreen("buy")}>Buy</button>
+              <button className="btn btnBear" onClick={() => openOrderScreen("sell")}>Sell</button>
             </>
           )}
         </div>
@@ -7030,8 +7070,22 @@ a.resetBtn { text-decoration: none; }
 @keyframes sheetUp { from { transform: translateY(24px); opacity: 0.6; } to { transform: none; opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .modal { animation: none !important; } }
 
+/* phone order screen */
+.orderCard.mOrderClosed { display: none; }
+.orderCard.orderScreen { position: fixed; inset: 0; z-index: 45; max-width: none; margin: 0; border: none; border-radius: 0; height: auto; overflow-y: auto; padding: 0 16px calc(16px + env(safe-area-inset-bottom)); animation: sheetUp 0.18s ease-out; }
+.orderScreenTop { position: sticky; top: 0; z-index: 3; display: flex; align-items: center; gap: 8px; margin: 0 -16px 12px; padding: 10px 12px; background: var(--surface); border-bottom: 1px solid var(--border); }
+.orderScreenBack { display: flex; background: none; border: none; color: var(--text); padding: 10px; cursor: pointer; }
+.orderScreenTitle { display: flex; flex-direction: column; gap: 2px; font-size: 15px; min-width: 0; }
+.orderScreenTitle .mono { font-size: 12.5px; }
+.orderScreen .pickPriceBtn { display: none; }
+.orderScreen .orderBtns { position: sticky; bottom: 0; z-index: 2; background: var(--surface); padding: 10px 0; }
+.orderScreen .orderBtns .btn { flex: 1; padding: 14px; font-size: 15px; }
+@media (prefers-reduced-motion: reduce) { .orderCard.orderScreen { animation: none; } }
+
 /* phone held sideways: keep the screen for content */
 @media (pointer: coarse) and (max-height: 500px) {
+  .orderCard.mOrderClosed { display: block; }
+  .tradeGrid > .tagPrompt { display: none; }
   .mTradeBar { display: none !important; }
   .main { padding-bottom: 90px; }
   .bottomNavItem { min-height: 44px; flex-direction: row; gap: 6px; font-size: 12px; }
