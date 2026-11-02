@@ -21,21 +21,24 @@ const istDay = (ms = Date.now()) => new Date(ms + IST_MS).toISOString().slice(0,
 export const getApiKey = () => read(KEY_STORE) || "";
 export const setApiKey = (key) => write(KEY_STORE, key.trim());
 export function clearConnection() { remove(SESSION_STORE); }
-export function forgetKey() { remove(KEY_STORE); remove(SESSION_STORE); }
+export function forgetCredentials() { remove(KEY_STORE); remove(SESSION_STORE); }
+export const hasCredentials = () => !!getApiKey();
+export const saveCredentials = ({ key }) => setApiKey(key);
 
 // SmartAPI sessions end at midnight.
-export function getSession() {
+export function hasSession() { return !!getSession(); }
+function getSession() {
   try {
     const s = JSON.parse(read(SESSION_STORE) || "null");
     return s && s.day === istDay() && s.jwt ? s : null;
   } catch { return null; }
 }
 
-export const loginUrl = (key) =>
-  `https://smartapi.angelone.in/publisher-login?api_key=${encodeURIComponent(key)}&redirect_url=${encodeURIComponent(`${window.location.origin}/`)}&state=paperrally`;
+export const loginUrl = () =>
+  `https://smartapi.angelone.in/publisher-login?api_key=${encodeURIComponent(getApiKey())}&redirect_url=${encodeURIComponent(`${window.location.origin}/`)}&state=paperrally`;
 
 // Angel One returns to the app with tokens in the address. Save them and remove them from the address at once.
-export function consumeLoginRedirect() {
+function consumeLoginRedirect() {
   const qs = new URLSearchParams(window.location.search);
   const jwt = qs.get("auth_token");
   if (!jwt) return false;
@@ -71,7 +74,7 @@ async function call(path, body, method = "POST") {
   const json = await res.json().catch(() => ({}));
   if (json.errorCode === "AG8001" || json.errorcode === "AG8001" || json.errorCode === "AG8002" || json.errorcode === "AG8002") {
     clearConnection();
-    window.dispatchEvent(new Event("pr-angel-expired"));
+    window.dispatchEvent(new Event("pr-broker-expired"));
     throw new Error("Angel One session ended");
   }
   if (!(json.status || json.success)) throw new Error(json.message || "Angel One request failed");
@@ -96,7 +99,7 @@ const parseSymbol = (symbol) => {
   return m ? { name: m[1], exchange: m[2] === "NS" ? "NSE" : "BSE" } : null;
 };
 const lookups = {};
-export async function tokenFor(symbol) {
+async function tokenFor(symbol) {
   if (FIXED[symbol]) return FIXED[symbol];
   if (tokens()[symbol]) return tokens()[symbol];
   const p = parseSymbol(symbol);
@@ -134,46 +137,23 @@ export async function fetchQuotes(symbols) {
 }
 
 const INTERVALS = { "1m": "ONE_MINUTE", "5m": "FIVE_MINUTE", "15m": "FIFTEEN_MINUTE", "60m": "ONE_HOUR", "1d": "ONE_DAY" };
-const RANGE_DAYS = { "1d": 6, "5d": 8, "1mo": 32, "6mo": 190, "1y": 370 };
 const stamp = (ms) => new Date(ms + IST_MS).toISOString().slice(0, 16).replace("T", " ");
 
-async function chartJson({ symbol, interval, range, period1, period2 }) {
+export async function fetchCandles({ symbol, interval, fromMs, toMs }) {
   const [exchange, symboltoken] = await tokenFor(symbol);
-  const now = Date.now();
-  const to = period2 ? Math.min(Number(period2) * 1000, now) : now;
-  const from = period1 ? Number(period1) * 1000 : now - (RANGE_DAYS[range] ?? 8) * 86400000;
   const rows = (await inTurn("candles", 400, () => call("/historical/v1/getCandleData", {
-    exchange, symboltoken, interval: INTERVALS[interval] || "FIVE_MINUTE", fromdate: stamp(from), todate: stamp(to),
+    exchange, symboltoken, interval: INTERVALS[interval] || "FIVE_MINUTE", fromdate: stamp(fromMs), todate: stamp(toMs),
   }))) || [];
-  let candles = rows.map(([t, o, h, l, c]) => ({ t: Math.floor(Date.parse(t) / 1000), o, h, l, c }));
-  if (range === "1d" && candles.length) { // the latest session only
-    const day = istDay(candles[candles.length - 1].t * 1000);
-    candles = candles.filter((k) => istDay(k.t * 1000) === day);
-  }
-  const last = candles[candles.length - 1]?.c;
-  const live = period1 ? null : (await fetchQuotes([symbol]))[symbol];
-  return { chart: { result: [{
-    meta: { regularMarketPrice: live?.price ?? last, previousClose: live?.prevClose ?? candles[0]?.o, chartPreviousClose: live?.prevClose ?? candles[0]?.o },
-    timestamp: candles.map((k) => k.t),
-    indicators: { quote: [{ open: candles.map((k) => k.o), high: candles.map((k) => k.h), low: candles.map((k) => k.l), close: candles.map((k) => k.c) }] },
-  }] } };
+  return rows.map(([t, o, h, l, c]) => ({ t: Math.floor(Date.parse(t) / 1000), o, h, l, c }));
 }
 
-async function searchJson(q) {
+export async function searchStocks(q) {
   const rows = (await inTurn("search", 1100, () => call("/order/v1/searchScrip", { exchange: "NSE", searchscrip: q }))) || [];
-  return { quotes: rows.filter((r) => /-EQ$/.test(r.tradingsymbol)).slice(0, 8).map((r) => {
+  return rows.filter((r) => /-EQ$/.test(r.tradingsymbol)).slice(0, 8).map((r) => {
     const name = r.tradingsymbol.replace(/-EQ$/, "");
     tokens()[`${name}.NS`] = ["NSE", String(r.symboltoken)];
-    return { symbol: `${name}.NS`, quoteType: "EQUITY", longname: name };
-  }) };
+    return { symbol: `${name}.NS`, name };
+  });
 }
 
-// The app's price code still builds its old feed addresses. Each one is answered here from the user's Angel One connection.
-export function answerFeedRequest(url) {
-  const qs = new URL(url).searchParams;
-  if (qs.get("type") === "search") {
-    if (Number(qs.get("newsCount")) > 0) return Promise.resolve({ news: [] }); // Angel One has no news feed
-    return searchJson(qs.get("q"));
-  }
-  return chartJson({ symbol: qs.get("symbol"), interval: qs.get("interval"), range: qs.get("range"), period1: qs.get("period1"), period2: qs.get("period2") });
-}
+export const finishLogin = async () => consumeLoginRedirect();

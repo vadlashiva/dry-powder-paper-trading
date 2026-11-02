@@ -6,8 +6,8 @@ import {TrendingUp, TrendingDown, RotateCcw, X, Flame, Activity, LogOut, Lock, U
   ArrowLeft,
 } from "lucide-react";
 import { StrategyPanel } from "./strategies";
-import { AngelSetup } from "./angelSetup";
-import { answerFeedRequest, fetchQuotes, getApiKey, setApiKey, getSession, loginUrl, consumeLoginRedirect, fetchProfile, clearConnection, forgetKey } from "./angel";
+import { BrokerSetup } from "./brokerSetup";
+import { BROKERS, activeBroker, chooseBroker, answerFeedRequest, fetchQuotes } from "./brokers";
 import { LEARN, LangSwitch, loadLang, saveLang } from "./i18n";
 import { useIsMobile, loadSetting, saveSetting, computeCharges, PerformancePanel } from "./extras";
 import { isoWeekIST, initTelemetry, track, tradeKey, TagChips, JournalModal, JournalStatsCard, computeAchievements, AchievementsGrid, ACHIEVEMENTS, makeShareImage, shareImage, captureReferralFromUrl, syncReferrals, InvitePanel, LeaderboardPanel, TourOverlay, InstallHelp } from "./growth";
@@ -4161,7 +4161,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
             ))}
           </div>
           <div className="wlHead">
-            <span>{replayActive ? "Replay: past session prices" : "Prices from your Angel One connection"}</span>
+            <span>{replayActive ? "Replay: past session prices" : `Prices from your ${activeBroker()?.name ?? "broker"} connection`}</span>
             <Activity size={12} className={quotes[selected]?.live ? "liveDot" : "liveDotOff"} />
           </div>
           <div className="wlList">
@@ -5900,35 +5900,47 @@ function ClosedPage() {
   );
 }
 
-// The user's own SmartAPI key opens the app. The key alone isn't proof, so the app only opens
-// once they've logged in on Angel One's own page and Angel One has confirmed the connection.
-function AngelGate({ children }) {
+// The user's own broker API opens the app. A key alone isn't proof, so the app only opens
+// once they've logged in on their broker's own page and the broker has confirmed the connection.
+function BrokerGate({ children }) {
   const [state, setState] = useState("checking"); // "checking" | "open" | "connect"
-  const [key, setKey] = useState(getApiKey());
+  const [broker, setBroker] = useState(activeBroker);
+  const [hasKey, setHasKey] = useState(() => !!activeBroker()?.api.hasCredentials());
   const [error, setError] = useState("");
   const verify = async () => {
-    if (!getSession()) return setState("connect");
-    try { await fetchProfile(); setState("open"); }
-    catch { clearConnection(); setError("Angel One couldn't confirm this login. Check your API key and try again."); setState("connect"); }
+    const b = activeBroker();
+    if (!b) return setState("connect");
+    try {
+      await b.api.finishLogin();
+      if (!b.api.hasSession()) return setState("connect");
+      await b.api.fetchProfile();
+      setState("open");
+    } catch {
+      b.api.clearConnection();
+      setError(`${b.name} couldn't confirm this login. Check your key and try again.`);
+      setState("connect");
+    }
   };
   useEffect(() => {
-    consumeLoginRedirect();
     verify();
-    const ended = () => { setError("Your Angel One session has ended. Please connect again."); setState("connect"); };
-    window.addEventListener("pr-angel-expired", ended);
-    return () => window.removeEventListener("pr-angel-expired", ended);
+    const ended = () => { setError("Your broker session has ended. Please connect again."); setState("connect"); };
+    window.addEventListener("pr-broker-expired", ended);
+    return () => window.removeEventListener("pr-broker-expired", ended);
   }, []);
   if (state === "open") return children;
-  if (state === "checking") return <SplashScreen label="Connecting to Angel One…" themeIdx={0} />;
-  const connect = (k) => { setApiKey(k); window.location.href = loginUrl(k); };
+  if (state === "checking") return <SplashScreen label="Connecting to your broker…" themeIdx={0} />;
   return (
     <div className="authWrap" style={THEMES[0].vars}>
       <style>{CSS}</style>
-      <AngelSetup
-        savedKey={key}
+      <BrokerSetup
+        brokers={BROKERS}
+        broker={broker}
+        hasKey={hasKey}
         error={error}
-        onConnect={connect}
-        onForget={() => { forgetKey(); setKey(""); setError(""); }}
+        onChoose={(id) => { chooseBroker(id); setBroker(BROKERS[id]); setHasKey(BROKERS[id].api.hasCredentials()); setError(""); }}
+        onConnect={async (c) => { await broker.api.saveCredentials(c); window.location.href = broker.api.loginUrl(); }}
+        onReconnect={() => { window.location.href = broker.api.loginUrl(); }}
+        onForget={() => { broker.api.forgetCredentials(); chooseBroker(""); setBroker(null); setHasKey(false); setError(""); }}
         brand={<div className="authBrand"><Flame size={22} className="brandIcon" /><span>PAPERRALLY</span></div>}
       />
     </div>
@@ -5949,7 +5961,7 @@ function ClosedGate() {
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => { setTimeout(() => check(session), 0); });
     return () => listener.subscription.unsubscribe();
   }, []);
-  if (access === "owner") return <AngelGate>{isPopoutRoute() ? <PopoutChart /> : <MainApp />}</AngelGate>;
+  if (access === "owner") return <BrokerGate>{isPopoutRoute() ? <PopoutChart /> : <MainApp />}</BrokerGate>;
   if (access === "login") return <AuthGate themeIdx={0} cycleTheme={() => {}} initialMode="login" />;
   if (access === "checking") return <SplashScreen label="Loading…" themeIdx={0} />;
   return <ClosedPage />;
@@ -7267,6 +7279,8 @@ a.resetBtn { text-decoration: none; }
 .setupRow > div { min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; }
 .setupRow b { overflow-wrap: anywhere; font-size: 13px; }
 .setupRow .btn { flex: none; padding: 7px 10px; font-size: 12.5px; }
+.setupBrokers { display: grid; gap: 8px; margin: 14px 0; }
+.setupBrokers .btn { padding: 13px; font-size: 15px; justify-content: center; }
 .setupOpen { display: block; text-align: center; text-decoration: none; padding: 10px; }
 .setupNav { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 .setupNav .btn { padding: 9px 16px; }
