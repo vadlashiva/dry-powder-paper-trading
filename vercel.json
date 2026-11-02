@@ -1,0 +1,8 @@
+{
+  "redirects": [
+    { "source": "/:page((?!google|contact|privacy|terms|refund|disclaimer|index)[a-z0-9-]+)\\.html", "destination": "/", "permanent": false }
+  ],
+  "headers": [
+    { "source": "/(.*)", "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }] }
+  ]
+}
