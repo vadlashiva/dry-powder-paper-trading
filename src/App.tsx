@@ -2049,13 +2049,14 @@ function LandingPage({ themeIdx, onEnter: onEnterRaw }) {
           <a href="/privacy.html">Privacy</a>
           <a href="/terms.html">Terms</a>
           <a href="/refund.html">Refunds</a>
+          <a href="/disclaimer.html">Disclaimer</a>
           {showInstall && (
             <a href="#install" className="footerInstall" onClick={(e) => { e.preventDefault(); landingInstall(); }}>
               <Smartphone size={15} /> Install app
             </a>
           )}
         </div>
-        <div className="dim landingFooterNote">PaperRally is a simulator for learning. No real money or securities are ever traded, virtual balances have no cash value, and nothing here is investment advice. PaperRally is not registered with SEBI and is not a broker.</div>
+        <div className="dim landingFooterNote">For education purposes only. PaperRally is a simulator for learning. No real money or securities are ever traded, virtual balances have no cash value, and nothing here is investment advice. PaperRally is not registered with SEBI and is not a broker.</div>
       </footer>
     </div>
   );
@@ -4551,6 +4552,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
                   {!marketStatus.isOpen && replayActive && (
                     <div className="orderHint dim" style={{ textAlign: "center", marginTop: "-6px" }}>This replay day has ended — press Restart day to go again</div>
                   )}
+                  <div className="orderHint dim" style={{ textAlign: "center" }}>Practice only, for education. No real order is placed.</div>
                   {renderTagPrompt()}
 
                   {(() => {
