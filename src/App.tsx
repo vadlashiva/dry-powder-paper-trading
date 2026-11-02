@@ -5989,10 +5989,36 @@ const CSS = `
 .marketOpen { background: rgba(20,232,160,0.15); color: var(--bull); }
 .marketClosed { background: rgba(255,84,112,0.15); color: var(--bear); }
 
-.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 20px; flex-wrap: wrap; }
-.tab { background: none; border: none; color: var(--text-dim); padding: 10px 16px; font-size: 13px; cursor: pointer; border-bottom: 2px solid transparent; }
-.tab:hover { color: var(--text); }
-.tabActive { color: var(--text); border-bottom: 2px solid var(--accent); }
+.tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--border); margin-bottom: 20px; padding: 4px 0 12px; flex-wrap: wrap; }
+/* 3D keycap tabs: --tab-face is the top surface, --tab-edge is the solid side below it. */
+.tab {
+  --tab-face: var(--surface);
+  --tab-edge: color-mix(in srgb, var(--border) 65%, var(--text-dim));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--tab-face) 86%, white), var(--tab-face));
+  border: 1px solid var(--border); border-radius: 9px;
+  color: var(--text-dim); padding: 8px 12px; font-size: 13px; font-weight: 500; white-space: nowrap; cursor: pointer;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.22), 0 3px 0 var(--tab-edge), 0 6px 9px rgba(0,0,0,0.14);
+  transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+@media (hover: hover) {
+  .tab:hover {
+    --tab-face: color-mix(in srgb, var(--accent) 22%, var(--surface));
+    --tab-edge: color-mix(in srgb, var(--accent) 72%, black);
+    color: var(--text); border-color: var(--accent); transform: translateY(-2px);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.28), 0 5px 0 var(--tab-edge), 0 10px 18px color-mix(in srgb, var(--accent) 38%, transparent);
+  }
+}
+.tab:active { transform: translateY(3px); box-shadow: inset 0 2px 3px rgba(0,0,0,0.2), 0 0 0 var(--tab-edge); }
+.tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.tabActive, .tabActive:hover {
+  --tab-face: var(--accent);
+  --tab-edge: color-mix(in srgb, var(--accent) 62%, black);
+  color: white; border-color: color-mix(in srgb, var(--accent) 80%, black); font-weight: 600;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tab { transition: none; }
+  .tab:hover, .tab:active { transform: none; }
+}
 
 .tradeGrid { display: grid; grid-template-columns: 1fr 260px; gap: 20px; }
 .chartCard { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; transition: box-shadow 0.2s ease, border-color 0.2s ease; }
@@ -6728,8 +6754,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .landingWrap .landingFooterLinks a:active { transform: scale(0.97); }
 @media (max-width: 560px) { .landingWrap .landingFooterLinks { justify-content: center; } .landingWrap .landingFooterLinks a { padding: 8px 13px; font-size: 13px; } }
 
-.tab { padding: 10px 12px; }
-@media (max-width: 1280px) { .tab { padding: 9px 9px; font-size: 12.5px; } }
+@media (max-width: 1280px) { .tabs { gap: 4px; } .tab { padding: 7px 8px; font-size: 12.5px; } }
 
 /* mobile-only pieces are hidden on desktop by default */
 .bottomNav, .mTradeBar, .mSectionHead { display: none; }
