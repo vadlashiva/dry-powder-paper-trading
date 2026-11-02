@@ -346,7 +346,7 @@ export function LeaderboardPanel({ supabase, userId, prefs, defaultName, weekKey
         <div>
           <div className="lbKicker">Weekly challenge · {weekKey.replace("-W", " · week ")}</div>
           <h3>Best % return wins the week</h3>
-          <p className="dim">Everyone starts the week where their portfolio is on Monday. The board ranks by % return, updates live, and resets every Monday. Virtual money only — bragging rights, no prizes.</p>
+          <p className="dim">Everyone starts the week where their portfolio is on Monday. The board ranks by % return, updates through the day, and resets every Monday. Virtual money only — bragging rights, no prizes.</p>
         </div>
         <div className="lbMine">
           <span className="dim">Your week</span>

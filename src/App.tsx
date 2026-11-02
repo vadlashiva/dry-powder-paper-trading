@@ -1267,8 +1267,8 @@ async function fetchSymbolNews(query) {
 }
 
 const LANDING_FEATURES = [
-  { icon: Activity, title: "Live Market Data", desc: "Real NSE & BSE prices, updated continuously during market hours — not delayed, not simulated ticks." },
-  { icon: Layers, title: "Options Chain & Greeks", desc: "Live Black-Scholes pricing with Delta, Gamma, Theta, and Vega across every strike and expiry." },
+  { icon: Activity, title: "NSE & BSE Market Data", desc: "Market prices from a public data feed, updated during market hours. Prices can lag the exchange." },
+  { icon: Layers, title: "Options Chain & Greeks", desc: "Black-Scholes pricing with Delta, Gamma, Theta, and Vega across every strike and expiry." },
   { icon: LineChart, title: "Charts & Indicators", desc: "Candlestick and line charts with MA, RSI, and MACD, across five timeframes." },
   { icon: TrendingDown, title: "Option Writing, with Margin", desc: "Sell calls and puts the way real writers do — premium credited, margin blocked — and see why the risk on that side is so different." },
   { icon: Crosshair, title: "Stop-Losses on Every Trade", desc: "Stop orders on stocks and an automatic stop-loss on option positions, so protecting a trade becomes a reflex, not an afterthought." },
@@ -1288,9 +1288,9 @@ const WHATS_NEW = [
 const WHO_FOR = [
   { icon: GraduationCap, title: "Beginners", desc: "Learn what an order, a position, and a stop-loss actually feel like — before any of it involves real money." },
   { icon: Sparkles, title: "Students", desc: "Understand how markets move alongside your coursework, with ₹10,00,000 in virtual capital and nothing at stake." },
-  { icon: Activity, title: "Intraday Traders", desc: "Rehearse entries and exits against live, moving prices during real market hours." },
+  { icon: Activity, title: "Intraday Traders", desc: "Rehearse entries and exits against moving prices during market hours." },
   { icon: LineChart, title: "Swing Traders", desc: "Plan a setup, hold it across sessions, and see how your thesis actually plays out." },
-  { icon: Layers, title: "Options Traders", desc: "Work through calls, puts, and spreads against live Greeks before risking real premium." },
+  { icon: Layers, title: "Options Traders", desc: "Work through calls, puts, and spreads with the Greeks in view before risking real premium." },
   { icon: UserIcon, title: "Experienced Traders", desc: "Test a new idea or timeframe without touching your real-money account while you validate it." },
 ];
 
@@ -1340,10 +1340,10 @@ const LEARN_LINKS = [
 
 const FAQ_ITEMS = [
   { q: "Is the money on PaperRally real?", a: "No. Every account starts with ₹10,00,000 in virtual cash. Trades, profits, and losses are simulated and have no monetary value." },
-  { q: "Is the market data live or delayed?", a: "Live. PaperRally pulls real NSE & BSE prices during market hours — not a delayed feed." },
+  { q: "How current are the prices?", a: "PaperRally uses a public market data feed, so prices can lag the exchange. BSE prices are typically about 15 minutes behind. Use them for practice, not for real trading decisions." },
   { q: "Do I need a broker or demat account?", a: "No. PaperRally isn't a broker — just sign up with Google and a phone number, and you're trading virtual capital immediately." },
-  { q: "What is Replay Mode?", a: "Pick any weekday from the last 30 days and PaperRally replays that day's real price action candle by candle, with its own separate ₹10,00,000 balance — so practicing in Replay never touches your live portfolio." },
-  { q: "Do option prices match the exchange exactly?", a: "Not exactly. Premiums are worked out from the live index or stock price with the Black-Scholes model, so they move realistically with the market but won't tick-for-tick match NSE's option quotes." },
+  { q: "What is Replay Mode?", a: "Pick any weekday from the last 30 days and PaperRally replays that day's real price action candle by candle, with its own separate ₹10,00,000 balance — so practicing in Replay never touches your main portfolio." },
+  { q: "Do option prices match the exchange exactly?", a: "Not exactly. Premiums are worked out from the index or stock price with the Black-Scholes model, so they move realistically with the market but won't tick-for-tick match NSE's option quotes." },
   { q: "Is PaperRally free?", a: "Every new account gets a full 7-day Pro trial, no card required. After that, core paper trading stays free — Pro features like the options chain, alerts, and CSV export need an active subscription." },
 ];
 
@@ -1465,7 +1465,7 @@ function MoversStrip() {
   return (
     <section className="landingMovers">
       <h2 className="landingH2">Who's Leading, Who's Lagging Right Now</h2>
-      <p className="dim mistakesIntro">Live NSE movers among the stocks you can trade on PaperRally — refreshes automatically.</p>
+      <p className="dim mistakesIntro">NSE movers among the stocks you can trade on PaperRally — refreshes automatically.</p>
       <div className="moversGrid">
         <div className="moversCol moversColUp">
           <h3 className="moversColTitle bull"><TrendingUp size={14} /> Leading</h3>
@@ -1687,8 +1687,8 @@ function LiveTradersCount() {
   return <div className="liveCount heroReveal heroReveal-3"><span className="liveCountDot" /> {n.toLocaleString("en-IN")} traders practised on PaperRally this week</div>;
 }
 
-const PRO_FEATURES = ["Limit & stop-loss orders", "RSI, MACD and every chart timeframe", "Options chain with live Greeks", "Search & add any NSE/BSE stock", "Price alerts with phone notifications", "News tab", "Trade history CSV export"];
-const FREE_FEATURES = ["₹10,00,000 virtual cash", "Live NSE & BSE prices", "Market orders & positions", "Replay any recent trading day", "Performance stats, journal & leaderboard", "Learn section (English, हिंदी, ಕನ್ನಡ)"];
+const PRO_FEATURES = ["Limit & stop-loss orders", "RSI, MACD and every chart timeframe", "Options chain with Greeks", "Search & add any NSE/BSE stock", "Price alerts with phone notifications", "News tab", "Trade history CSV export"];
+const FREE_FEATURES = ["₹10,00,000 virtual cash", "NSE & BSE market prices", "Market orders & positions", "Replay any recent trading day", "Performance stats, journal & leaderboard", "Learn section (English, हिंदी, ಕನ್ನಡ)"];
 
 function LandingPage({ themeIdx, onEnter: onEnterRaw }) {
   const install = useInstallPrompt();
@@ -1772,7 +1772,7 @@ function LandingPage({ themeIdx, onEnter: onEnterRaw }) {
           <h1 className="landingH1 heroReveal heroReveal-2">Practice trading NSE &amp; BSE with <span className="landingGradientText">real prices</span>. Zero risk.</h1>
           <p className="landingSub heroReveal heroReveal-3">
             PaperRally is a paper trading terminal for Indian stocks, options, and indices. Trade with
-            ₹10,00,000 in virtual cash against live market data — build real skill before you risk real money.
+            ₹10,00,000 in virtual cash with NSE &amp; BSE market prices — build real skill before you risk real money.
           </p>
           <div className="heroTrust heroReveal heroReveal-3">
             <span>No demat account</span><span>No KYC</span><span>No real money</span>
@@ -1805,7 +1805,7 @@ function LandingPage({ themeIdx, onEnter: onEnterRaw }) {
           <LiveHeroPrice />
           <ul className="upgradeList" style={{ marginTop: "18px" }}>
             <li>₹10,00,000 virtual starting balance</li>
-            <li>Live NSE &amp; BSE market data</li>
+            <li>NSE &amp; BSE market data</li>
             <li>No card required to sign up</li>
           </ul>
           <button className="btn btnBull authSubmit" onClick={() => onEnter("register")}>Create free account</button>
@@ -1820,7 +1820,7 @@ function LandingPage({ themeIdx, onEnter: onEnterRaw }) {
         <div className="landingStatDivider" />
         <div className="landingStatItem">
           <span className="landingStatNum">NSE + BSE</span>
-          <span className="landingStatLabel">Live market data</span>
+          <span className="landingStatLabel">Market data</span>
         </div>
         <div className="landingStatDivider" />
         <div className="landingStatItem">
@@ -1884,7 +1884,7 @@ function LandingPage({ themeIdx, onEnter: onEnterRaw }) {
           <p className="dim replaySpotlightText">
             Pick any weekday from the last 30 days and PaperRally replays that day's real NSE &amp; BSE price
             action candle by candle — as if it were happening live. Start from the 9:15 AM open, play at 1x, 5x, 30x or 60x,
-            drag the timeline to any minute, and trade against it with a separate ₹10,00,000 balance that never touches your live portfolio.
+            drag the timeline to any minute, and trade against it with a separate ₹10,00,000 balance that never touches your main portfolio.
           </p>
           <ul className="upgradeList">
             <li>Market closed? One tap replays the last session — evenings and weekends included</li>
@@ -1914,7 +1914,7 @@ function LandingPage({ themeIdx, onEnter: onEnterRaw }) {
       <section className="demoSection" id="demo">
         <div className="demoCopy">
           <h2 className="landingH2" style={{ textAlign: "left", margin: "0 0 12px" }}>See PaperRally in 36 seconds</h2>
-          <p className="dim">Virtual capital, live prices, options with Greeks, replay of any recent day, the pop-out trading window and more — in one quick tour.</p>
+          <p className="dim">Virtual capital, market prices, options with Greeks, replay of any recent day, the pop-out trading window and more — in one quick tour.</p>
           <button className="btn btnBull landingCta" onClick={() => onEnter("register")}><Sparkles size={15} /> Try it yourself — free</button>
         </div>
         <div className="demoPhone">
@@ -2968,7 +2968,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
     setSearch("");
     setRemoteResults([]);
     setTab("trade");
-    showToast(live ? `${displayTicker(result.symbol)} added to your watchlist` : `Added ${displayTicker(result.symbol)} (live price unavailable, using placeholder)`, live ? "bull" : "bear");
+    showToast(live ? `${displayTicker(result.symbol)} added to your watchlist` : `Added ${displayTicker(result.symbol)} (price unavailable, using placeholder)`, live ? "bull" : "bear");
   };
 
   // Nothing is selected when the terminal first opens; viewSym keeps the
@@ -3290,7 +3290,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
       setTrades(st.trades); setPendingOrders(st.pendingOrders); setAlerts(st.alerts); setQuotes(st.quotes);
     }
     liveStashRef.current = null;
-    showToast("Back to the live market and your real portfolio", "bull");
+    showToast("Back to today's market and your main portfolio", "bull");
   };
 
   const handleUpgrade = async () => {
@@ -3888,10 +3888,10 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
     track(completed ? "tour_complete" : "tour_skipped");
   };
   const tourSteps = [
-    { title: "Pick a stock", text: isMobile ? "Tap Watchlist to see live NSE & BSE prices. Tap any stock to open its chart." : "Your watchlist shows live NSE & BSE prices. Click any stock to open its chart, or search all 5,000+ BSE companies.", target: () => document.querySelector(isMobile ? ".bottomNav .bottomNavItem" : ".watchlist") },
+    { title: "Pick a stock", text: isMobile ? "Tap Watchlist to see NSE & BSE prices. Tap any stock to open its chart." : "Your watchlist shows NSE & BSE prices. Click any stock to open its chart, or search all 5,000+ BSE companies.", target: () => document.querySelector(isMobile ? ".bottomNav .bottomNavItem" : ".watchlist") },
     { title: "Read the chart", text: "Switch timeframes, add indicators like RSI and MACD, and draw trendlines. Practice today replays the market from 9:15 AM.", target: () => document.querySelector(".chartCard") },
     { title: "Place a practice trade", text: "Choose a quantity, keep the suggested stop-loss, and check how much you'd risk before you press Buy. It's all virtual money.", target: () => document.getElementById("stockOrderCard") },
-    { title: "Track and improve", text: isMobile ? "Positions shows your live P&L. Under More you'll find Performance, the weekly Leaderboard and Learn." : "Positions shows live P&L. Performance shows your win rate and habits, and the Leaderboard runs a new challenge every week.", target: () => document.querySelector(isMobile ? ".bottomNav" : ".tabs") },
+    { title: "Track and improve", text: isMobile ? "Positions shows your P&L. Under More you'll find Performance, the weekly Leaderboard and Learn." : "Positions shows P&L. Performance shows your win rate and habits, and the Leaderboard runs a new challenge every week.", target: () => document.querySelector(isMobile ? ".bottomNav" : ".tabs") },
   ];
 
   const feedbackHref = mailtoSupport("PaperRally feedback", `Hi PaperRally team,\n\nWhat I like:\n\nWhat's confusing or broken:\n\nWhat I'd love to see next:\n\n— ${username} (${isMobile ? "phone" : "desktop"})`);
@@ -4063,7 +4063,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
       {!liveMarketStatus.isOpen && !replayActive && (
         <div className="closedBar">
           <span className="closedBarTag">Market closed</span>
-          <span className="closedBarText">Live orders open at 9:15 AM, Mon–Fri. Meanwhile, practise the last session ({lastSessionLabel}) candle by candle — with separate practice money.</span>
+          <span className="closedBarText">Orders open at 9:15 AM, Mon–Fri. Meanwhile, practise the last session ({lastSessionLabel}) candle by candle — with separate practice money.</span>
           <button className="btn btnBull closedBarBtn" onClick={practiceLastSession} disabled={replayBusy}><Play size={13} /> {replayBusy ? "Loading…" : "Start practice"}</button>
         </div>
       )}
@@ -4078,7 +4078,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
             ))}
           </div>
           <div className="wlHead">
-            <span>{replayActive ? "Replay: past session prices" : "Live via public market feed"}</span>
+            <span>{replayActive ? "Replay: past session prices" : "Public market feed · prices can lag"}</span>
             <Activity size={12} className={quotes[selected]?.live ? "liveDot" : "liveDotOff"} />
           </div>
           <div className="wlList">
@@ -4425,7 +4425,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
                   </div>
                   {!marketStatus.isOpen && !replayActive && (
                     <div className="closedOrderHint">
-                      <div className="orderHint dim" style={{ textAlign: "center" }}>Live trading resumes when the market opens.</div>
+                      <div className="orderHint dim" style={{ textAlign: "center" }}>Trading resumes when the market opens.</div>
                       <button className="btn btnGhost closedPracticeBtn" onClick={practiceLastSession} disabled={replayBusy}>
                         <Play size={13} /> {replayBusy ? "Loading…" : `Practise ${lastSessionLabel} from 9:15 AM now`}
                       </button>
@@ -4508,7 +4508,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
 
           {tab === "chain" && selected && (
             !isPro ? (
-              <ProLockPanel title="Options Chain is a Pro feature" description="Live Black-Scholes pricing and Greeks across every strike and expiry." onUpgrade={() => setUpgradeModalOpen(true)} />
+              <ProLockPanel title="Options Chain is a Pro feature" description="Black-Scholes pricing and Greeks across every strike and expiry." onUpgrade={() => setUpgradeModalOpen(true)} />
             ) : (
             <div className="chainWrap">
               <div className="expiryTabs">
@@ -4565,7 +4565,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
                 </table>
               </div>
               {isMobile && <div className="chainNote chainTapHint">Tap any premium to buy or sell that option. Theta and IV are in the order ticket.</div>}
-              <div className="chainNote">Premiums &amp; Greeks are modeled live from the underlying price via Black-Scholes — not a live exchange options feed. Index IV follows India VIX{indiaVix ? ` (now ${indiaVix.toFixed(2)})` : ""}, so premiums are close to, but not exactly, market prices. Quantities are in exchange lots (NIFTY 65, BANKNIFTY 30, SENSEX 20). You can buy or sell (short) options; selling blocks an estimated margin from your cash.</div>
+              <div className="chainNote">Premiums &amp; Greeks are modeled from the underlying price via Black-Scholes — not an exchange options feed. Index IV follows India VIX{indiaVix ? ` (now ${indiaVix.toFixed(2)})` : ""}, so premiums are close to, but not exactly, market prices. Quantities are in exchange lots (NIFTY 65, BANKNIFTY 30, SENSEX 20). You can buy or sell (short) options; selling blocks an estimated margin from your cash.</div>
               {!marketStatus.isOpen && (
                 <div className="chainNote" style={{ color: "var(--bear)", fontWeight: 600 }}>Market Closed — you can browse the chain, but new orders are disabled until 9:15 AM Mon–Fri.</div>
               )}
@@ -4716,7 +4716,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
                   </table>
                 </>
               )}
-              <div className="dim ordersHint">Orders are checked against live prices as they update and fill automatically — no need to keep this tab open.</div>
+              <div className="dim ordersHint">Orders are checked against market prices as they update and fill automatically — no need to keep this tab open.</div>
             </div>
           )}
 
@@ -4737,7 +4737,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
                   <input className="qtyInput mono" type="number" placeholder="Target price" value={alertTarget} onChange={(e) => setAlertTarget(e.target.value)} />
                   <button className="btn btnBull alertAddBtn" onClick={addAlert}><Bell size={13} /> Add Alert</button>
                 </div>
-                <div className="dim alertHint">Alerts are checked against live prices and fire a notification here in the app — set one for the symbol currently selected in the watchlist.</div>
+                <div className="dim alertHint">Alerts are checked against market prices and fire a notification here in the app — set one for the symbol currently selected in the watchlist.</div>
                 {notifPerm !== "unsupported" && (
                   <div className="notifRow">
                     {notifPerm === "granted"
@@ -5012,7 +5012,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
             <ul className="upgradeList">
               <li>Limit &amp; stop-loss orders</li>
               <li>RSI, MACD, and every chart timeframe</li>
-              <li>Options chain with live Greeks</li>
+              <li>Options chain with Greeks</li>
               <li>Search &amp; add any NSE/BSE stock</li>
               <li>Price alerts</li>
               <li>News tab</li>
@@ -5504,7 +5504,7 @@ function PopoutChart() {
   if (!termConnected) tradeBlock = { text: "Keep your PaperRally tab open in this browser to trade from this window." };
   else if (acct.mode === "replay" && acct.date !== date) tradeBlock = { text: `Your terminal is replaying ${dayLabel(acct.date)}, but this chart shows ${dayLabel(date)}.`, action: { label: `Show ${dayLabel(acct.date)}`, run: () => setDate(acct.date) } };
   else if (acct.mode === "live" && !acct.open) tradeBlock = { text: `The market is closed. Practise ${dayLabel(date)} from 9:15 AM — with separate practice money — and trade it right here.`, action: { label: `Practise ${dayLabel(date)}`, run: () => chRef.current?.postMessage({ type: "startReplay", date }) } };
-  else if (acct.mode === "live" && !isToday) tradeBlock = { text: "The market is open now — switch the chart to today to trade live.", action: { label: "Show today", run: () => { setLiveFollow(true); setDate(istTodayISO()); } } };
+  else if (acct.mode === "live" && !isToday) tradeBlock = { text: "The market is open now — switch the chart to today to trade.", action: { label: "Show today", run: () => { setLiveFollow(true); setDate(istTodayISO()); } } };
   else if (acct.mode === "replay" && !acct.open) tradeBlock = { text: "This replay day has ended. Restart it from the terminal to trade again." };
   const canTrade = !tradeBlock && !isIndexSym;
   const showOptions = isIndexSym || tradeMode === "options";
@@ -5618,9 +5618,9 @@ function PopoutChart() {
 
           <div className="popControls">
             {liveNow
-              ? <span className="popLiveTag">● LIVE</span>
+              ? <span className="popLiveTag">● TODAY</span>
               : <button className="btn btnBull popPlay" onClick={togglePlay} disabled={!entry}>{running ? "Pause" : clock >= dayEnd ? "Replay day" : "Play"}</button>}
-            {!linked && isToday && !liveFollow && Date.now() < dayEnd && <button className="indToggle" onClick={() => setLiveFollow(true)}>Go live</button>}
+            {!linked && isToday && !liveFollow && Date.now() < dayEnd && <button className="indToggle" onClick={() => setLiveFollow(true)}>Follow today</button>}
             <span className="mono popClock">{timeLabel}</span>
             <div className="popSliderWrap">
               <input type="range" className="replaySlider popSlider" aria-label="Choose time" min={dayStart} max={dayEnd} step={60000} value={clock} onChange={(e) => seek(Number(e.target.value))} disabled={!entry} />
