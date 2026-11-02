@@ -6,6 +6,7 @@ import {TrendingUp, TrendingDown, RotateCcw, X, Flame, Activity, LogOut, Lock, U
   ArrowLeft,
 } from "lucide-react";
 import { StrategyPanel } from "./strategies";
+import { answerFeedRequest, fetchQuotes, getApiKey, setApiKey, getSession, loginUrl, consumeLoginRedirect, fetchProfile, clearConnection, forgetKey } from "./angel";
 import { LEARN, LangSwitch, loadLang, saveLang } from "./i18n";
 import { useIsMobile, loadSetting, saveSetting, computeCharges, PerformancePanel } from "./extras";
 import { isoWeekIST, initTelemetry, track, tradeKey, TagChips, JournalModal, JournalStatsCard, computeAchievements, AchievementsGrid, ACHIEVEMENTS, makeShareImage, shareImage, captureReferralFromUrl, syncReferrals, InvitePanel, LeaderboardPanel, TourOverlay, InstallHelp } from "./growth";
@@ -920,8 +921,7 @@ function proxyJson(url, ttlMs) {
   const hit = proxyCache.get(url);
   if (hit && (hit.pending || now - hit.at < ttlMs)) return hit.promise;
   const entry = { at: now, pending: true, promise: null };
-  entry.promise = fetch(url)
-    .then((res) => { if (!res.ok) throw new Error("bad response"); return res.json(); })
+  entry.promise = answerFeedRequest(url)
     .then((json) => { entry.pending = false; entry.at = Date.now(); return json; })
     .catch((e) => { if (proxyCache.get(url) === entry) proxyCache.delete(url); throw e; });
   proxyCache.set(url, entry);
@@ -1219,28 +1219,11 @@ async function fetchYahoo(symbol, interval = "5m", range = "1d") {
 // Live quotes for many symbols in as few requests as possible (type=multi on the
 // proxy, up to 30 per call). Returns the same shape as Promise.allSettled over
 // fetchYahoo, and quietly falls back to one-by-one if the proxy is an older version.
-let multiSupported = true;
-async function fetchYahooAll(symbols, interval = "5m", range = "1d") {
-  const ttl = range === "1d" || range === "5d" ? LIVE_TTL : HISTORY_TTL;
-  const fresh = (s) => { const h = proxyCache.get(chartUrl(s, interval, range)); return h && !h.pending && Date.now() - h.at < ttl; };
-  const need = [...new Set(symbols.filter((s) => !fresh(s)))];
-  if (multiSupported && need.length > 1) {
-    try {
-      for (let k = 0; k < need.length; k += 30) {
-        const chunk = need.slice(k, k + 30);
-        const res = await fetch(`${YAHOO_PROXY_URL}?type=multi&symbols=${chunk.map(encodeURIComponent).join(",")}&interval=${interval}&range=${range}`);
-        if (res.status === 400) { multiSupported = false; break; }
-        if (!res.ok) throw new Error("bad response");
-        const { results } = await res.json();
-        const at = Date.now();
-        chunk.forEach((s) => {
-          const j = results?.[s];
-          if (j && j.chart?.result?.[0]) proxyCache.set(chartUrl(s, interval, range), { at, pending: false, promise: Promise.resolve(j) });
-        });
-      }
-    } catch { /* fall through to per-symbol fetches below */ }
-  }
-  return Promise.allSettled(symbols.map((s) => fetchYahoo(s, interval, range)));
+async function fetchYahooAll(symbols) {
+  const prices = await fetchQuotes(symbols);
+  return symbols.map((s) => (prices[s]?.price
+    ? { status: "fulfilled", value: { price: prices[s].price, prevClose: prices[s].prevClose, history: [], live: true } }
+    : { status: "rejected", reason: new Error("no price") }));
 }
 
 async function searchYahooSymbols(query) {
@@ -4177,7 +4160,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
             ))}
           </div>
           <div className="wlHead">
-            <span>{replayActive ? "Replay: past session prices" : "Public market feed · prices can lag"}</span>
+            <span>{replayActive ? "Replay: past session prices" : "Prices from your Angel One connection"}</span>
             <Activity size={12} className={quotes[selected]?.live ? "liveDot" : "liveDotOff"} />
           </div>
           <div className="wlList">
@@ -5916,6 +5899,56 @@ function ClosedPage() {
   );
 }
 
+// The user's own SmartAPI key opens the app. The key alone isn't proof, so the app only opens
+// once they've logged in on Angel One's own page and Angel One has confirmed the connection.
+function AngelGate({ children }) {
+  const [state, setState] = useState("checking"); // "checking" | "open" | "connect"
+  const [key, setKey] = useState(getApiKey());
+  const [error, setError] = useState("");
+  const verify = async () => {
+    if (!getSession()) return setState("connect");
+    try { await fetchProfile(); setState("open"); }
+    catch { clearConnection(); setError("Angel One couldn't confirm this login. Check your API key and try again."); setState("connect"); }
+  };
+  useEffect(() => {
+    consumeLoginRedirect();
+    verify();
+    const ended = () => { setError("Your Angel One session has ended. Please connect again."); setState("connect"); };
+    window.addEventListener("pr-angel-expired", ended);
+    return () => window.removeEventListener("pr-angel-expired", ended);
+  }, []);
+  if (state === "open") return children;
+  if (state === "checking") return <SplashScreen label="Connecting to Angel One…" themeIdx={0} />;
+  const connect = (e) => {
+    e.preventDefault();
+    const k = key.trim();
+    if (!/^[A-Za-z0-9_-]{6,}$/.test(k)) return setError("That doesn't look like a SmartAPI key.");
+    setApiKey(k);
+    window.location.href = loginUrl(k);
+  };
+  return (
+    <div className="authWrap" style={THEMES[0].vars}>
+      <style>{CSS}</style>
+      <form className="authCard angelCard" onSubmit={connect}>
+        <div className="authBrand"><Flame size={22} className="brandIcon" /><span>PAPERRALLY</span></div>
+        <h1>Connect your Angel One account</h1>
+        <div className="authSub">Your own SmartAPI key opens PaperRally. Prices come straight from Angel One to this device, and all trades here use virtual money.</div>
+        <ol>
+          <li>Create a free app at <a href="https://smartapi.angelone.in/" target="_blank" rel="noopener noreferrer">smartapi.angelone.in</a>.</li>
+          <li>Set its redirect URL to <b>{window.location.origin}/</b>.</li>
+          <li>Paste its API key below, then log in on Angel One's page.</li>
+        </ol>
+        <label htmlFor="angelKey">SmartAPI key</label>
+        <input id="angelKey" type="password" autoComplete="off" spellCheck={false} value={key} onChange={(e) => { setKey(e.target.value); setError(""); }} />
+        {error && <div className="authError" role="alert">{error}</div>}
+        <button type="submit" className="btn btnBull authSubmit">Connect Angel One</button>
+        <div className="dim angelNote">Your key stays on this device. Never enter your PIN or TOTP here, only on Angel One's own page. PaperRally can't place real orders.</div>
+        {getApiKey() && <button type="button" className="authBackBtn angelForget" onClick={() => { forgetKey(); setKey(""); }}>Forget saved key</button>}
+      </form>
+    </div>
+  );
+}
+
 function ClosedGate() {
   const [access, setAccess] = useState("checking"); // "checking" | "owner" | "closed" | "login"
   const wantsLogin = new URLSearchParams(window.location.search).has("owner");
@@ -5930,7 +5963,7 @@ function ClosedGate() {
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => { setTimeout(() => check(session), 0); });
     return () => listener.subscription.unsubscribe();
   }, []);
-  if (access === "owner") return isPopoutRoute() ? <PopoutChart /> : <MainApp />;
+  if (access === "owner") return <AngelGate>{isPopoutRoute() ? <PopoutChart /> : <MainApp />}</AngelGate>;
   if (access === "login") return <AuthGate themeIdx={0} cycleTheme={() => {}} initialMode="login" />;
   if (access === "checking") return <SplashScreen label="Loading…" themeIdx={0} />;
   return <ClosedPage />;
@@ -7228,6 +7261,15 @@ a.resetBtn { text-decoration: none; }
 .stratLog { max-height: 320px; overflow: auto; border: 1px solid var(--border); border-radius: 10px; }
 .stratLog table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .stratLog th, .stratLog td { padding: 7px 8px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+
+/* Angel One connection */
+.angelCard { max-width: 440px; }
+.angelCard h1 { font-size: 20px; margin: 12px 0 8px; }
+.angelCard ol { margin: 14px 0; padding-left: 20px; font-size: 13.5px; line-height: 1.6; }
+.angelCard label { display: block; font-size: 12.5px; margin-bottom: 6px; }
+.angelCard input { width: 100%; box-sizing: border-box; padding: 11px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); font: inherit; margin-bottom: 12px; }
+.angelNote { font-size: 12px; line-height: 1.5; margin-top: 12px; }
+.angelForget { position: static; margin-top: 8px; }
 
 /* phone order screen */
 .orderCard.mOrderClosed { display: none; }
