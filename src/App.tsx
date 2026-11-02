@@ -1,10 +1,11 @@
 // @ts-nocheck
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
 import {TrendingUp, TrendingDown, RotateCcw, X, Flame, Activity, LogOut, Lock, User as UserIcon, Bell, Trash2, Maximize2, Download, Newspaper, Crosshair, Sparkles,Eye, EyeOff, LineChart, Layers, Play, GraduationCap, Phone,
   List, BarChart3, Ellipsis, BookOpen, Briefcase, ListOrdered, Mail, KeyRound, Hourglass, MessageSquare, Trophy, Share2, Smartphone, Compass, NotebookPen,
   ArrowLeft,
 } from "lucide-react";
+import { StrategyPanel } from "./strategies";
 import { LEARN, LangSwitch, loadLang, saveLang } from "./i18n";
 import { useIsMobile, loadSetting, saveSetting, computeCharges, PerformancePanel } from "./extras";
 import { isoWeekIST, initTelemetry, track, tradeKey, TagChips, JournalModal, JournalStatsCard, computeAchievements, AchievementsGrid, ACHIEVEMENTS, makeShareImage, shareImage, captureReferralFromUrl, syncReferrals, InvitePanel, LeaderboardPanel, TourOverlay, InstallHelp } from "./growth";
@@ -1268,6 +1269,7 @@ async function fetchSymbolNews(query) {
 
 const LANDING_FEATURES = [
   { icon: Activity, title: "NSE & BSE Market Data", desc: "Market prices from a public data feed, updated during market hours. Prices can lag the exchange." },
+  { icon: BarChart3, title: "Strategy Builder & Backtest", desc: "Build multi-leg option strategies, see the payoff chart, place every leg at once and backtest on past index prices." },
   { icon: Layers, title: "Options Chain & Greeks", desc: "Black-Scholes pricing with Delta, Gamma, Theta, and Vega across every strike and expiry." },
   { icon: LineChart, title: "Charts & Indicators", desc: "Candlestick and line charts with MA, RSI, and MACD, across five timeframes." },
   { icon: TrendingDown, title: "Option Writing, with Margin", desc: "Sell calls and puts the way real writers do — premium credited, margin blocked — and see why the risk on that side is so different." },
@@ -1687,7 +1689,7 @@ function LiveTradersCount() {
   return <div className="liveCount heroReveal heroReveal-3"><span className="liveCountDot" /> {n.toLocaleString("en-IN")} traders practised on PaperRally this week</div>;
 }
 
-const PRO_FEATURES = ["Limit & stop-loss orders", "RSI, MACD and every chart timeframe", "Options chain with Greeks", "Search & add any NSE/BSE stock", "Price alerts with phone notifications", "News tab", "Trade history CSV export"];
+const PRO_FEATURES = ["Limit & stop-loss orders", "RSI, MACD and every chart timeframe", "Options chain with Greeks", "Strategy builder, payoff charts & backtest", "Target orders", "Search & add any NSE/BSE stock", "Price alerts with phone notifications", "News tab", "Trade history CSV export"];
 const FREE_FEATURES = ["₹10,00,000 virtual cash", "NSE & BSE market prices", "Market orders & positions", "Replay any recent trading day", "Performance stats, journal & leaderboard", "Learn section (English, हिंदी, ಕನ್ನಡ)"];
 
 function LandingPage({ themeIdx, onEnter: onEnterRaw }) {
@@ -2475,6 +2477,8 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
   // Planned stop-loss on the stock order ticket ("" = use the suggested 2% stop).
   const [slOn, setSlOn] = useState(true);
   const [slPrice, setSlPrice] = useState("");
+  const [targetOn, setTargetOn] = useState(false);
+  const [targetPrice, setTargetPrice] = useState("");
   useEffect(() => { setSlPrice(""); }, [selected]);
   const paymentKey = `pr_payment_pending_${userId}`;
   const [paymentPendingAt, setPaymentPendingAt] = useState(() => loadSetting(paymentKey, null));
@@ -2895,7 +2899,8 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
     });
     workingPositions = workingPositions.filter((p) => p.qty > 0);
 
-    setPendingOrders(remaining);
+    const doneBrackets = new Set([...filled, ...partial].map((o) => o.bracketId).filter(Boolean));
+    setPendingOrders(remaining.filter((o) => !doneBrackets.has(o.bracketId)));
     if (filled.length || partial.length || cancelled.length) {
       setCash(workingCash);
       setStockPositions(workingPositions);
@@ -3221,7 +3226,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
   };
 
   // Picking a symbol from the watchlist: on phones, jump straight to its chart.
-  const ACCOUNT_TABS = ["positions", "orders", "history", "perf", "leaderboard", "replay", "learn"];
+  const ACCOUNT_TABS = ["positions", "orders", "history", "perf", "leaderboard", "replay", "learn", "strategies"];
   const pickSymbol = (sym) => {
     setSelected(sym);
     if (isMobile) {
@@ -3461,13 +3466,23 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
     const wantStop = side === "buy" && slOn && entry;
     const stop = wantStop ? plannedStopFor(entry) : null;
     if (wantStop && stop >= entry) return showToast(`Stop-loss must be below the current price (${fmtMoney(entry)})`, "bear");
+    const wantTarget = side === "buy" && targetOn && isPro && entry;
+    const target = wantTarget ? parseFloat(targetPrice) : null;
+    if (wantTarget && !(target > entry)) return showToast(`Target must be above the current price (${fmtMoney(entry)})`, "bear");
+    const bracketId = wantTarget ? uid() : null; // a target and stop placed together: when one fills, the other is cancelled
     const r = executeStockOrder(selected, side, orderQty);
     if (r.ok) closeOrderScreen();
+    if (r.ok && wantTarget) {
+      const qty = Math.floor(Number(orderQty));
+      setPendingOrders((prev) => [{ id: uid(), symbol: selected, side: "sell", kind: "limit", qty, price: +target.toFixed(2), createdAt: new Date(nowMs()), bracketId }, ...prev]);
+      setTargetPrice("");
+      if (!wantStop) { showToast(`${r.msg} · target set at ${fmtMoney(target)}`, "bull"); return; }
+    }
     if (r.ok && wantStop) {
       if (isPro) {
         const qty = Math.floor(Number(orderQty));
-        setPendingOrders((prev) => [{ id: uid(), symbol: selected, side: "sell", kind: "stop", qty, price: +stop.toFixed(2), createdAt: new Date(nowMs()) }, ...prev]);
-        showToast(`${r.msg} · stop-loss set at ${fmtMoney(stop)}`, "bull");
+        setPendingOrders((prev) => [{ id: uid(), symbol: selected, side: "sell", kind: "stop", qty, price: +stop.toFixed(2), createdAt: new Date(nowMs()), bracketId }, ...prev]);
+        showToast(`${r.msg} · stop-loss set at ${fmtMoney(stop)}${wantTarget ? `, target ${fmtMoney(target)}` : ""}`, "bull");
       } else {
         showToast(`${r.msg} · automatic stop-loss orders need Pro — watch your ${fmtMoney(stop)} level`, "bull");
       }
@@ -3643,6 +3658,27 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
       return { ok: true, kind: "bull", msg: `Covered ${plural} ${label}` };
     }
     return { ok: false, msg: "Unknown order type" };
+  };
+
+  const strategyExpiries = useCallback(
+    (sym) => optionExpiries(sym, 4, replayActive && replayData ? replayData.dayStart : null),
+    [replayActive, replayData]
+  );
+  // Places every leg of a strategy, or none: funds are checked for the whole set first.
+  const placeStrategy = (sym, expiry, legs, lots) => {
+    if (!marketStatus.isOpen) return showToast(replayActive ? "This replay day has ended — press Restart day to trade it again" : "Market is closed — press Practice today to try this in Replay", "bear");
+    const spot = quotes[sym]?.price;
+    if (!spot) return showToast("Price is still loading — try again in a moment", "bear");
+    const lot = lotSizeFor(sym);
+    const needed = legs.reduce((sum, l) => sum + (l.side === "buy" ? l.premium * lot * lots : (shortMarginPerLot(spot, l.strike, l.type, lot) - l.premium * lot) * lots), 0);
+    if (needed > cash) return showToast(`Not enough funds — this needs about ${fmtMoney(needed, 0)} (margin is estimated per leg)`, "bear");
+    const ordered = [...legs].sort((a, b) => (a.side === b.side ? 0 : a.side === "buy" ? -1 : 1));
+    for (const l of ordered) {
+      const r = executeOptionOrder({ symbol: sym, type: l.type, strike: l.strike, expiry }, l.side === "buy" ? "buy" : "short", lots);
+      if (!r.ok) return showToast(r.msg, "bear");
+    }
+    showToast(`Placed ${legs.length} leg${legs.length > 1 ? "s" : ""} on ${displayTicker(sym)}`, "bull");
+    goTab("positions");
   };
 
   const executeOptionOrderRef = useRef(executeOptionOrder);
@@ -3890,7 +3926,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
       if (!isPaidPro) { const at = Date.now(); setPaymentPendingAt(at); saveSetting(paymentKey, at); onRefreshSubscription(); }
     }
     const t = qs.get("tab");
-    if (t && ["positions", "orders", "replay", "perf", "leaderboard", "learn", "history"].includes(t)) { setTab(t); qs.delete("tab"); changed = true; }
+    if (t && ["positions", "orders", "replay", "perf", "leaderboard", "learn", "history", "strategies"].includes(t)) { setTab(t); qs.delete("tab"); changed = true; }
     if (qs.get("source") === "pwa") { updatePrefs({ flags: { installed: true } }); qs.delete("source"); changed = true; }
     if (changed) window.history.replaceState(window.history.state, "", window.location.pathname + (qs.toString() ? `?${qs}` : "") + window.location.hash);
     track("app_open", { standalone: install.standalone, mobile: isMobile });
@@ -3945,6 +3981,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
     ["chain", "Options Chain"],
     ["positions", "Positions"],
     ["orders", `Orders${pendingOrders.length ? ` (${pendingOrders.length})` : ""}`],
+    ["strategies", "Strategies"],
     ["alerts", `Alerts${activeAlerts ? ` (${activeAlerts})` : ""}`],
     ["news", "News"],
     ["history", "History"],
@@ -3963,6 +4000,28 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
         <TagChips compact value={lt.tag} onPick={(tag) => { setTrades((prev) => prev.map((t) => (t.id === lt.id ? { ...t, tag } : t))); if (tag) track("trade_tagged", { tag }); }} />
       </div>
     );
+  };
+  const strategyApi = {
+    getSpot: (sym) => quotes[sym]?.price ?? null,
+    expiriesFor: strategyExpiries,
+    stepFor: (sym) => EXPIRY_RULES[sym]?.step ?? 50,
+    lotFor: lotSizeFor,
+    priceLeg: (sym, strike, type, expiry) => optionPremiumNow({ symbol: sym, strike, type, expiry }, quotes, allInstruments),
+    onPlace: placeStrategy,
+    marketOpen: marketStatus.isOpen,
+    fmtMoney,
+    fmtExpiry: fmtDate,
+    now: nowMs,
+    fetchDaily: (sym, fromISO, toISO) => fetchYahooRange(sym, "1d", Math.floor(new Date(`${fromISO}T00:00:00+05:30`).getTime() / 1000), Math.floor(new Date(`${toISO}T23:59:59+05:30`).getTime() / 1000)),
+    backtestConfig: (sym) => {
+      const iv = allInstruments.find((i) => i.symbol === sym)?.iv ?? 0.13;
+      return {
+        step: EXPIRY_RULES[sym]?.step ?? 50,
+        lot: lotSizeFor(sym),
+        expiryFor: (at) => optionExpiries(sym, 1, at)[0]?.getTime(),
+        price: (S, K, T, type) => blackScholes(S, K, T, RISK_FREE, iv * (1 + 0.15 * Math.abs(K - S) / S), type).price,
+      };
+    },
   };
   const navBackLink = navBack && (
     <button type="button" className="navBackBtn" onClick={() => window.history.back()}>
@@ -4455,6 +4514,16 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
                           )}
                           {!isPro && <div className="orderHint dim"><Lock size={10} /> Automatic stop-loss orders are a Pro feature — you'll see the level, but it won't sell for you.</div>}
                         </>
+                      )}
+                      <label className="slPlanToggle">
+                        <input type="checkbox" checked={targetOn && isPro} onChange={(e) => (isPro ? setTargetOn(e.target.checked) : setUpgradeModalOpen(true))} />
+                        <span>{!isPro && <Lock size={10} />} Add a target when buying</span>
+                      </label>
+                      {targetOn && isPro && (
+                        <div className="orderRow slPlanRow">
+                          <label htmlFor="targetInput">Target price</label>
+                          <input id="targetInput" type="number" min="0" step="0.05" inputMode="decimal" className="qtyInput mono" placeholder={tradePrice ? (tradePrice * 1.04).toFixed(2) : ""} value={targetPrice} onChange={(e) => setTargetPrice(e.target.value)} />
+                        </div>
                       )}
                     </div>
                   )}
@@ -4955,6 +5024,12 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
             </div>
           )}
 
+          {tab === "strategies" && (
+            isPro
+              ? <StrategyPanel api={strategyApi} />
+              : <ProLockPanel title="Strategies is a Pro feature" description="Build multi-leg option strategies, see payoff charts and backtest them on past index prices." onUpgrade={() => setUpgradeModalOpen(true)} />
+          )}
+
           {tab === "replay" && (
             <div className="replayWrap">
               <div className="replayControls">
@@ -5159,6 +5234,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
               {[
                 ["indicators", "Indicators", Layers],
                 ["chain", "Options chain", BarChart3],
+                ["strategies", "Strategies", Layers],
                 ["alerts", "Alerts", Bell],
                 ["news", "News", Newspaper],
                 ["history", "History", ListOrdered],
@@ -5215,7 +5291,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
             ["trade", "Chart", LineChart, mobilePane === "main" && ["trade", "indicators", "chain", "alerts", "news"].includes(tab) && !moreOpen, () => goTab("trade")],
             ["positions", "Positions", Briefcase, mobilePane === "main" && tab === "positions" && !moreOpen, () => goTab("positions")],
             ["orders", pendingOrders.length ? `Orders (${pendingOrders.length})` : "Orders", ListOrdered, mobilePane === "main" && tab === "orders" && !moreOpen, () => goTab("orders")],
-            ["more", "More", Ellipsis, moreOpen || (mobilePane === "main" && ["history", "perf", "leaderboard", "replay", "learn"].includes(tab)), () => setMoreOpen((v) => !v)],
+            ["more", "More", Ellipsis, moreOpen || (mobilePane === "main" && ["history", "perf", "leaderboard", "replay", "learn", "strategies"].includes(tab)), () => setMoreOpen((v) => !v)],
           ].map(([id, label, Icon, active, onClick]) => (
             <button key={id} className={`bottomNavItem ${active ? "bottomNavItemActive" : ""}`} aria-current={active ? "page" : undefined} onClick={onClick}>
               <Icon size={20} />
@@ -7069,6 +7145,42 @@ a.resetBtn { text-decoration: none; }
 }
 @keyframes sheetUp { from { transform: translateY(24px); opacity: 0.6; } to { transform: none; opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .modal { animation: none !important; } }
+
+/* strategies */
+.stratWrap { max-width: 760px; }
+.stratHead { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.stratHead h3 { margin: 0; }
+.stratWrap h4 { margin: 18px 0 8px; font-size: 13px; }
+.stratChips { display: flex; flex-wrap: wrap; gap: 6px; }
+.stratChip { background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim); border-radius: 18px; padding: 7px 12px; font: inherit; font-size: 12.5px; cursor: pointer; min-height: 34px; }
+.stratChipOn { background: color-mix(in srgb, var(--accent) 22%, transparent); border-color: var(--accent); color: var(--text); font-weight: 600; }
+.stratRow { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+.stratRow label { flex: 1 1 130px; display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-dim); }
+.stratWrap select, .stratWrap input { background: var(--surface-2); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 8px; font: inherit; font-size: 13px; min-width: 0; box-sizing: border-box; width: 100%; color-scheme: dark; }
+.stratDesc { font-size: 12.5px; line-height: 1.5; margin: 8px 0 0; }
+.stratLegs { display: flex; flex-direction: column; gap: 6px; }
+.stratLeg { display: grid; grid-template-columns: 54px 54px minmax(0, 1fr) 76px 30px; gap: 6px; align-items: center; }
+.stratToggle { background: var(--surface-2); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 8px 4px; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.stratPrem { font-size: 12.5px; text-align: right; }
+.stratRemove { background: none; border: none; color: var(--text-dim); font-size: 18px; cursor: pointer; padding: 4px; }
+.stratAdd { margin-top: 8px; }
+.stratEmpty { padding: 14px 0; font-size: 13px; }
+.payoffChart { display: block; width: 100%; height: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
+.payoffAxis { stroke: var(--text-dim); stroke-width: 1; opacity: 0.6; }
+.payoffSpot { stroke: var(--amber); stroke-width: 1; stroke-dasharray: 4 4; }
+.payoffGain, .payoffLoss { fill: none; stroke-width: 2.4; }
+.payoffGain { stroke: var(--bull); }
+.payoffLoss { stroke: var(--bear); }
+.payoffText { fill: var(--text-dim); font-size: 12px; }
+.stratStats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin-top: 12px; }
+.stratStat { display: flex; flex-direction: column; gap: 3px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; font-size: 12px; }
+.stratStat b { font-size: 14px; overflow-wrap: anywhere; }
+.stratPlace { width: 100%; margin-top: 14px; justify-content: center; }
+.stratNote { font-size: 12px; margin-top: 10px; line-height: 1.5; }
+.stratError { margin-top: 10px; color: var(--bear); font-size: 13px; }
+.stratLog { max-height: 320px; overflow: auto; border: 1px solid var(--border); border-radius: 10px; }
+.stratLog table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.stratLog th, .stratLog td { padding: 7px 8px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
 
 /* phone order screen */
 .orderCard.mOrderClosed { display: none; }
