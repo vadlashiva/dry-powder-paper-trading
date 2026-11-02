@@ -1,7 +1,7 @@
 /* PaperRally service worker: makes the app installable, loads instantly on repeat
    visits and shows notifications. Market data and Supabase calls always go to the
    network — they are never cached. */
-const VERSION = "pr-v1";
+const VERSION = "pr-v2"; // bumping this clears copies saved by older versions
 const SHELL = ["/", "/manifest.json", "/icons/icon-192.png", "/icons/icon-512.png", "/favicon.png"];
 
 self.addEventListener("install", (event) => {
@@ -26,7 +26,11 @@ self.addEventListener("fetch", (event) => {
   if (req.mode === "navigate") {
     event.respondWith(
       fetch(req)
-        .then((res) => { const copy = res.clone(); caches.open(VERSION).then((c) => c.put("/", copy)); return res; })
+        .then((res) => {
+          // Each page is saved under its own address, so a guide can never replace the app's home page.
+          if (res.ok) { const copy = res.clone(); caches.open(VERSION).then((c) => c.put(url.pathname === "/" ? "/" : req, copy)); }
+          return res;
+        })
         .catch(() => caches.match(req).then((r) => r || caches.match("/")))
     );
     return;
