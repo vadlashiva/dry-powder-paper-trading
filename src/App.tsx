@@ -5892,7 +5892,52 @@ function PopoutChart() {
 
 const isPopoutRoute = () => typeof window !== "undefined" && window.location.hash.startsWith("#/chart");
 
+// ---- Site closed switch ----
+// While true, only the owner can use PaperRally; everyone else sees the closed page. To reopen the
+// site: set this to false and delete vercel.json. The owner signs in at paperrally.in/?owner=1.
+export const SITE_CLOSED = true;
+const OWNER_EMAIL_SHA256 = "309953611ce27921024f1f4854e9efd81b2c29fd7ece895538551463cbac3f4e";
+async function isOwnerEmail(email) {
+  if (!email) return false;
+  const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(email.toLowerCase()));
+  return [...new Uint8Array(bytes)].map((x) => x.toString(16).padStart(2, "0")).join("") === OWNER_EMAIL_SHA256;
+}
+
+function ClosedPage() {
+  return (
+    <div className="authWrap" style={THEMES[0].vars}>
+      <style>{CSS}</style>
+      <div className="authCard splashCard">
+        <div className="authBrand"><Flame size={22} className="brandIcon" /><span>PAPERRALLY</span></div>
+        <h1 style={{ fontSize: "20px", margin: "14px 0 8px" }}>Temporarily unavailable</h1>
+        <div className="authSub">PaperRally is closed for now. For questions about your account or a payment, email <a href="mailto:adi.shiv999@gmail.com">adi.shiv999@gmail.com</a>.</div>
+      </div>
+    </div>
+  );
+}
+
+function ClosedGate() {
+  const [access, setAccess] = useState("checking"); // "checking" | "owner" | "closed" | "login"
+  const wantsLogin = new URLSearchParams(window.location.search).has("owner");
+  useEffect(() => {
+    const check = async (session) => {
+      if (!session) return setAccess(wantsLogin ? "login" : "closed");
+      if (await isOwnerEmail(session.user?.email)) return setAccess("owner");
+      setAccess("closed");
+      signOutUser().catch(() => {});
+    };
+    supabase.auth.getSession().then(({ data }) => check(data.session));
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => { setTimeout(() => check(session), 0); });
+    return () => listener.subscription.unsubscribe();
+  }, []);
+  if (access === "owner") return isPopoutRoute() ? <PopoutChart /> : <MainApp />;
+  if (access === "login") return <AuthGate themeIdx={0} cycleTheme={() => {}} initialMode="login" />;
+  if (access === "checking") return <SplashScreen label="Loading…" themeIdx={0} />;
+  return <ClosedPage />;
+}
+
 export default function App() {
+  if (SITE_CLOSED) return <ClosedGate />;
   return isPopoutRoute() ? <PopoutChart /> : <MainApp />;
 }
 
