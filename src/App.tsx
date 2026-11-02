@@ -5894,7 +5894,7 @@ function ClosedPage() {
       <div className="authCard splashCard">
         <div className="authBrand"><Flame size={22} className="brandIcon" /><span>PAPERRALLY</span></div>
         <h1 style={{ fontSize: "20px", margin: "14px 0 8px" }}>Temporarily unavailable</h1>
-        <div className="authSub">PaperRally is closed for now. For questions about your account or a payment, email <a href="mailto:adi.shiv999@gmail.com">adi.shiv999@gmail.com</a>.</div>
+        <div className="authSub">PaperRally is closed for now. For questions about your account or a payment, email <a href="mailto:adi.shiv999@gmail.com" style={{ color: "#FFFFFF", textDecoration: "underline" }}>adi.shiv999@gmail.com</a>.</div>
       </div>
     </div>
   );
