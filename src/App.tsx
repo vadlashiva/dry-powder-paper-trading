@@ -5638,7 +5638,7 @@ function PopoutChart() {
         <aside className="popTrade">
           <div className="popTradeHead">
             <h3>Trade {displayTicker(sym)}</h3>
-            {termConnected && <span className={`popModeTag ${acct.mode === "replay" ? "popModeReplay" : acct.open ? "popModeLive" : ""}`}>{acct.mode === "replay" ? `Replay · ${dayLabel(acct.date)}` : acct.open ? "Live" : "Closed"}</span>}
+            {termConnected && <span className={`popModeTag ${acct.mode === "replay" ? "popModeReplay" : acct.open ? "popModeLive" : ""}`}>{acct.mode === "replay" ? `Replay · ${dayLabel(acct.date)}` : acct.open ? "Market open" : "Closed"}</span>}
           </div>
 
           {termConnected && (
