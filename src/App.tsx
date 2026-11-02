@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef, useMemo } from "react";
 import { createClient } from "@supabase/supabase-js";
 import {TrendingUp, TrendingDown, RotateCcw, X, Flame, Activity, LogOut, Lock, User as UserIcon, Bell, Trash2, Maximize2, Download, Newspaper, Crosshair, Sparkles,Eye, EyeOff, LineChart, Layers, Play, GraduationCap, Phone,
   List, BarChart3, Ellipsis, BookOpen, Briefcase, ListOrdered, Mail, KeyRound, Hourglass, MessageSquare, Trophy, Share2, Smartphone, Compass, NotebookPen,
+  ArrowLeft,
 } from "lucide-react";
 import { LEARN, LangSwitch, loadLang, saveLang } from "./i18n";
 import { useIsMobile, loadSetting, saveSetting, computeCharges, PerformancePanel } from "./extras";
@@ -1987,7 +1988,7 @@ function LandingPage({ themeIdx, onEnter: onEnterRaw }) {
         </div>
         <div className="learnLinks" style={{ marginTop: "12px" }}>
           {LEARN_LINKS.map((l) => (
-            <a key={l.url} href={l.url} target="_blank" rel="noopener noreferrer" className="btn btnGhost landingCta learnLinkBtn">{l.label} →</a>
+            <a key={l.url} href={l.url} className="btn btnGhost landingCta learnLinkBtn">{l.label} →</a>
           ))}
         </div>
       </section>
@@ -2375,7 +2376,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
   }, []);
   const [exchangeFilter, setExchangeFilter] = useState("ALL");
   const [selected, setSelected] = useState(null);
-  const [tab, setTab] = useState("trade");
+  const [tab, setTab] = useState(() => window.history.state?.prNav?.tab || "trade");
   const [cash, setCash] = useState(() => saved?.cash ?? STARTING_CASH);
   const [stockPositions, setStockPositions] = useState(() => saved?.stockPositions ?? []);
   const [optionPositions, setOptionPositions] = useState(() => saved?.optionPositions ?? []);
@@ -2461,7 +2462,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
 
   // ---- usability additions ----
   const isMobile = useIsMobile(760);
-  const [mobilePane, setMobilePane] = useState("main"); // "watchlist" | "main" (phones only)
+  const [mobilePane, setMobilePane] = useState(() => window.history.state?.prNav?.pane || "main"); // "watchlist" | "main" (phones only)
   const [moreOpen, setMoreOpen] = useState(false);
   const [closeConfirm, setCloseConfirm] = useState(null); // { kind: "stock" | "option", pos }
   const [lang, setLangState] = useState(() => loadLang());
@@ -3246,6 +3247,38 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
     if (isMobile) { setMobilePane("main"); window.scrollTo({ top: 0 }); }
   };
 
+  // ---- Back navigation ----
+  // Every screen change gets its own browser-history entry (the URL stays the same), so
+  // the phone/browser back button and the "Back to ..." link step through the screens
+  // the user visited. The entry also brings them to the same screen after visiting a guide.
+  const [navBack, setNavBack] = useState(null); // the screen a "Back" press returns to
+  useEffect(() => {
+    const state = window.history.state || {};
+    const nav = state.prNav;
+    if (nav && nav.tab === tab && nav.pane === mobilePane) { setNavBack(nav.prev || null); return; }
+    if (!nav) {
+      window.history.replaceState({ ...state, prNav: { tab, pane: mobilePane, prev: null } }, "");
+      setNavBack(null);
+      return;
+    }
+    const prev = { tab: nav.tab, pane: nav.pane };
+    window.history.pushState({ prNav: { tab, pane: mobilePane, prev } }, "");
+    setNavBack(prev);
+  }, [tab, mobilePane]);
+  useEffect(() => {
+    const onPop = (e) => {
+      const nav = e.state?.prNav;
+      if (!nav) return;
+      setTab(nav.tab);
+      setMobilePane(nav.pane);
+      setNavBack(nav.prev || null);
+      setMoreOpen(false);
+      window.scrollTo({ top: 0 });
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
   const exitReplay = () => {
     const st = liveStashRef.current;
     replayActiveRef.current = false;
@@ -3831,7 +3864,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
     const t = qs.get("tab");
     if (t && ["positions", "orders", "replay", "perf", "leaderboard", "learn", "history"].includes(t)) { setTab(t); qs.delete("tab"); changed = true; }
     if (qs.get("source") === "pwa") { updatePrefs({ flags: { installed: true } }); qs.delete("source"); changed = true; }
-    if (changed) window.history.replaceState(null, "", window.location.pathname + (qs.toString() ? `?${qs}` : "") + window.location.hash);
+    if (changed) window.history.replaceState(window.history.state, "", window.location.pathname + (qs.toString() ? `?${qs}` : "") + window.location.hash);
     track("app_open", { standalone: install.standalone, mobile: isMobile });
   }, []);
 
@@ -3892,6 +3925,11 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
     ["replay", "Replay"],
     ["learn", L.learnTab],
   ];
+  const navBackLink = navBack && (
+    <button type="button" className="navBackBtn" onClick={() => window.history.back()}>
+      <ArrowLeft size={14} /> Back to {navBack.pane === "watchlist" ? "Watchlist" : TAB_DEFS.find(([id]) => id === navBack.tab)?.[1] || "previous screen"}
+    </button>
+  );
 
   // Order-ticket helpers: quantity shortcuts and the planned stop-loss / risk preview.
   const tradePrice = selected ? (orderType === "market" ? q.price : parseFloat(orderPrice) || q.price) : 0;
@@ -4032,6 +4070,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
 
       <div className="body">
         <div className={`watchlist ${isMobile && mobilePane !== "watchlist" ? "mHidden" : ""}`}>
+          {isMobile && navBackLink}
           <input className="search" placeholder="Search name or ticker, e.g. Tata Motors" aria-label="Search stocks by name or ticker" value={search} onChange={(e) => setSearch(e.target.value)} />
           <div className="exchangeTabs">
             {["ALL", "NSE", "BSE", "INDEX"].map((ex) => (
@@ -4126,6 +4165,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
         </div>
 
         <div className={`main ${isMobile && mobilePane === "watchlist" ? "mHidden" : ""}`}>
+          {navBackLink}
           {selected ? (
           <div className="mainHead">
             <div className="mainHeadLeft">
@@ -4867,9 +4907,9 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
               </div>
               <div className="learnLinksRow">
                 <button className="btn btnBull" onClick={startTour}><Compass size={14} /> Take the 30-second tour</button>
-                <a className="btn btnGhost" href="/guides.html" target="_blank" rel="noopener noreferrer">All guides →</a>
+                <a className="btn btnGhost" href="/guides.html">All guides →</a>
                 {GUIDE_LINKS.map((l) => (
-                  <a key={l.url} href={l.url} target="_blank" rel="noopener noreferrer" className="btn btnGhost">{l.label} →</a>
+                  <a key={l.url} href={l.url} className="btn btnGhost">{l.label} →</a>
                 ))}
               </div>
             </div>
@@ -5745,10 +5785,17 @@ function MainApp() {
   const [portfolioLoading, setPortfolioLoading] = useState(false);
   const [subscription, setSubscription] = useState(null);
   const [themeIdx, setThemeIdx] = useState(() => loadThemeIdx());
-  const [showAuthForm, setShowAuthForm] = useState(false);
+  const [showAuthForm, setShowAuthForm] = useState(() => !!window.history.state?.prAuth);
   const [authInitialMode, setAuthInitialMode] = useState("login");
   const [phoneStatus, setPhoneStatus] = useState("checking");
   const [referral, setReferral] = useState(null); // { available, invited, wasReferred, bonusDays }
+
+  // The sign-in form has its own history entry, so the phone/browser back button returns to the landing page.
+  useEffect(() => {
+    const onPop = (e) => setShowAuthForm(!!e.state?.prAuth);
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -5835,12 +5882,12 @@ function MainApp() {
         themeIdx={themeIdx}
         cycleTheme={cycleTheme}
         initialMode={authInitialMode}
-        onBack={() => setShowAuthForm(false)}
+        onBack={() => (window.history.state?.prAuth ? window.history.back() : setShowAuthForm(false))}
       />
     ) : (
       <LandingPage
         themeIdx={themeIdx}
-        onEnter={(mode) => { setAuthInitialMode(mode); setShowAuthForm(true); }}
+        onEnter={(mode) => { setAuthInitialMode(mode); window.history.pushState({ prAuth: true }, ""); setShowAuthForm(true); }}
       />
     );
   }
@@ -5989,6 +6036,8 @@ const CSS = `
 .marketOpen { background: rgba(20,232,160,0.15); color: var(--bull); }
 .marketClosed { background: rgba(255,84,112,0.15); color: var(--bear); }
 
+.navBackBtn { display: inline-flex; align-items: center; gap: 6px; background: none; border: none; color: var(--text-dim); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; padding: 6px 2px; margin-bottom: 8px; }
+.navBackBtn:hover { color: var(--text); }
 .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 20px; flex-wrap: wrap; }
 .tab { background: none; border: none; color: var(--text-dim); padding: 10px 16px; font-size: 13px; cursor: pointer; border-bottom: 2px solid transparent; }
 .tab:hover { color: var(--text); }
