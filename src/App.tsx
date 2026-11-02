@@ -6,6 +6,7 @@ import {TrendingUp, TrendingDown, RotateCcw, X, Flame, Activity, LogOut, Lock, U
   ArrowLeft,
 } from "lucide-react";
 import { StrategyPanel } from "./strategies";
+import { AngelSetup } from "./angelSetup";
 import { answerFeedRequest, fetchQuotes, getApiKey, setApiKey, getSession, loginUrl, consumeLoginRedirect, fetchProfile, clearConnection, forgetKey } from "./angel";
 import { LEARN, LangSwitch, loadLang, saveLang } from "./i18n";
 import { useIsMobile, loadSetting, saveSetting, computeCharges, PerformancePanel } from "./extras";
@@ -5919,32 +5920,17 @@ function AngelGate({ children }) {
   }, []);
   if (state === "open") return children;
   if (state === "checking") return <SplashScreen label="Connecting to Angel One…" themeIdx={0} />;
-  const connect = (e) => {
-    e.preventDefault();
-    const k = key.trim();
-    if (!/^[A-Za-z0-9_-]{6,}$/.test(k)) return setError("That doesn't look like a SmartAPI key.");
-    setApiKey(k);
-    window.location.href = loginUrl(k);
-  };
+  const connect = (k) => { setApiKey(k); window.location.href = loginUrl(k); };
   return (
     <div className="authWrap" style={THEMES[0].vars}>
       <style>{CSS}</style>
-      <form className="authCard angelCard" onSubmit={connect}>
-        <div className="authBrand"><Flame size={22} className="brandIcon" /><span>PAPERRALLY</span></div>
-        <h1>Connect your Angel One account</h1>
-        <div className="authSub">Your own SmartAPI key opens PaperRally. Prices come straight from Angel One to this device, and all trades here use virtual money.</div>
-        <ol>
-          <li>Create a free app at <a href="https://smartapi.angelone.in/" target="_blank" rel="noopener noreferrer">smartapi.angelone.in</a>.</li>
-          <li>Set its redirect URL to <b>{window.location.origin}/</b>.</li>
-          <li>Paste its API key below, then log in on Angel One's page.</li>
-        </ol>
-        <label htmlFor="angelKey">SmartAPI key</label>
-        <input id="angelKey" type="password" autoComplete="off" spellCheck={false} value={key} onChange={(e) => { setKey(e.target.value); setError(""); }} />
-        {error && <div className="authError" role="alert">{error}</div>}
-        <button type="submit" className="btn btnBull authSubmit">Connect Angel One</button>
-        <div className="dim angelNote">Your key stays on this device. Never enter your PIN or TOTP here, only on Angel One's own page. PaperRally can't place real orders.</div>
-        {getApiKey() && <button type="button" className="authBackBtn angelForget" onClick={() => { forgetKey(); setKey(""); }}>Forget saved key</button>}
-      </form>
+      <AngelSetup
+        savedKey={key}
+        error={error}
+        onConnect={connect}
+        onForget={() => { forgetKey(); setKey(""); setError(""); }}
+        brand={<div className="authBrand"><Flame size={22} className="brandIcon" /><span>PAPERRALLY</span></div>}
+      />
     </div>
   );
 }
@@ -7269,7 +7255,24 @@ a.resetBtn { text-decoration: none; }
 .angelCard label { display: block; font-size: 12.5px; margin-bottom: 6px; }
 .angelCard input { width: 100%; box-sizing: border-box; padding: 11px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); font: inherit; margin-bottom: 12px; }
 .angelNote { font-size: 12px; line-height: 1.5; margin-top: 12px; }
-.angelForget { position: static; margin-top: 8px; }
+.angelCard h2 { font-size: 15.5px; margin: 10px 0 6px; }
+.angelCard p { font-size: 13.5px; line-height: 1.55; margin: 0 0 12px; }
+.setupLangs { display: flex; gap: 4px; margin: 10px 0 0; }
+.setupLangs button { background: none; border: 1px solid var(--border); color: var(--text-dim); border-radius: 14px; padding: 4px 10px; font: inherit; font-size: 12px; cursor: pointer; }
+.setupLangs .setupLangOn { border-color: var(--accent); color: var(--text); }
+.setupProgress { height: 5px; border-radius: 3px; background: var(--surface-2); margin-top: 14px; overflow: hidden; }
+.setupProgress span { display: block; height: 100%; background: var(--bull); transition: width 0.2s ease; }
+.setupStepNo { font-size: 12px; margin-top: 6px; }
+.setupRow { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.setupRow > div { min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; }
+.setupRow b { overflow-wrap: anywhere; font-size: 13px; }
+.setupRow .btn { flex: none; padding: 7px 10px; font-size: 12.5px; }
+.setupOpen { display: block; text-align: center; text-decoration: none; padding: 10px; }
+.setupNav { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.setupNav .btn { padding: 9px 16px; }
+.setupLink { background: none; border: none; color: var(--text-dim); text-decoration: underline; font: inherit; font-size: 12.5px; cursor: pointer; padding: 10px 0 0; }
+.setupHelp { margin-top: 10px; font-size: 12.5px; color: var(--text-dim); }
+.setupHelp ul { margin: 6px 0 0; padding-left: 18px; line-height: 1.5; }
 
 /* phone order screen */
 .orderCard.mOrderClosed { display: none; }
