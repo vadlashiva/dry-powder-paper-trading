@@ -24,7 +24,7 @@
   "step": [
     { "@type": "HowToStep", "name": "Create a free account", "text": "Open paperrally.in, click Start your free trial and register with a username, mobile number and password, or sign in with Google. You start with ₹10,00,000 of virtual cash." },
     { "@type": "HowToStep", "name": "Pick a stock", "text": "Choose a stock from the watchlist on the left, or search for any NSE or BSE symbol." },
-    { "@type": "HowToStep", "name": "Place a market order", "text": "On the Chart & Trade tab, choose Market, enter a quantity and click Buy. The trade fills at the live price." },
+    { "@type": "HowToStep", "name": "Place a market order", "text": "On the Chart & Trade tab, choose Market, enter a quantity and click Buy. The trade fills at the latest price shown." },
     { "@type": "HowToStep", "name": "Add a stop-loss", "text": "Open Positions and click Stop-Loss on your position, then click the price on the chart where you want to exit." },
     { "@type": "HowToStep", "name": "Trade NIFTY options", "text": "Select NIFTY, open the Options Chain tab, click a premium, choose the number of lots and an optional stop-loss premium, then click Buy to Open or Sell to Open." },
     { "@type": "HowToStep", "name": "Review your trades", "text": "Check Positions for open profit and loss and History for every closed trade." }
@@ -41,9 +41,9 @@
     { "@type": "Question", "name": "Can I start over with fresh virtual money?",
       "acceptedAnswer": { "@type": "Answer", "text": "Yes. The Reset button at the top resets your account to ₹10,00,000 and clears your positions, orders and history." } },
     { "@type": "Question", "name": "What does Pro include?",
-      "acceptedAnswer": { "@type": "Answer", "text": "Pro adds limit and stop-loss orders, RSI, MACD and every chart timeframe, the options chain with live Greeks, search for any NSE or BSE stock, price alerts, the News tab and CSV export of your trade history. New accounts get every Pro feature free for 7 days." } },
+      "acceptedAnswer": { "@type": "Answer", "text": "Pro adds limit and stop-loss orders, RSI, MACD and every chart timeframe, the options chain with Greeks, search for any NSE or BSE stock, price alerts, the News tab and CSV export of your trade history. New accounts get every Pro feature free for 7 days." } },
     { "@type": "Question", "name": "Are option prices on PaperRally live exchange quotes?",
-      "acceptedAnswer": { "@type": "Answer", "text": "No. Option premiums are calculated from the live index price using the Black-Scholes model, so they behave realistically but will not match the exchange's option quotes exactly." } }
+      "acceptedAnswer": { "@type": "Answer", "text": "No. Option premiums are calculated from the index price using the Black-Scholes model, so they behave realistically but will not match the exchange's option quotes exactly." } }
   ]
 }
 </script>
@@ -149,7 +149,7 @@ footer a{color:var(--ink-soft)}
 <section class="hero">
   <div class="hero-inner">
     <h1>How to use PaperRally: a step-by-step paper trading guide</h1>
-    <p class="lede">Everything you need to go from a new account to your first stock trade, a stop-loss and a NIFTY options position, all with virtual money and live NSE and BSE prices.</p>
+    <p class="lede">Everything you need to go from a new account to your first stock trade, a stop-loss and a NIFTY options position, all with virtual money and NSE and BSE market prices.</p>
     <p class="updated">Updated 16 October 2026</p>
   </div>
 </section>
@@ -177,7 +177,7 @@ footer a{color:var(--ink-soft)}
 <p>Every account starts with <strong>₹10,00,000 of virtual cash</strong> and <strong>7 days of every Pro feature free</strong>. No card, broker or demat account is needed.</p>
 
 <h2 id="screen">2. Find your way around the screen</h2>
-<p>The <strong>watchlist</strong> on the left shows live prices for popular NSE and BSE stocks and the NIFTY, BANKNIFTY and SENSEX indices. Use the <span class="ui">ALL</span>, <span class="ui">NSE</span>, <span class="ui">BSE</span> and <span class="ui">Index</span> filters, or the search box to find any other listed stock. Click a symbol to load it.</p>
+<p>The <strong>watchlist</strong> on the left shows prices for popular NSE and BSE stocks and the NIFTY, BANKNIFTY and SENSEX indices. Use the <span class="ui">ALL</span>, <span class="ui">NSE</span>, <span class="ui">BSE</span> and <span class="ui">Index</span> filters, or the search box to find any other listed stock. Click a symbol to load it.</p>
 <p>The selected symbol's tabs run across the middle of the screen:</p>
 <table class="tabs">
   <thead><tr><th>Tab</th><th>What it's for</th></tr></thead>
@@ -185,7 +185,7 @@ footer a{color:var(--ink-soft)}
     <tr><td>Chart &amp; Trade</td><td>The price chart and the order panel for buying and selling stocks.</td></tr>
     <tr><td>Indicators</td><td>Add moving averages, RSI, MACD, ATR and more to the chart.</td></tr>
     <tr><td>Options Chain</td><td>Calls and puts for NIFTY, BANKNIFTY, SENSEX and stock options, with the Greeks.</td></tr>
-    <tr><td>Positions</td><td>Your open stock and option positions with live profit and loss.</td></tr>
+    <tr><td>Positions</td><td>Your open stock and option positions with running profit and loss.</td></tr>
     <tr><td>Orders</td><td>Pending limit and stop orders, and stop-losses on your options.</td></tr>
     <tr><td>Alerts</td><td>Get notified when a price crosses a level you choose.</td></tr>
     <tr><td>News</td><td>Recent headlines for the selected stock.</td></tr>
@@ -198,7 +198,7 @@ footer a{color:var(--ink-soft)}
 <h2 id="first-trade">3. Place your first stock trade</h2>
 <div class="step"><div class="n">1</div><div><h3>Pick a stock</h3><p>Click a large, liquid name such as Reliance, TCS or HDFC Bank in the watchlist.</p></div></div>
 <div class="step"><div class="n">2</div><div><h3>Choose Market and a quantity</h3><p>On <span class="ui">Chart &amp; Trade</span>, keep the order type on <span class="ui">Market</span> and enter how many shares to buy. The panel shows the estimated cost.</p></div></div>
-<div class="step"><div class="n">3</div><div><h3>Click Buy</h3><p>The order fills straight away at the live price, and the shares appear under <span class="ui">Positions</span>.</p></div></div>
+<div class="step"><div class="n">3</div><div><h3>Click Buy</h3><p>The order fills straight away at the latest price shown, and the shares appear under <span class="ui">Positions</span>.</p></div></div>
 <div class="step"><div class="n">4</div><div><h3>Sell when you're done</h3><p>Click <span class="ui">Sell</span> on the same stock, or <span class="ui">Close</span> on its row in Positions.</p></div></div>
 <div class="callout">Trades can only be placed during market hours: 9:15 AM to 3:30 PM IST, Monday to Friday, excluding NSE holidays.</div>
 
@@ -232,7 +232,7 @@ footer a{color:var(--ink-soft)}
 </ul>
 
 <h2 id="review">7. Track your positions and history</h2>
-<p><span class="ui">Positions</span> shows each holding's average cost, last price, market value and live profit or loss, plus any stop-loss you've set. <span class="ui">History</span> lists every trade, including stop-losses that were hit, with realised profit or loss. Review it every week: it's the honest record of whether your approach works.</p>
+<p><span class="ui">Positions</span> shows each holding's average cost, last price, market value and running profit or loss, plus any stop-loss you've set. <span class="ui">History</span> lists every trade, including stop-losses that were hit, with realised profit or loss. Review it every week: it's the honest record of whether your approach works.</p>
 <p>Want price notifications? In <span class="ui">Alerts</span>, set a target price and PaperRally tells you when it's crossed.</p>
 
 <h2 id="replay">8. Practise outside market hours with Replay</h2>
@@ -240,7 +240,7 @@ footer a{color:var(--ink-soft)}
 
 <div class="start">
   <h2>Ready to place your first practice trade?</h2>
-  <p>₹10,00,000 of virtual cash, live NSE and BSE prices and a 7-day free trial of every Pro feature.</p>
+  <p>₹10,00,000 of virtual cash, NSE and BSE market prices and a 7-day free trial of every Pro feature.</p>
   <a class="cta" href="/">Open PaperRally</a>
 </div>
 
@@ -251,9 +251,9 @@ footer a{color:var(--ink-soft)}
 <h3>Can I start over?</h3>
 <p>Yes. Click <span class="ui">Reset</span> at the top to go back to ₹10,00,000. This clears your positions, orders and history.</p>
 <h3>What does Pro include?</h3>
-<p>Limit and stop-loss orders, RSI, MACD and every chart timeframe, the options chain with live Greeks, search for any NSE or BSE stock, price alerts, the News tab and CSV export of your trades. Every new account gets all of it free for 7 days.</p>
+<p>Limit and stop-loss orders, RSI, MACD and every chart timeframe, the options chain with Greeks, search for any NSE or BSE stock, price alerts, the News tab and CSV export of your trades. Every new account gets all of it free for 7 days.</p>
 <h3>Are option prices the same as on the exchange?</h3>
-<p>They're calculated from the live index price with the Black-Scholes model, so they move realistically but won't exactly match the exchange's option quotes.</p>
+<p>They're calculated from the index price with the Black-Scholes model, so they move realistically but won't exactly match the exchange's option quotes.</p>
 <h3>Where can I learn more about paper trading?</h3>
 <p>Read <a href="/paper-trading-india.html">paper trading in India: how to practise without risking money</a>.</p>
 </section>
