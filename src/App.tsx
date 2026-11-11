@@ -5877,9 +5877,10 @@ function PopoutChart() {
 const isPopoutRoute = () => typeof window !== "undefined" && window.location.hash.startsWith("#/chart");
 
 // ---- Site closed switch ----
-// While true, only the owner can use PaperRally; everyone else sees the closed page. To reopen the
-// site: set this to false and delete vercel.json. The owner signs in at paperrally.in/?owner=1.
-export const SITE_CLOSED = true;
+// While true, only the owner can use PaperRally; everyone else sees the closed page (the owner signs
+// in at paperrally.in/?owner=1). To close the site again: set this to true and restore vercel.json
+// (it redirected the guide pages to the home page and told search engines not to index the site).
+export const SITE_CLOSED = false;
 const OWNER_EMAIL_SHA256 = "309953611ce27921024f1f4854e9efd81b2c29fd7ece895538551463cbac3f4e";
 async function isOwnerEmail(email) {
   if (!email) return false;
@@ -5969,7 +5970,8 @@ function ClosedGate() {
 
 export default function App() {
   if (SITE_CLOSED) return <ClosedGate />;
-  return isPopoutRoute() ? <PopoutChart /> : <MainApp />;
+  // The pop-out chart reads prices from the broker connection too, so it sits behind the same gate.
+  return isPopoutRoute() ? <BrokerGate><PopoutChart /></BrokerGate> : <MainApp />;
 }
 
 function MainApp() {
@@ -6106,7 +6108,9 @@ function MainApp() {
   const inTrial = !isPaidPro && daysLeftInTrial > 0;
   const isPro = isPaidPro || inTrial;
 
+  // Prices come from each user's own broker connection, so the terminal opens only once that is confirmed.
   return (
+    <BrokerGate>
     <TradingApp
       key={session.user.id}
       username={username}
@@ -6127,6 +6131,7 @@ function MainApp() {
       themeIdx={themeIdx}
       cycleTheme={cycleTheme}
     />
+    </BrokerGate>
   );
 }
 
