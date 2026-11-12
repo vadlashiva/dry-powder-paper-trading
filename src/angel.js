@@ -136,6 +136,87 @@ export async function fetchQuotes(symbols) {
   return out;
 }
 
+/* ---- option premiums ---- */
+// Real traded premiums for option contracts. A contract is { symbol, strike, type: "call" | "put", expiry (ms) }.
+// Angel One lists index and stock options on NFO as NAME + DDMMMYY + STRIKE + CE/PE (BANKNIFTY28DEC2347700CE),
+// and SENSEX options on BFO as SENSEX + YYMMM + STRIKE (monthly) or SENSEX + YY + M + DD + STRIKE (weekly).
+const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+const BFO_WEEK_MONTH = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "O", "N", "D"];
+const OPTION_ROOTS = { "^NSEI": ["NFO", "NIFTY"], "^NSEBANK": ["NFO", "BANKNIFTY"], "^BSESN": ["BFO", "SENSEX"] };
+const DAY_MS = 86400000;
+const two = (n) => String(n).padStart(2, "0");
+export const optionKey = (c) => `${c.symbol}|${c.expiry}|${c.strike}|${c.type}`;
+
+// The names this contract could be listed under, most likely first. Empty when the broker has no such options.
+export function optionSymbolCandidates(c) {
+  const stock = parseSymbol(c.symbol);
+  const [exchange, root] = OPTION_ROOTS[c.symbol] || (stock && stock.exchange === "NSE" ? ["NFO", stock.name] : []);
+  if (!root || !(c.strike > 0) || !c.expiry) return { exchange: null, names: [] };
+  const cp = c.type === "call" ? "CE" : "PE";
+  const strike = String(+c.strike);
+  const parts = (ms) => { const d = new Date(ms + IST_MS); return { dd: two(d.getUTCDate()), m: d.getUTCMonth(), yy: two(d.getUTCFullYear() % 100) }; };
+  if (exchange === "BFO") {
+    const e = parts(c.expiry);
+    const lastOfMonth = parts(c.expiry + 7 * DAY_MS).m !== e.m;
+    return { exchange, names: [lastOfMonth ? `${root}${e.yy}${MONTHS[e.m]}${strike}${cp}` : `${root}${e.yy}${BFO_WEEK_MONTH[e.m]}${e.dd}${strike}${cp}`] };
+  }
+  // The exchange can move an expiry by a day around a holiday; try the day itself, then its neighbours.
+  const names = [0, -1, 1].map((shift) => { const e = parts(c.expiry + shift * DAY_MS); return `${root}${e.dd}${MONTHS[e.m]}${e.yy}${strike}${cp}`; });
+  return { exchange, names };
+}
+
+const OPT_PREFIX = "opt:";
+const optionMisses = {}; // key -> time of the last failed lookup, so a missing contract is not searched again and again
+const optionLookups = {};
+const MISS_RETRY_MS = 10 * 60 * 1000;
+function rememberOptionToken(key, value) {
+  const all = tokens();
+  const now = Date.now();
+  Object.keys(all).forEach((k) => { // drop contracts that have expired
+    if (k.startsWith(OPT_PREFIX) && Number(k.split("|")[1]) < now - DAY_MS) delete all[k];
+  });
+  all[OPT_PREFIX + key] = value;
+  write(TOKEN_STORE, JSON.stringify(all));
+}
+function lookUpOption(c) {
+  const key = optionKey(c);
+  if (optionLookups[key] || (optionMisses[key] && Date.now() - optionMisses[key] < MISS_RETRY_MS)) return;
+  const { exchange, names } = optionSymbolCandidates(c);
+  if (!names.length) { optionMisses[key] = Date.now(); return; }
+  optionLookups[key] = (async () => {
+    for (const name of names) {
+      const rows = (await inTurn("search", 1100, () => call("/order/v1/searchScrip", { exchange, searchscrip: name }))) || [];
+      const hit = rows.find((r) => r.tradingsymbol === name);
+      if (hit) { rememberOptionToken(key, [exchange, String(hit.symboltoken)]); return; }
+    }
+    optionMisses[key] = Date.now();
+  })().catch(() => { optionMisses[key] = Date.now(); }).finally(() => { delete optionLookups[key]; });
+}
+
+// Returns { [optionKey]: last traded premium } for the contracts whose codes are already known.
+// Unknown contracts are looked up in the background (one a second) and appear on a later call,
+// so a long options chain never holds up the prices of open positions.
+export async function fetchOptionQuotes(contracts) {
+  const known = [];
+  contracts.forEach((c) => {
+    const tk = tokens()[OPT_PREFIX + optionKey(c)];
+    if (tk) known.push([optionKey(c), tk]); else lookUpOption(c);
+  });
+  const out = {};
+  for (let i = 0; i < known.length; i += 50) {
+    const chunk = known.slice(i, i + 50);
+    const exchangeTokens = {};
+    const byToken = {};
+    chunk.forEach(([key, [ex, tk]]) => { (exchangeTokens[ex] = exchangeTokens[ex] || []).push(tk); byToken[`${ex}:${tk}`] = key; });
+    const data = await inTurn("quote", 1100, () => call("/market/v1/quote/", { mode: "LTP", exchangeTokens }));
+    (data?.fetched || []).forEach((q) => {
+      const key = byToken[`${q.exchange}:${q.symbolToken}`];
+      if (key && q.ltp > 0) out[key] = q.ltp;
+    });
+  }
+  return out;
+}
+
 const INTERVALS = { "1m": "ONE_MINUTE", "5m": "FIVE_MINUTE", "15m": "FIFTEEN_MINUTE", "60m": "ONE_HOUR", "1d": "ONE_DAY" };
 const stamp = (ms) => new Date(ms + IST_MS).toISOString().slice(0, 16).replace("T", " ");
 

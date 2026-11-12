@@ -7,7 +7,7 @@ import {TrendingUp, TrendingDown, RotateCcw, X, Flame, Activity, LogOut, Lock, U
 } from "lucide-react";
 import { StrategyPanel } from "./strategies";
 import { BrokerSetup } from "./brokerSetup";
-import { BROKERS, activeBroker, chooseBroker, answerFeedRequest, fetchQuotes } from "./brokers";
+import { BROKERS, activeBroker, chooseBroker, answerFeedRequest, fetchQuotes, fetchOptionQuotes } from "./brokers";
 import { LEARN, LangSwitch, loadLang, saveLang } from "./i18n";
 import { useIsMobile, loadSetting, saveSetting, computeCharges, PerformancePanel } from "./extras";
 import { isoWeekIST, initTelemetry, track, tradeKey, TagChips, JournalModal, JournalStatsCard, computeAchievements, AchievementsGrid, ACHIEVEMENTS, makeShareImage, shareImage, captureReferralFromUrl, syncReferrals, InvitePanel, LeaderboardPanel, TourOverlay, InstallHelp } from "./growth";
@@ -101,6 +101,24 @@ const TRIAL_DAYS = 7;
 // During Replay the whole terminal runs on a simulated clock.
 let SIM_NOW = null;
 const nowMs = () => (SIM_NOW ?? Date.now());
+// Real traded option premiums from the user's broker, keyed by contract. Where a contract has one, it is used
+// instead of the calculated (Black-Scholes) premium everywhere: chain, ticket, positions, P&L, stop-loss and fills.
+// Once a contract has a real premium it keeps its last real value rather than switching back to the calculated
+// one, so a brief gap in the feed can never trip a stop-loss on a different kind of price.
+const REAL_PREMIUMS = new Map();
+const REAL_PREMIUM_FRESH_MS = 60000;
+const contractKey = (c) => `${c.symbol}|${c.expiry}|${c.strike}|${c.type}`;
+function realPremium(c) {
+  if (SIM_NOW != null) return null; // Replay has no historical option prices: it stays on calculated premiums
+  return REAL_PREMIUMS.get(contractKey(c))?.price ?? null;
+}
+// "real" = traded premium updated in the last minute, "stale" = traded premium that has stopped updating, "model" = calculated.
+function premiumSource(c) {
+  if (SIM_NOW != null) return "model";
+  const r = REAL_PREMIUMS.get(contractKey(c));
+  if (!r) return "model";
+  return Date.now() - r.at < REAL_PREMIUM_FRESH_MS ? "real" : "stale";
+}
 function trialDaysRemaining(createdAtIso, bonusDays = 0) {
   if (!createdAtIso) return 0;
   const start = new Date(createdAtIso).getTime();
@@ -159,6 +177,8 @@ function phi(x) { return Math.exp(-x * x / 2) / Math.sqrt(2 * Math.PI); }
 
 // Current model premium for an option position/contract (same pricing used everywhere else in the app).
 function optionPremiumNow(pos, quotes, instruments) {
+  const real = realPremium(pos);
+  if (real != null) return real;
   const spot = quotes[pos.symbol]?.price;
   const symMeta = instruments.find((s) => s.symbol === pos.symbol);
   if (!spot || !symMeta) return null;
@@ -2639,6 +2659,31 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
 
   // Prices come only from the real feed (no simulated ticks), so fills and P&L use real prices.
 
+  // Real option premiums: open positions first, then the open ticket, then the chain on screen.
+  const [optTick, setOptTick] = useState(0);
+  const optWantedRef = useRef([]);
+  useEffect(() => {
+    let cancelled = false;
+    let busy = false;
+    const pull = async () => {
+      if (busy || replayActiveRef.current) return;
+      const list = optWantedRef.current;
+      if (!list.length) return;
+      busy = true;
+      try {
+        const got = await fetchOptionQuotes(list);
+        if (cancelled) return;
+        const at = Date.now();
+        Object.entries(got).forEach(([key, price]) => { if (price > 0) REAL_PREMIUMS.set(key, { price, at }); });
+      } catch { /* keep the last premiums; the next pull tries again */ }
+      finally { busy = false; }
+      if (!cancelled) setOptTick((t) => t + 1); // also refreshes the "delayed" marks when nothing arrived
+    };
+    pull();
+    const stop = visibleInterval(pull, 5000);
+    return () => { cancelled = true; stop(); };
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     if (replayActive) return;
@@ -3029,7 +3074,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
     const symMeta = allInstruments.find((s) => s.symbol === p.symbol);
     const T = (p.expiry - nowMs()) / (365 * 24 * 3600 * 1000);
     const sigma = symMeta.iv * (1 + 0.15 * Math.abs(p.strike - spot) / spot);
-    const { price } = blackScholes(spot, p.strike, T, RISK_FREE, sigma, p.type);
+    const price = realPremium(p) ?? blackScholes(spot, p.strike, T, RISK_FREE, sigma, p.type).price;
     return sum + (isShort(p) ? (p.margin || 0) - price * posMultiplier(p) * p.qty : price * posMultiplier(p) * p.qty);
   }, 0);
   const equity = cash + stockMktValue + optionMktValue;
@@ -3041,7 +3086,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
     const symMeta = allInstruments.find((s) => s.symbol === p.symbol);
     const pT = (p.expiry - nowMs()) / (365 * 24 * 3600 * 1000);
     const sigma = symMeta.iv * (1 + 0.15 * Math.abs(p.strike - spot) / spot);
-    const { price } = blackScholes(spot, p.strike, pT, RISK_FREE, sigma, p.type);
+    const price = realPremium(p) ?? blackScholes(spot, p.strike, pT, RISK_FREE, sigma, p.type).price;
     return sum + (isShort(p) ? p.avgPremium - price : price - p.avgPremium) * posMultiplier(p) * p.qty;
   }, 0);
   const unrealizedPnl = stockUnrealized + optionUnrealized;
@@ -3584,7 +3629,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
     if (ticket.expiry <= nowMs()) return { ok: false, msg: "That expiry has passed — pick a later one" };
     const T = (ticket.expiry - nowMs()) / (365 * 24 * 3600 * 1000);
     const sigma = symMeta.iv * (1 + 0.15 * Math.abs(ticket.strike - spot) / spot);
-    const { price } = blackScholes(spot, ticket.strike, T, RISK_FREE, sigma, ticket.type);
+    const price = realPremium(ticket) ?? blackScholes(spot, ticket.strike, T, RISK_FREE, sigma, ticket.type).price;
     const lot = lotSizeFor(ticket.symbol);
     const premiumTotal = price * lot * qty;
     const label = `${ticket.type.toUpperCase()} ${displayTicker(ticket.symbol)} ${ticket.strike} ${fmtDate(new Date(ticket.expiry))}`;
@@ -3681,7 +3726,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
     const symMeta = allInstruments.find((s) => s.symbol === pos.symbol);
     const T = (pos.expiry - nowMs()) / (365 * 24 * 3600 * 1000);
     const sigma = symMeta.iv * (1 + 0.15 * Math.abs(pos.strike - spot) / spot);
-    const price = atPrice ?? blackScholes(spot, pos.strike, T, RISK_FREE, sigma, pos.type).price;
+    const price = atPrice ?? realPremium(pos) ?? blackScholes(spot, pos.strike, T, RISK_FREE, sigma, pos.type).price;
     const total = price * posMultiplier(pos) * pos.qty;
     const short = isShort(pos);
     setCash((c) => c + (short ? (pos.margin || 0) - total : total));
@@ -3737,7 +3782,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
       slFiredRef.current.add(p.id);
       closeOptionPosition(p, prem, "SL hit");
     });
-  }, [quotes]);
+  }, [quotes, optTick]);
 
   // Close buttons open a confirmation first — one stray tap on a phone shouldn't exit a trade.
   const requestClose = (kind, pos) => {
@@ -3833,6 +3878,14 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
   const chainStep = EXPIRY_RULES[viewSym]?.step ?? strikeStep(q?.price ?? meta.fallback);
   const chainStrikes = strikesAround(q?.price ?? meta.fallback, 9, chainStep);
   const T = currentExpiry ? (currentExpiry.getTime() - nowMs()) / (365 * 24 * 3600 * 1000) : 0;
+  {
+    const wanted = new Map();
+    const want = (c) => { if (c.symbol && c.expiry && !wanted.has(contractKey(c))) wanted.set(contractKey(c), { symbol: c.symbol, strike: c.strike, type: c.type, expiry: c.expiry }); };
+    optionPositions.forEach(want);
+    if (ticket) want(ticket);
+    if (tab === "chain" && selected && currentExpiry) chainStrikes.forEach((strike) => { want({ symbol: selected, strike, type: "call", expiry: currentExpiry.getTime() }); want({ symbol: selected, strike, type: "put", expiry: currentExpiry.getTime() }); });
+    optWantedRef.current = replayActive ? [] : [...wanted.values()];
+  }
 
   // ---- weekly challenge: track the start-of-week equity, sync the leaderboard row ----
   const weekKey = isoWeekIST(nowMs());
@@ -4637,6 +4690,12 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
                       const sigma = meta.iv * (1 + 0.15 * Math.abs(strike - spot) / spot);
                       const call = blackScholes(spot, strike, T, RISK_FREE, sigma, "call");
                       const put = blackScholes(spot, strike, T, RISK_FREE, sigma, "put");
+                      const expiryMs = currentExpiry?.getTime();
+                      const callC = { symbol: selected, strike, type: "call", expiry: expiryMs };
+                      const putC = { symbol: selected, strike, type: "put", expiry: expiryMs };
+                      const callPrice = realPremium(callC) ?? call.price;
+                      const putPrice = realPremium(putC) ?? put.price;
+                      const estTitle = "Calculated premium — no traded price for this contract yet";
                       const isATM = Math.abs(strike - spot) < chainStep / 2;
                       const callITM = strike < spot;
                       const putITM = strike > spot;
@@ -4645,11 +4704,11 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
                           <td className="mono callSide">{call.delta.toFixed(2)}</td>
                           {!isMobile && <td className="mono callSide">{call.theta.toFixed(2)}</td>}
                           {!isMobile && <td className="mono callSide">{(sigma * 100).toFixed(0)}%</td>}
-                          <td className={`mono premCell callSide ${callITM ? "itmCall" : "otmCall"}`} onClick={() => openTicket("call", strike, currentExpiry)}>{fmtMoney(call.price)}</td>
+                          <td className={`mono premCell callSide ${callITM ? "itmCall" : "otmCall"}`} onClick={() => openTicket("call", strike, currentExpiry)} title={premiumSource(callC) === "model" ? estTitle : undefined}>{fmtMoney(callPrice)}{premiumSource(callC) === "model" && <span className="estTag">est.</span>}</td>
                           {!isMobile && <td className="chainGutter" />}
                           <td className="strikeCell mono">{strike}</td>
                           {!isMobile && <td className="chainGutter" />}
-                          <td className={`mono premCell putSide ${putITM ? "itmPut" : "otmPut"}`} onClick={() => openTicket("put", strike, currentExpiry)}>{fmtMoney(put.price)}</td>
+                          <td className={`mono premCell putSide ${putITM ? "itmPut" : "otmPut"}`} onClick={() => openTicket("put", strike, currentExpiry)} title={premiumSource(putC) === "model" ? estTitle : undefined}>{fmtMoney(putPrice)}{premiumSource(putC) === "model" && <span className="estTag">est.</span>}</td>
                           {!isMobile && <td className="mono putSide">{(sigma * 100).toFixed(0)}%</td>}
                           {!isMobile && <td className="mono putSide">{put.theta.toFixed(2)}</td>}
                           <td className="mono putSide">{put.delta.toFixed(2)}</td>
@@ -4660,7 +4719,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
                 </table>
               </div>
               {isMobile && <div className="chainNote chainTapHint">Tap any premium to buy or sell that option. Theta and IV are in the order ticket.</div>}
-              <div className="chainNote">Premiums &amp; Greeks are modeled from the underlying price via Black-Scholes — not an exchange options feed. Index IV follows India VIX{indiaVix ? ` (now ${indiaVix.toFixed(2)})` : ""}, so premiums are close to, but not exactly, market prices. Quantities are in exchange lots (NIFTY 65, BANKNIFTY 30, SENSEX 20). You can buy or sell (short) options; selling blocks an estimated margin from your cash.</div>
+              <div className="chainNote">Premiums are the last traded prices from your broker connection where it supplies them. A premium marked "est." is calculated from the underlying price via Black-Scholes until a traded price arrives; Greeks and IV are always calculated. Index IV follows India VIX{indiaVix ? ` (now ${indiaVix.toFixed(2)})` : ""}. Quantities are in exchange lots (NIFTY 65, BANKNIFTY 30, SENSEX 20). You can buy or sell (short) options; selling blocks an estimated margin from your cash.</div>
               {!marketStatus.isOpen && (
                 <div className="chainNote" style={{ color: "var(--bear)", fontWeight: 600 }}>Market Closed — you can browse the chain, but new orders are disabled until 9:15 AM Mon–Fri.</div>
               )}
@@ -4733,7 +4792,8 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
                       const symMeta = allInstruments.find((s) => s.symbol === p.symbol);
                       const pT = (p.expiry - nowMs()) / (365 * 24 * 3600 * 1000);
                       const sigma = symMeta.iv * (1 + 0.15 * Math.abs(p.strike - spot) / spot);
-                      const { price } = blackScholes(spot, p.strike, pT, RISK_FREE, sigma, p.type);
+                      const price = realPremium(p) ?? blackScholes(spot, p.strike, pT, RISK_FREE, sigma, p.type).price;
+                      const source = premiumSource(p);
                       const short = isShort(p);
                       const mv = (short ? -1 : 1) * price * posMultiplier(p) * p.qty;
                       const pnl = (short ? p.avgPremium - price : price - p.avgPremium) * posMultiplier(p) * p.qty;
@@ -4742,7 +4802,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
                           <td className="mono">{short && <span className="shortTag">SHORT</span>}{p.type === "call" ? "C" : "P"} {displayTicker(p.symbol)} {p.strike} {fmtDate(new Date(p.expiry))}{short && p.margin ? <div className="dim" style={{ fontSize: "11px" }}>margin {fmtMoney(p.margin, 0)}</div> : null}</td>
                           <td className="mono">{p.lotBased ? `${p.qty} × ${lotSizeFor(p.symbol)}` : p.qty}</td>
                           <td className="mono">{fmtMoney(p.avgPremium)}</td>
-                          <td className="mono">{fmtMoney(price)}</td>
+                          <td className="mono" title={source === "model" ? "Calculated premium — no traded price for this contract yet" : source === "stale" ? "Last traded premium — not updated in the past minute" : "Last traded premium"}>{fmtMoney(price)}{source !== "real" && <span className="estTag">{source === "model" ? "est." : "delayed"}</span>}</td>
                           <td className="mono">{fmtMoney(mv)}</td>
                           <td className={`mono ${pnl >= 0 ? "bull" : "bear"}`}>{fmtMoney(pnl)}{p.stopLoss ? <div className="slTag">SL {fmtMoney(p.stopLoss)}</div> : null}</td>
                           <td className="orderRowActions">
@@ -5334,7 +5394,8 @@ function OptionTicket({ ticket, quotes, instruments, onClose, onSubmit, heldQty,
   const symMeta = instruments.find((s) => s.symbol === ticket.symbol);
   const T = (ticket.expiry - nowMs()) / (365 * 24 * 3600 * 1000);
   const sigma = symMeta.iv * (1 + 0.15 * Math.abs(ticket.strike - spot) / spot);
-  const greeks = blackScholes(spot, ticket.strike, T, RISK_FREE, sigma, ticket.type);
+  const modelGreeks = blackScholes(spot, ticket.strike, T, RISK_FREE, sigma, ticket.type);
+  const greeks = { ...modelGreeks, price: realPremium(ticket) ?? modelGreeks.price };
   const lot = lotSizeFor(ticket.symbol);
   const marginEst = shortMarginPerLot(spot, ticket.strike, ticket.type, lot) * qty;
 
@@ -5351,7 +5412,7 @@ function OptionTicket({ ticket, quotes, instruments, onClose, onSubmit, heldQty,
         </div>
 
         <div className="greeksGrid mono">
-          <div><span className="dim">Premium</span>{fmtMoney(greeks.price)}</div>
+          <div><span className="dim">Premium</span>{fmtMoney(greeks.price)}{premiumSource(ticket) === "model" && <span className="estTag">est.</span>}</div>
           <div><span className="dim" title="Delta — how much this option's premium moves for a ₹1 move in the underlying (e.g. 0.50 = about ₹0.50 of premium change per ₹1 move).">Delta</span>{greeks.delta.toFixed(3)}</div>
           <div><span className="dim" title="Gamma — how fast Delta itself changes as the underlying moves. Higher gamma means Delta shifts quickly, so risk can change fast near expiry or at-the-money.">Gamma</span>{greeks.gamma.toFixed(4)}</div>
           <div><span className="dim" title="Theta — how much premium this option loses per day purely from time passing, all else equal (e.g. -0.80 = about ₹0.80 lost per day).">Theta</span>{greeks.theta.toFixed(3)}</div>
@@ -6277,6 +6338,7 @@ const CSS = `
 .drawToolBtn:hover { color: var(--text); border-color: var(--accent); }
 .drawToolBtnActive { background: var(--accent); color: white; border-color: var(--accent); }
 .drawToolHint { font-size: 11px; margin-left: 4px; }
+.estTag { margin-left: 5px; font-size: 9.5px; font-weight: 600; color: var(--text-dim); letter-spacing: 0.3px; text-transform: uppercase; }
 .slTag { font-size: 10.5px; font-weight: 600; color: var(--text-dim); margin-top: 2px; letter-spacing: 0.2px; }
 .lwChartOuter { position: relative; }
 .lwDrawOverlay { position: absolute; top: 0; left: 0; pointer-events: none; }
