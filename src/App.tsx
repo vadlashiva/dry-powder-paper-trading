@@ -6,6 +6,7 @@ import {TrendingUp, TrendingDown, RotateCcw, X, Flame, Activity, LogOut, Lock, U
   ArrowLeft,
 } from "lucide-react";
 import { StrategyPanel } from "./strategies";
+import { computeSMC, SMCPrimitive } from "./smc";
 import { BrokerSetup } from "./brokerSetup";
 import { BROKERS, activeBroker, chooseBroker, answerFeedRequest, fetchQuotes, fetchOptionQuotes } from "./brokers";
 import { LEARN, LangSwitch, loadLang, saveLang } from "./i18n";
@@ -397,6 +398,7 @@ const INDICATOR_DEFS = [
   { key: "ema21", group: "overlay", name: "EMA 21", color: IND_COLORS.ema21, pro: true, desc: "Medium exponential average. EMA 9 crossing EMA 21 is a popular trend signal." },
   { key: "bb", group: "overlay", name: "Bollinger Bands (20, 2)", color: IND_COLORS.bb, pro: true, desc: "A band two standard deviations around SMA 20. Price at the edges means it's stretched." },
   { key: "st", group: "overlay", name: "Supertrend (10, 3)", color: "#14E8A0", pro: true, desc: "Trend-following line: green below price in an uptrend, red above price in a downtrend." },
+  { key: "smc", group: "overlay", name: "Smart Money Concepts", color: "#089981", pro: true, desc: "Market structure (BOS / CHoCH), order blocks, fair value gaps, equal highs and lows, premium and discount zones, and the previous day's high and low." },
   { key: "rsi", group: "pane", name: "RSI (14)", color: "#7B61FF", pro: true, desc: "Momentum from 0 to 100. Above 70 is often called overbought, below 30 oversold." },
   { key: "macd", group: "pane", name: "MACD (12, 26, 9)", color: "#14E8A0", pro: true, desc: "Difference between two EMAs with a signal line. Crossovers show changes in momentum." },
   { key: "stoch", group: "pane", name: "Stochastic (14, 3)", color: IND_COLORS.stoch, pro: true, desc: "Where the close sits within the recent high-low range. Above 80 is high, below 20 low." },
@@ -493,8 +495,9 @@ const DRAW_TOOLS = [
   { id: "erase", label: "Erase" },
 ];
 
-function PriceChartImpl({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPrice, pendingLines, chartType, resetKey, overlays = [] }) {
+function PriceChartImpl({ data, showMA, syncGroupRef, pickMode, onPricePick, draftPrice, pendingLines, chartType, resetKey, overlays = [], smc = false }) {
   const overlaySeriesRef = useRef(new Map());
+  const smcRef = useRef(null);
   const fitKeyRef = useRef(null);
   const containerRef = useRef(null);
   const legendRef = useRef(null);
@@ -670,6 +673,23 @@ function PriceChartImpl({ data, showMA, syncGroupRef, pickMode, onPricePick, dra
       )));
     });
   }, [data, overlaysKey]);
+
+  // Smart Money Concepts: computed from the candles on screen, drawn by a series primitive.
+  useEffect(() => {
+    const activeSeries = chartType === "line" ? lineRef.current : candleRef.current;
+    if (!activeSeries || !smc) return;
+    const primitive = new SMCPrimitive();
+    activeSeries.attachPrimitive(primitive);
+    smcRef.current = primitive;
+    return () => {
+      smcRef.current = null;
+      try { activeSeries.detachPrimitive(primitive); } catch { /* chart already removed */ }
+    };
+  }, [smc, chartType]);
+  useEffect(() => {
+    if (!smc || !smcRef.current) return;
+    smcRef.current.setModel(computeSMC(prepLW(data).map(({ t, d }) => ({ time: t, open: d.open, high: d.high, low: d.low, close: d.close }))));
+  }, [data, smc, chartType]);
 
   useEffect(() => {
     const activeSeries = chartType === "line" ? lineRef.current : candleRef.current;
@@ -3017,6 +3037,10 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
     const all = buildChartSeries(chartHistory.length ? chartHistory : q.history, ALL_INDICATORS_ON);
     return all[all.length - 1] || null;
   }, [chartHistory, q.history]);
+  const smcSummary = useMemo(() => {
+    const h = chartHistory.length ? chartHistory : q.history;
+    return computeSMC(h.map((d) => ({ time: Math.floor(d.time / 1000) + IST_OFFSET_SEC, open: d.open ?? d.price, high: hi(d), low: lo(d), close: cl(d) }))).summary;
+  }, [chartHistory, q.history]);
   const toggleIndicator = (def) => {
     if (def.pro && !isPro) { setUpgradeModalOpen(true); return; }
     setIndicators((prev) => ({ ...prev, [def.key]: !prev[def.key] }));
@@ -3039,6 +3063,12 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
       case "st":
         if (L.st == null) return { value: "—", text: "Needs more candles", tone: "" };
         return { value: f(L.st), text: L.stUp ? "Uptrend" : "Downtrend", tone: L.stUp ? "bull" : "bear" };
+      case "smc": {
+        const S = smcSummary, t = S.swingTrend || S.internalTrend;
+        if (!t) return { value: "—", text: "No break of structure yet", tone: "" };
+        const e = S.lastEvent;
+        return { value: e ? `${e.choch ? "CHoCH" : "BOS"} ${f(e.price)}` : "—", text: `${t === 1 ? "Bullish" : "Bearish"} ${S.swingTrend ? "swing" : "internal"} structure · ${S.orderBlocks} order blocks, ${S.fvgs} gaps`, tone: t === 1 ? "bull" : "bear" };
+      }
       case "rsi":
         if (L.rsi == null) return { value: "—", text: "Needs 15 candles", tone: "" };
         return { value: L.rsi.toFixed(1), text: L.rsi >= 70 ? "Overbought zone" : L.rsi <= 30 ? "Oversold zone" : "Neutral", tone: L.rsi >= 70 ? "bear" : L.rsi <= 30 ? "bull" : "" };
@@ -4396,6 +4426,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
                   data={chartSeries}
                   showMA={indicators.ma}
                   overlays={chartOverlays}
+                  smc={indicators.smc}
                   syncGroupRef={syncGroupRef}
                   pickMode={pickingPriceFromChart}
                   onPricePick={handleChartPricePick}
