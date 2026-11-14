@@ -9,8 +9,8 @@ export const SMC_DEFAULTS = {
   showSwing: true, swingLen: 50,
   showInternal: true, internalLen: 5,
   bullColor: "#089981", bearColor: "#F23645",
-  showOB: true, obFromSwing: true, obFromInternal: true, maxOB: 5, obMitSrc: "Close",
-  showFVG: true, fvgMinAtr: 0, maxFVG: 10,
+  showOB: true, obFromSwing: true, obFromInternal: true, maxOB: 3, obMitSrc: "Close", // script default is 5; fewer keeps a small chart readable
+  showFVG: true, fvgMinAtr: 0, maxFVG: 4, // script default is 10
   showEQ: true, eqLen: 3, eqThr: 0.1,
   showPD: true,
   showSW: true,
@@ -168,17 +168,19 @@ export function computeSMC(candles, opts = {}) {
   }
 
   const last = n - 1;
+  // a swing break and an internal break can pick the same candle; draw that block once
+  obs = obs.filter((x, k) => obs.findIndex((y) => y.left === x.left && y.bull === x.bull) === k);
   obs.forEach((x) => {
     const col = x.bull ? o.bullColor : o.bearColor;
-    boxes.push({ x1: x.left, x2: null, top: x.top, bot: x.bot, fill: rgba(col, 0.2), stroke: rgba(col, 0.6) });
+    boxes.push({ x1: x.left, x2: null, top: x.top, bot: x.bot, fill: rgba(col, 0.1), stroke: rgba(col, 0.7), text: "OB", textColor: col, kind: "ob" });
   });
-  fvgs.forEach((x) => boxes.push({ x1: x.left, x2: null, top: x.top, bot: x.bot, fill: rgba(x.bull ? o.bullColor : o.bearColor, 0.15) }));
+  fvgs.forEach((x) => { const col = x.bull ? o.bullColor : o.bearColor; boxes.push({ x1: x.left, x2: null, top: x.top, bot: x.bot, fill: rgba(col, 0.08), stroke: rgba(col, 0.45), dash: "dashed", text: "FVG", textColor: col, kind: "fvg" }); });
 
   if (o.showPD && sw.hi != null && sw.lo != null && sw.hi > sw.lo) {
     const rng = sw.hi - sw.lo, left = Math.min(sw.hiBar, sw.loBar), right = last + 10;
-    boxes.push({ x1: left, x2: right, top: sw.hi, bot: sw.hi - 0.05 * rng, fill: rgba(o.bearColor, 0.15), text: "Premium", textColor: o.bearColor });
-    boxes.push({ x1: left, x2: right, top: sw.lo + 0.525 * rng, bot: sw.lo + 0.475 * rng, fill: "rgba(120, 123, 134, 0.15)", text: "Equilibrium", textColor: "#787B86" });
-    boxes.push({ x1: left, x2: right, top: sw.lo + 0.05 * rng, bot: sw.lo, fill: rgba(o.bullColor, 0.15), text: "Discount", textColor: o.bullColor });
+    boxes.push({ x1: left, x2: right, top: sw.hi, bot: sw.hi - 0.05 * rng, fill: rgba(o.bearColor, 0.1), text: "Premium", textColor: o.bearColor });
+    boxes.push({ x1: left, x2: right, top: sw.lo + 0.525 * rng, bot: sw.lo + 0.475 * rng, fill: "rgba(120, 123, 134, 0.1)", text: "Equilibrium", textColor: "#787B86" });
+    boxes.push({ x1: left, x2: right, top: sw.lo + 0.05 * rng, bot: sw.lo, fill: rgba(o.bullColor, 0.1), text: "Discount", textColor: o.bullColor });
   }
 
   if (o.showSW && trTop != null && trBot != null) {
@@ -246,10 +248,12 @@ export class SMCPrimitive {
       const h = Math.max(1, y2 - y1);
       ctx.fillStyle = b.fill;
       ctx.fillRect(x1, y1, x2 - x1, h);
-      if (b.stroke) { ctx.strokeStyle = b.stroke; ctx.lineWidth = 1; ctx.setLineDash([]); ctx.strokeRect(x1 + 0.5, y1 + 0.5, x2 - x1, h); }
+      if (b.stroke) { ctx.strokeStyle = b.stroke; ctx.lineWidth = 1; ctx.setLineDash(DASH[b.dash] || []); ctx.strokeRect(x1 + 0.5, y1 + 0.5, x2 - x1, h); }
       if (b.text) {
-        ctx.font = "11px Inter, sans-serif"; ctx.textAlign = "right"; ctx.fillStyle = b.textColor;
-        ctx.fillText(b.text, Math.min(x2, size.width) - 4, y1 + h / 2);
+        // thin order blocks and gaps go untagged so the tags don't pile up
+        ctx.font = "600 10px Inter, sans-serif"; ctx.fillStyle = b.textColor;
+        ctx.textAlign = "right";
+        if (!b.kind || h >= 12) ctx.fillText(b.text, Math.min(x2, size.width) - 4, y1 + h / 2);
       }
     });
     m.lines.forEach((l) => {
@@ -262,7 +266,7 @@ export class SMCPrimitive {
     m.labels.forEach((t) => {
       const x = X(t.x), y = Y(t.y);
       if (x == null || y == null) return;
-      ctx.font = `${t.size}px Inter, sans-serif`; ctx.fillStyle = t.color;
+      ctx.font = `600 ${Math.max(10, t.size)}px Inter, sans-serif`; ctx.fillStyle = t.color;
       if (t.pos === "edge") { ctx.textAlign = "right"; ctx.fillText(t.text, size.width - 4, y - (t.size / 2 + 2)); }
       else if (t.pos === "right") { ctx.textAlign = "left"; ctx.fillText(t.text, x + 4, y); }
       else { ctx.textAlign = "center"; ctx.fillText(t.text, x, y + (t.pos === "above" ? -(t.size / 2 + 3) : t.size / 2 + 3)); }
