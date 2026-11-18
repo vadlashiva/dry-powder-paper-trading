@@ -66,8 +66,9 @@ export function initTelemetry(client) {
 
 export function track(name, props = {}) {
   try { window.umami?.track?.(name, props); } catch { /* ignore */ }
-  if (!sb) return;
-  sb.from("app_events").insert({ session_id: sessionId, name, props, path: location.pathname.slice(0, 200) }).then(() => {}, () => {});
+  if (!sb) return Promise.resolve();
+  // Returns a promise so a caller about to leave the page can wait briefly for the event to be saved.
+  return sb.from("app_events").insert({ session_id: sessionId, name, props, path: location.pathname.slice(0, 200) }).then(() => {}, () => {});
 }
 
 const isMissingTable = (err) => err && (err.code === "42P01" || err.code === "PGRST205" || err.code === "PGRST202" || /does not exist|schema cache|Could not find/i.test(err.message || ""));

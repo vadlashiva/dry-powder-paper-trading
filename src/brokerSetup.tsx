@@ -1,9 +1,34 @@
 // @ts-nocheck
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { loadLang, saveLang } from "./i18n";
+import { track } from "./growth";
+
+// Where "Open a free Angel One account" goes. If you join Angel One's referral programme,
+// put your referral link here instead.
+export const ANGEL_OPEN_ACCOUNT_URL = "https://www.angelone.in/open-demat-account";
+
+// Optional setup videos (about 2 minutes each, e.g. unlisted YouTube links), one per language.
+// A "Watch the 2-minute video" button appears on the setup screen for each language that has a link.
+export const SETUP_VIDEOS = { en: "", hi: "", kn: "" };
+
+// Optional screenshots for each setup step. Put images in public/setup/ named
+// <broker>-step1.png … <broker>-step4.png (e.g. angel-step2.png); a step without an image shows text only.
+function StepShot({ broker, step }) {
+  const [ok, setOk] = useState(true);
+  useEffect(() => setOk(true), [broker, step]);
+  if (!ok) return null;
+  return <img className="setupShot" src={`/setup/${broker}-step${step}.png`} alt="" loading="lazy" onError={() => setOk(false)} />;
+}
 
 const TEXT = {
   en: {
+    qTitle: "Do you have an Angel One account?",
+    qSub: "PaperRally uses your own free Angel One connection for live market prices. Your money and holdings are never touched.",
+    yes: "Yes, I have Angel One", no: "No, not yet", other: "I use FYERS or Upstox",
+    noTitle: "Open a free Angel One account",
+    noSub: "Opening an Angel One account is free and done online. Keep your PAN, Aadhaar and bank details ready. Once your account is active, come back here to connect.",
+    openAcc: "Open a free Angel One account", haveNow: "I have my account now", backPreview: "Back to the preview",
+    video: "Watch the 2-minute video",
     title: "Connect your broker", reconnectTitle: (b) => `Reconnect ${b}`,
     reconnectSub: (b) => `${b} logins end each day. Log in again to continue practising.`,
     reconnect: (b) => `Reconnect ${b}`, changeKey: "Change broker or key",
@@ -30,6 +55,13 @@ const TEXT = {
     secretLabel: "Secret",
   },
   hi: {
+    qTitle: "क्या आपका Angel One खाता है?",
+    qSub: "PaperRally लाइव मार्केट कीमतों के लिए आपके अपने मुफ़्त Angel One कनेक्शन का उपयोग करता है। आपके पैसे और होल्डिंग्स को कभी छुआ नहीं जाता।",
+    yes: "हाँ, मेरा Angel One खाता है", no: "नहीं, अभी नहीं", other: "मैं FYERS या Upstox उपयोग करता/करती हूँ",
+    noTitle: "मुफ़्त Angel One खाता खोलें",
+    noSub: "Angel One खाता खोलना मुफ़्त है और ऑनलाइन होता है। अपना PAN, आधार और बैंक विवरण तैयार रखें। खाता चालू होने के बाद जोड़ने के लिए यहाँ वापस आएँ।",
+    openAcc: "मुफ़्त Angel One खाता खोलें", haveNow: "अब मेरा खाता है", backPreview: "प्रीव्यू पर वापस जाएँ",
+    video: "2 मिनट का वीडियो देखें",
     title: "अपना ब्रोकर जोड़ें", reconnectTitle: (b) => `${b} फिर से जोड़ें`,
     reconnectSub: (b) => `${b} लॉगिन हर दिन समाप्त होता है। अभ्यास जारी रखने के लिए फिर से लॉगिन करें।`,
     reconnect: (b) => `${b} फिर से जोड़ें`, changeKey: "ब्रोकर या key बदलें",
@@ -56,6 +88,13 @@ const TEXT = {
     secretLabel: "Secret",
   },
   kn: {
+    qTitle: "ನಿಮ್ಮ ಬಳಿ Angel One ಖಾತೆ ಇದೆಯೇ?",
+    qSub: "ಲೈವ್ ಮಾರುಕಟ್ಟೆ ಬೆಲೆಗಳಿಗಾಗಿ PaperRally ನಿಮ್ಮದೇ ಉಚಿತ Angel One ಸಂಪರ್ಕವನ್ನು ಬಳಸುತ್ತದೆ. ನಿಮ್ಮ ಹಣ ಮತ್ತು ಹೋಲ್ಡಿಂಗ್ಸ್ ಅನ್ನು ಎಂದಿಗೂ ಮುಟ್ಟುವುದಿಲ್ಲ.",
+    yes: "ಹೌದು, ನನ್ನ ಬಳಿ Angel One ಇದೆ", no: "ಇಲ್ಲ, ಇನ್ನೂ ಇಲ್ಲ", other: "ನಾನು FYERS ಅಥವಾ Upstox ಬಳಸುತ್ತೇನೆ",
+    noTitle: "ಉಚಿತ Angel One ಖಾತೆ ತೆರೆಯಿರಿ",
+    noSub: "Angel One ಖಾತೆ ತೆರೆಯುವುದು ಉಚಿತ ಮತ್ತು ಆನ್‌ಲೈನ್‌ನಲ್ಲಿ ಆಗುತ್ತದೆ. ನಿಮ್ಮ PAN, ಆಧಾರ್ ಮತ್ತು ಬ್ಯಾಂಕ್ ವಿವರಗಳನ್ನು ಸಿದ್ಧವಾಗಿಡಿ. ಖಾತೆ ಸಕ್ರಿಯವಾದ ನಂತರ ಸಂಪರ್ಕಿಸಲು ಇಲ್ಲಿಗೆ ಹಿಂತಿರುಗಿ.",
+    openAcc: "ಉಚಿತ Angel One ಖಾತೆ ತೆರೆಯಿರಿ", haveNow: "ಈಗ ನನ್ನ ಖಾತೆ ಇದೆ", backPreview: "ಪ್ರಿವ್ಯೂಗೆ ಹಿಂತಿರುಗಿ",
+    video: "2 ನಿಮಿಷದ ವೀಡಿಯೊ ನೋಡಿ",
     title: "ನಿಮ್ಮ ಬ್ರೋಕರ್ ಸಂಪರ್ಕಿಸಿ", reconnectTitle: (b) => `${b} ಮತ್ತೆ ಸಂಪರ್ಕಿಸಿ`,
     reconnectSub: (b) => `${b} ಲಾಗಿನ್ ಪ್ರತಿದಿನ ಮುಗಿಯುತ್ತದೆ. ಅಭ್ಯಾಸ ಮುಂದುವರಿಸಲು ಮತ್ತೆ ಲಾಗಿನ್ ಮಾಡಿ.`,
     reconnect: (b) => `${b} ಮತ್ತೆ ಸಂಪರ್ಕಿಸಿ`, changeKey: "ಬ್ರೋಕರ್ ಅಥವಾ key ಬದಲಿಸಿ",
@@ -97,10 +136,62 @@ function CopyRow({ label, value, t }) {
   );
 }
 
-export function BrokerSetup({ brokers, broker, hasKey, error, onChoose, onConnect, onReconnect, onForget, brand }) {
+function useSetupLang() {
   const [lang, setLangState] = useState(() => { const l = loadLang(); return TEXT[l] ? l : "en"; });
-  const t = TEXT[lang];
+  const setLang = (l) => { setLangState(l); saveLang(l); track("setup_lang", { lang: l }); };
+  const langs = (
+    <div className="setupLangs" role="group" aria-label="Language">
+      {LANGS.map(([id, name]) => <button key={id} type="button" aria-pressed={lang === id} className={lang === id ? "setupLangOn" : ""} onClick={() => setLang(id)}>{name}</button>)}
+    </div>
+  );
+  return { lang, t: TEXT[lang], langs };
+}
+
+// First question for a new user: do they already have an Angel One account?
+export function AccountQuestion({ brand, onYes, onOther, onBack }) {
+  const { t, langs } = useSetupLang();
+  const [noAccount, setNoAccount] = useState(false);
+  if (noAccount) {
+    return (
+      <div className="authCard angelCard">
+        {brand}{langs}
+        <h1>{t.noTitle}</h1>
+        <div className="authSub">{t.noSub}</div>
+        <div className="setupChoices">
+          <a className="btn btnBull setupOpen" href={ANGEL_OPEN_ACCOUNT_URL} target="_blank" rel="noopener noreferrer" onClick={() => track("setup_open_account_click")}>{t.openAcc}</a>
+          <button type="button" className="btn btnGhost" onClick={() => { track("setup_account_ready"); onYes(); }}>{t.haveNow}</button>
+        </div>
+        <button type="button" className="setupLink" onClick={() => { track("setup_other_broker", { from: "no_account" }); onOther(); }}>{t.other}</button>
+        <br />
+        <button type="button" className="setupLink" onClick={onBack}>{t.backPreview}</button>
+      </div>
+    );
+  }
+  return (
+    <div className="authCard angelCard">
+      {brand}{langs}
+      <h1>{t.qTitle}</h1>
+      <div className="authSub">{t.qSub}</div>
+      <div className="setupChoices">
+        <button type="button" className="btn btnBull" onClick={() => { track("setup_has_account", { answer: "yes" }); onYes(); }}>{t.yes}</button>
+        <button type="button" className="btn btnGhost" onClick={() => { track("setup_has_account", { answer: "no" }); setNoAccount(true); }}>{t.no}</button>
+      </div>
+      <button type="button" className="setupLink" onClick={() => { track("setup_other_broker", { from: "question" }); onOther(); }}>{t.other}</button>
+      <br />
+      <button type="button" className="setupLink" onClick={onBack}>{t.backPreview}</button>
+    </div>
+  );
+}
+
+export function BrokerSetup({ brokers, broker, hasKey, error, onChoose, onConnect, onReconnect, onForget, brand }) {
+  const { lang, t, langs } = useSetupLang();
   const [step, setStep] = useState(1);
+  // Record each setup step the person reaches. Reaching step 3 means they've created the app on the broker's site.
+  useEffect(() => {
+    if (!broker || hasKey) return;
+    track("setup_step", { step, broker: broker.id });
+    if (step === 3) track("setup_app_created", { broker: broker.id });
+  }, [step, broker?.id, hasKey]);
   const [key, setKey] = useState("");
   const [secret, setSecret] = useState("");
   const [bad, setBad] = useState(false);
@@ -108,25 +199,24 @@ export function BrokerSetup({ brokers, broker, hasKey, error, onChoose, onConnec
   const [ipState, setIpState] = useState("idle");
   const redirect = `${window.location.origin}/`;
   const appName = window.location.hostname.replace(/^www\./, "");
-  const setLang = (l) => { setLangState(l); saveLang(l); };
   const findIp = async () => {
     setIpState("busy");
     try {
       const r = await fetch("https://api.ipify.org?format=json");
       setIp((await r.json()).ip);
       setIpState("idle");
-    } catch { setIpState("failed"); }
+      track("setup_ip_found", { broker: broker.id });
+    } catch { setIpState("failed"); track("setup_ip_failed", { broker: broker.id }); }
   };
   const submit = (e) => {
     e.preventDefault();
-    if (!/^[A-Za-z0-9_-]{6,}$/.test(key.trim()) || (broker.needsSecret && secret.trim().length < 6)) return setBad(true);
+    if (!/^[A-Za-z0-9_-]{6,}$/.test(key.trim()) || (broker.needsSecret && secret.trim().length < 6)) {
+      track("setup_key_invalid", { broker: broker.id });
+      return setBad(true);
+    }
+    track("setup_key_entered", { broker: broker.id });
     onConnect({ key: key.trim(), secret: secret.trim() });
   };
-  const langs = (
-    <div className="setupLangs" role="group" aria-label="Language">
-      {LANGS.map(([id, name]) => <button key={id} type="button" aria-pressed={lang === id} className={lang === id ? "setupLangOn" : ""} onClick={() => setLang(id)}>{name}</button>)}
-    </div>
-  );
   if (!broker) {
     return (
       <div className="authCard angelCard">
@@ -134,7 +224,7 @@ export function BrokerSetup({ brokers, broker, hasKey, error, onChoose, onConnec
         <h1>{t.choose}</h1>
         <div className="authSub">{t.chooseSub}</div>
         <div className="setupBrokers">
-          {Object.values(brokers).map((b) => <button key={b.id} type="button" className="btn btnGhost" onClick={() => onChoose(b.id)}>{b.name}</button>)}
+          {Object.values(brokers).map((b) => <button key={b.id} type="button" className="btn btnGhost" onClick={() => { track("setup_broker_chosen", { broker: b.id }); onChoose(b.id); }}>{b.name}</button>)}
         </div>
         {error && <div className="authError" role="alert">{error}</div>}
         <div className="dim angelNote">{t.more}</div>
@@ -149,9 +239,9 @@ export function BrokerSetup({ brokers, broker, hasKey, error, onChoose, onConnec
         <h1>{t.reconnectTitle(name)}</h1>
         <div className="authSub">{t.reconnectSub(name)}</div>
         {error && <div className="authError" role="alert">{error}</div>}
-        <button type="button" className="btn btnBull authSubmit" onClick={onReconnect}>{t.reconnect(name)}</button>
+        <button type="button" className="btn btnBull authSubmit" onClick={() => { track("reconnect_click", { broker: broker.id }); onReconnect(); }}>{t.reconnect(name)}</button>
         <div className="dim angelNote">{t.note(name)}</div>
-        <button type="button" className="setupLink" onClick={onForget}>{t.changeKey}</button>
+        <button type="button" className="setupLink" onClick={() => { track("setup_change_key", { broker: broker.id }); onForget(); }}>{t.changeKey}</button>
       </div>
     );
   }
@@ -164,9 +254,13 @@ export function BrokerSetup({ brokers, broker, hasKey, error, onChoose, onConnec
       <div className="authSub">{t.intro}</div>
       <div className="setupProgress" role="progressbar" aria-valuemin={1} aria-valuemax={4} aria-valuenow={step}><span style={{ width: `${step * 25}%` }} /></div>
       <div className="dim setupStepNo">{t.step(step)}</div>
+      {SETUP_VIDEOS[lang] && broker.id === "angel" && (
+        <a className="btn btnGhost setupVideo" href={SETUP_VIDEOS[lang]} target="_blank" rel="noopener noreferrer" onClick={() => track("setup_video_open", { lang, step })}>{t.video}</a>
+      )}
+      <StepShot broker={broker.id} step={step} />
       {step === 1 && (<>
         <h2>{t.s1t}</h2><p>{t.s1(name)}</p>
-        <a className="btn btnGhost setupOpen" href={broker.site} target="_blank" rel="noopener noreferrer">{t.s1b(name)}</a>
+        <a className="btn btnGhost setupOpen" href={broker.site} target="_blank" rel="noopener noreferrer" onClick={() => track("setup_api_site_opened", { broker: broker.id })}>{t.s1b(name)}</a>
       </>)}
       {step === 2 && (<>
         <h2>{t.s2t}</h2><p>{s2}</p>

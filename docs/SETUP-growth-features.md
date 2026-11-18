@@ -79,6 +79,27 @@ where created_at > now() - interval '30 days'
 group by name order by people desc;
 ```
 
+**Broker-setup funnel, last 7 days** (how far new users get before connecting)
+```sql
+select name, count(distinct coalesce(user_id::text, session_id)) as people
+from app_events
+where created_at > now() - interval '7 days'
+  and name in ('preview_view','preview_connect_click','setup_has_account','setup_open_account_click',
+               'setup_step','setup_api_site_opened','setup_app_created','setup_key_entered',
+               'setup_login_redirect','setup_logged_in','setup_connected','setup_failed')
+group by name order by people desc;
+```
+
+**Who has an Angel One account?**
+```sql
+select props->>'answer' as answer, count(distinct coalesce(user_id::text, session_id)) as people
+from app_events where name = 'setup_has_account' and created_at > now() - interval '7 days'
+group by 1;
+```
+
+To add setup videos or step screenshots, see `SETUP_VIDEOS` and `StepShot` at the top of
+`src/brokerSetup.tsx`. Screenshots go in `public/setup/` as `angel-step1.png` … `angel-step4.png`.
+
 **Day-2 retention (signed up, came back the next day)**
 ```sql
 with signups as (
