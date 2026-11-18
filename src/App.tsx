@@ -7,7 +7,8 @@ import {TrendingUp, TrendingDown, RotateCcw, X, Flame, Activity, LogOut, Lock, U
 } from "lucide-react";
 import { StrategyPanel } from "./strategies";
 import { computeSMC, SMCPrimitive } from "./smc";
-import { BrokerSetup } from "./brokerSetup";
+import { BrokerSetup, AccountQuestion } from "./brokerSetup";
+import { AppPreview, PREVIEW_CSS } from "./preview";
 import { BROKERS, activeBroker, chooseBroker, answerFeedRequest, fetchQuotes, fetchOptionQuotes } from "./brokers";
 import { LEARN, LangSwitch, loadLang, saveLang } from "./i18n";
 import { useIsMobile, loadSetting, saveSetting, computeCharges, PerformancePanel } from "./extras";
@@ -5995,20 +5996,41 @@ function ClosedPage() {
 
 // The user's own broker API opens the app. A key alone isn't proof, so the app only opens
 // once they've logged in on their broker's own page and the broker has confirmed the connection.
+// Someone who has never connected first sees a read-only preview, then is asked whether they
+// have an Angel One account, then gets the step-by-step setup. Every stage is recorded in app_events
+// (setup_*, preview_*) so the drop-off between stages can be measured.
+const SETUP_PENDING = "pr_setup_pending"; // set just before leaving for the broker's login page
+const readPending = () => { try { return JSON.parse(sessionStorage.getItem(SETUP_PENDING) || "null"); } catch { return null; } };
+const writePending = (v) => { try { v ? sessionStorage.setItem(SETUP_PENDING, JSON.stringify(v)) : sessionStorage.removeItem(SETUP_PENDING); } catch { /* storage unavailable */ } };
+// Wait up to 800 ms for the event to be saved, so it isn't lost when the page navigates away.
+const trackThenGo = (name, props, url) => Promise.race([track(name, props), new Promise((r) => setTimeout(r, 800))]).then(() => { window.location.href = url; });
+
 function BrokerGate({ children }) {
   const [state, setState] = useState("checking"); // "checking" | "open" | "connect"
   const [broker, setBroker] = useState(activeBroker);
   const [hasKey, setHasKey] = useState(() => !!activeBroker()?.api.hasCredentials());
   const [error, setError] = useState("");
+  // Brand-new users (no broker chosen, no key) start on the preview; anyone part-way through goes straight to setup.
+  const [phase, setPhase] = useState(() => (activeBroker() ? "setup" : "preview")); // "preview" | "question" | "setup"
+  const opened = useRef(false);
   const verify = async () => {
     const b = activeBroker();
     if (!b) return setState("connect");
+    const pending = readPending();
     try {
       await b.api.finishLogin();
       if (!b.api.hasSession()) return setState("connect");
+      if (pending) track("setup_logged_in", { broker: b.id, kind: pending.kind });
       await b.api.fetchProfile();
+      if (pending) {
+        let first = true;
+        try { first = !localStorage.getItem(`pr_setup_done_${b.id}`); localStorage.setItem(`pr_setup_done_${b.id}`, "1"); } catch { /* storage unavailable */ }
+        track("setup_connected", { broker: b.id, kind: pending.kind, first });
+        writePending(null);
+      }
       setState("open");
-    } catch {
+    } catch (e) {
+      if (pending) { track("setup_failed", { broker: b.id, kind: pending.kind, message: String(e?.message || e).slice(0, 120) }); writePending(null); }
       b.api.clearConnection();
       setError(`${b.name} couldn't confirm this login. Check your key and try again.`);
       setState("connect");
@@ -6020,22 +6042,49 @@ function BrokerGate({ children }) {
     window.addEventListener("pr-broker-expired", ended);
     return () => window.removeEventListener("pr-broker-expired", ended);
   }, []);
+  // Record "opened setup" once per visit, and the preview when it's shown.
+  useEffect(() => {
+    if (state !== "connect" || opened.current) return;
+    opened.current = true;
+    track("setup_open", { kind: hasKey ? "reconnect" : "new", broker: broker?.id || null, phase });
+    if (phase === "preview") track("preview_view");
+  }, [state]);
   if (state === "open") return children;
   if (state === "checking") return <SplashScreen label="Connecting to your broker…" themeIdx={0} />;
-  return (
-    <div className="authWrap" style={THEMES[0].vars}>
-      <style>{CSS}</style>
+  const brand = <div className="authBrand"><Flame size={22} className="brandIcon" /><span>PAPERRALLY</span></div>;
+  const pick = (id) => { chooseBroker(id); setBroker(id ? BROKERS[id] : null); setHasKey(id ? BROKERS[id].api.hasCredentials() : false); setError(""); };
+  let body;
+  if (phase === "preview" && !hasKey) {
+    body = <AppPreview brand={brand} onConnect={() => setPhase("question")} />;
+  } else if (phase === "question" && !hasKey) {
+    body = (
+      <AccountQuestion
+        brand={brand}
+        onYes={() => { pick("angel"); setPhase("setup"); }}
+        onOther={() => { pick(""); setPhase("setup"); }}
+        onBack={() => { track("preview_view", { from: "question" }); setPhase("preview"); }}
+      />
+    );
+  } else {
+    body = (
       <BrokerSetup
         brokers={BROKERS}
         broker={broker}
         hasKey={hasKey}
         error={error}
-        onChoose={(id) => { chooseBroker(id); setBroker(BROKERS[id]); setHasKey(BROKERS[id].api.hasCredentials()); setError(""); }}
-        onConnect={async (c) => { await broker.api.saveCredentials(c); window.location.href = broker.api.loginUrl(); }}
-        onReconnect={() => { window.location.href = broker.api.loginUrl(); }}
-        onForget={() => { broker.api.forgetCredentials(); chooseBroker(""); setBroker(null); setHasKey(false); setError(""); }}
-        brand={<div className="authBrand"><Flame size={22} className="brandIcon" /><span>PAPERRALLY</span></div>}
+        onChoose={pick}
+        onConnect={async (c) => { await broker.api.saveCredentials(c); writePending({ broker: broker.id, kind: "new" }); await trackThenGo("setup_login_redirect", { broker: broker.id, kind: "new" }, broker.api.loginUrl()); }}
+        onReconnect={() => { writePending({ broker: broker.id, kind: "reconnect" }); trackThenGo("setup_login_redirect", { broker: broker.id, kind: "reconnect" }, broker.api.loginUrl()); }}
+        onForget={() => { broker.api.forgetCredentials(); pick(""); setHasKey(false); setPhase("question"); }}
+        brand={brand}
       />
+    );
+  }
+  return (
+    <div className="authWrap" style={THEMES[0].vars}>
+      <style>{CSS}</style>
+      <style>{PREVIEW_CSS}</style>
+      {body}
     </div>
   );
 }
