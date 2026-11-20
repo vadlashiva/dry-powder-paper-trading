@@ -1368,7 +1368,7 @@ const LEARN_LINKS = [
 const FAQ_ITEMS = [
   { q: "Is the money on PaperRally real?", a: "No. Every account starts with ₹10,00,000 in virtual cash. Trades, profits, and losses are simulated and have no monetary value." },
   { q: "How current are the prices?", a: "PaperRally uses a public market data feed, so prices can lag the exchange. BSE prices are typically about 15 minutes behind. Use them for practice, not for real trading decisions." },
-  { q: "Do I need a broker or demat account?", a: "No. PaperRally isn't a broker — just sign up with Google and a phone number, and you're trading virtual capital immediately." },
+  { q: "Do I need a broker or demat account?", a: "Yes, an Angel One account. PaperRally isn't a broker: you connect your own Angel One account so prices come straight from your broker, then trade with ₹10,00,000 of virtual cash. No real order is ever placed and your real money is never touched. No Angel One account yet? Opening one is free." },
   { q: "What is Replay Mode?", a: "Pick any weekday from the last 30 days and PaperRally replays that day's real price action candle by candle, with its own separate ₹10,00,000 balance — so practicing in Replay never touches your main portfolio." },
   { q: "Do option prices match the exchange exactly?", a: "Not exactly. Premiums are worked out from the index or stock price with the Black-Scholes model, so they move realistically with the market but won't tick-for-tick match NSE's option quotes." },
   { q: "Is PaperRally free?", a: "Every new account gets a full 7-day Pro trial, no card required. After that, core paper trading stays free — Pro features like the options chain, alerts, and CSV export need an active subscription." },
@@ -1800,9 +1800,10 @@ function LandingPage({ themeIdx, onEnter: onEnterRaw }) {
           <p className="landingSub heroReveal heroReveal-3">
             PaperRally is a paper trading terminal for Indian stocks, options, and indices. Trade with
             ₹10,00,000 in virtual cash with NSE &amp; BSE market prices — build real skill before you risk real money.
+            Practise any time: during market hours live, and after hours, at night or on weekends by replaying a real trading day.
           </p>
           <div className="heroTrust heroReveal heroReveal-3">
-            <span>No demat account</span><span>No KYC</span><span>No real money</span>
+            <span>Practise any time, 24×7</span><span>Use your own Angel One account</span><span>Your real money is never touched</span>
           </div>
           <LiveTradersCount />
           {!marketNow.isOpen && (
