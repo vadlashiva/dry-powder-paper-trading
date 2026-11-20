@@ -1800,9 +1800,10 @@ function LandingPage({ themeIdx, onEnter: onEnterRaw }) {
           <p className="landingSub heroReveal heroReveal-3">
             PaperRally is a paper trading terminal for Indian stocks, options, and indices. Trade with
             ₹10,00,000 in virtual cash with NSE &amp; BSE market prices — build real skill before you risk real money.
+            Practise any time: during market hours live, and after hours, at night or on weekends by replaying a real trading day.
           </p>
           <div className="heroTrust heroReveal heroReveal-3">
-            <span>No demat account</span><span>No KYC</span><span>No real money</span>
+            <span>Practise any time, 24×7</span><span>No demat account</span><span>No KYC</span><span>No real money</span>
           </div>
           <LiveTradersCount />
           {!marketNow.isOpen && (
