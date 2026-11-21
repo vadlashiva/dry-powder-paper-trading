@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { useEffect, useMemo, useState } from "react";
 import { STRATEGIES, buildLegs, payoffAt, summarizePayoff, runBacktest } from "./strategyMath";
+import { RuleTester } from "./ruleTester";
 
 const INDEXES = [["^NSEI", "NIFTY"], ["^NSEBANK", "BANKNIFTY"], ["^BSESN", "SENSEX"]];
 const MAX_LEGS = 6;
@@ -242,9 +243,9 @@ export function StrategyPanel({ api }) {
     <div className="stratWrap">
       <div className="stratHead">
         <h3>Strategies</h3>
-        <Chips label="Strategy tools" items={[["builder", "Builder"], ["backtest", "Backtest"]]} value={view} onPick={setView} />
+        <Chips label="Strategy tools" items={[["builder", "Builder"], ["backtest", "Backtest"], ["rules", "Rule tester"]]} value={view} onPick={setView} />
       </div>
-      {view === "builder" ? <Builder api={api} /> : <Backtest api={api} />}
+      {view === "builder" ? <Builder api={api} /> : view === "backtest" ? <Backtest api={api} /> : <RuleTester api={api} />}
       <div className="dim stratNote">For education only. Premiums are model estimates, not exchange quotes, and nothing here is a recommendation.</div>
     </div>
   );
