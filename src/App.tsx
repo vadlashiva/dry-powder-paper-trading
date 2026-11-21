@@ -4082,6 +4082,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
     fmtMoney,
     fmtExpiry: fmtDate,
     now: nowMs,
+    fetchIntraday: (sym, period1, period2) => fetchYahooRange(sym, "5m", period1, period2),
     fetchDaily: (sym, fromISO, toISO) => fetchYahooRange(sym, "1d", Math.floor(new Date(`${fromISO}T00:00:00+05:30`).getTime() / 1000), Math.floor(new Date(`${toISO}T23:59:59+05:30`).getTime() / 1000)),
     backtestConfig: (sym) => {
       const iv = allInstruments.find((i) => i.symbol === sym)?.iv ?? 0.13;
@@ -7407,6 +7408,18 @@ a.resetBtn { text-decoration: none; }
 .stratLog { max-height: 320px; overflow: auto; border: 1px solid var(--border); border-radius: 10px; }
 .stratLog table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .stratLog th, .stratLog td { padding: 7px 8px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.rtPos { color: var(--bull); } .rtNeg { color: var(--bear); }
+.rtWarn { margin-top: 8px; padding: 8px 10px; border-radius: 8px; font-size: 12.5px; color: var(--amber); background: color-mix(in srgb, var(--amber) 12%, transparent); }
+.rtRule { margin-top: 12px; padding: 10px 12px; border-radius: 10px; font-size: 12.5px; line-height: 1.5; background: color-mix(in srgb, var(--accent) 12%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); }
+.rtCanvas { display: block; width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
+.rtDayBar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.rtDayBar select { width: auto !important; min-width: 140px; }
+.rtVerdict { font-size: 16px; font-weight: 600; margin: 10px 0 8px; }
+.rtCheck { display: flex; gap: 8px; align-items: center; font-size: 12.5px; color: var(--text-dim); margin-top: 10px; }
+.rtCheck input { width: auto !important; }
+.rtLabel { font-size: 12px; color: var(--text-dim); margin: 12px 0 6px; }
+.rtFull { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-dim); }
+.rtSel td { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 
 /* Angel One connection */
 .angelCard { max-width: 440px; }
