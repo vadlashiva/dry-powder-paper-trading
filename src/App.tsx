@@ -2885,7 +2885,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
     let changed = false;
     const next = alerts.map((a) => {
       if (a.triggered) return a;
-      const price = quotes[a.symbol]?.price;
+      const price = quotes[a.symbol]?.live ? quotes[a.symbol].price : null;
       if (price == null) return a;
       const hit = a.direction === "above" ? price >= a.target : price <= a.target;
       if (hit) {
@@ -2906,7 +2906,8 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
     const remaining = [];
     const toFill = [];
     orders.forEach((o) => {
-      const price = quotes[o.symbol]?.price;
+      // Never fill against a placeholder price (shown before the first live quote arrives after opening the app).
+      const price = quotes[o.symbol]?.live ? quotes[o.symbol].price : null;
       if (price == null) { remaining.push(o); return; }
       const triggered = o.kind === "limit"
         ? (o.side === "buy" ? price <= o.price : price >= o.price)
@@ -3515,7 +3516,8 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
     const symMeta = allInstruments.find((s) => s.symbol === sym);
     if (!symMeta) return { ok: false, msg: "Unknown symbol" };
     if (symMeta.exchange === "INDEX") return { ok: false, msg: `${displayTicker(sym)} is an index — trade its options from the Options Chain tab` };
-    const price = quotes[sym]?.price;
+    // Only trade on a live price: the built-in starting prices are placeholders, not market prices.
+    const price = quotes[sym]?.live ? quotes[sym].price : null;
     if (!price) return { ok: false, msg: "Price is still loading — try again in a moment" };
     const qty = Math.floor(Number(qtyIn));
     if (!(qty > 0)) return { ok: false, msg: "Enter a valid quantity" };
@@ -3685,7 +3687,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
     const qty = Math.floor(Number(qtyIn));
     if (!t || !(qty > 0)) return { ok: false, msg: "Enter a valid number of lots" };
     const ticket = t;
-    const spot = quotes[ticket.symbol]?.price ?? 0;
+    const spot = quotes[ticket.symbol]?.live ? quotes[ticket.symbol].price : 0;
     const symMeta = allInstruments.find((s) => s.symbol === ticket.symbol);
     if (!symMeta || !spot) return { ok: false, msg: "Price is still loading — try again in a moment" };
     if (ticket.expiry <= nowMs()) return { ok: false, msg: "That expiry has passed — pick a later one" };
@@ -3784,6 +3786,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
   };
 
   const closeOptionPosition = (pos, atPrice = null, reason = null) => {
+    if (atPrice == null && realPremium(pos) == null && !quotes[pos.symbol]?.live) { showToast("Price is still loading — try again in a moment", "bear"); return; }
     const spot = quotes[pos.symbol]?.price ?? 0;
     const symMeta = allInstruments.find((s) => s.symbol === pos.symbol);
     const T = (pos.expiry - nowMs()) / (365 * 24 * 3600 * 1000);
@@ -3839,6 +3842,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
   useEffect(() => {
     optionPositions.forEach((p) => {
       if (!p.stopLoss || slFiredRef.current.has(p.id)) return;
+      if (realPremium(p) == null && !quotes[p.symbol]?.live) return; // wait for a live price, not the placeholder
       const prem = optionPremiumNow(p, quotes, allInstruments);
       if (prem == null || !stopLossHit(p, prem)) return;
       slFiredRef.current.add(p.id);
@@ -6724,7 +6728,7 @@ const CSS = `
 @keyframes newPillPulse { 0% { box-shadow: 0 0 0 0 rgba(123, 97, 255, 0.55); } 70% { box-shadow: 0 0 0 7px rgba(123, 97, 255, 0); } 100% { box-shadow: 0 0 0 0 rgba(123, 97, 255, 0); } }
 .bottomNavItem { position: relative; }
 .navDot { position: absolute; top: 6px; right: calc(50% - 16px); width: 8px; height: 8px; border-radius: 50%; background: linear-gradient(135deg, #7B61FF, #3D8BFF); box-shadow: 0 0 0 2px var(--surface); }
-.stratNudge { position: fixed; right: 24px; bottom: 24px; z-index: 60; width: min(380px, calc(100vw - 32px)); display: flex; gap: 14px; padding: 18px 18px 16px; border-radius: 16px; background: linear-gradient(180deg, color-mix(in srgb, #7B61FF 10%, var(--surface)) 0%, var(--surface) 60%); border: 1px solid color-mix(in srgb, #7B61FF 45%, var(--border)); box-shadow: 0 18px 50px rgba(15, 20, 40, 0.28); animation: stratNudgeIn 0.35s ease-out; }
+.stratNudge { position: fixed; left: 24px; bottom: 24px; z-index: 60; width: min(380px, calc(100vw - 32px)); display: flex; gap: 14px; padding: 18px 18px 16px; border-radius: 16px; background: linear-gradient(180deg, color-mix(in srgb, #7B61FF 10%, var(--surface)) 0%, var(--surface) 60%); border: 1px solid color-mix(in srgb, #7B61FF 45%, var(--border)); box-shadow: 0 18px 50px rgba(15, 20, 40, 0.28); animation: stratNudgeIn 0.35s ease-out; }
 @keyframes stratNudgeIn { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
 .stratNudgeIcon { flex: none; width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: #fff; background: linear-gradient(135deg, #7B61FF 0%, #3D8BFF 100%); }
 .stratNudgeBody { min-width: 0; }
@@ -6734,7 +6738,8 @@ const CSS = `
 .stratNudgeActions { display: flex; gap: 8px; flex-wrap: wrap; }
 .stratNudgeActions .btn { flex: none; padding: 9px 14px; font-size: 13px; }
 .stratNudgeX { position: absolute; top: 10px; right: 10px; background: none; border: none; color: var(--text-dim); cursor: pointer; padding: 4px; }
-@media (max-width: 760px) { .stratNudge { right: 16px; left: 16px; width: auto; bottom: 84px; } }
+@media (max-width: 760px) { .stratNudge { right: 16px; left: 16px; width: auto; bottom: auto; top: 44px; } }
+.posWrap h3.mt { margin-top: 26px; }
 .posHero { background: var(--surface); border: 2px solid var(--accent); border-radius: 14px; padding: 16px 18px; box-shadow: 0 6px 24px rgba(0,0,0,0.06); }
 .posHeroHead { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
 .posWrap .posHero h3 { font-size: 20px; margin: 0; display: flex; align-items: center; gap: 8px; }

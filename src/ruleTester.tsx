@@ -15,7 +15,7 @@ const fmt = (x, d = 2) => (x == null || isNaN(x) ? "–" : x.toLocaleString("en-
 const plus = (x, d = 1) => (x > 0 ? "+" : "") + fmt(x, d);
 const tone = (x) => (x > 0 ? "rtPos" : x < 0 ? "rtNeg" : "");
 
-const BASE = { tf: 15, dir: "both", setup: "orb", trig: "second", maxR: 0, useTrend: false, et: 50, win1: "09:15", win2: "14:30", maxT: 1,
+export const BASE = { tf: 15, dir: "both", setup: "orb", trig: "second", maxR: 0, useTrend: false, et: 50, win1: "09:15", win2: "14:30", maxT: 1,
   stop: "orb", sn: 3, an: 14, am: 1.5, pts: 40, pct: 0.3, rr: 2, noTgt: false, exitT: "15:15", worst: true, cost: 0, ef: 9, es: 26, rn: 14, ros: 30, rob: 70 };
 const PRESETS = [
   ["orb5", "5-min opening candle breakout", { tf: 5 }],
@@ -29,7 +29,7 @@ const PRESETS = [
 
 /* ---------------- data ---------------- */
 // [{ d: "YYYY-MM-DD", b: [["09:15", o, h, l, c], ...] }] from 5-minute candles
-function groupDays(rows) {
+export function groupDays(rows) {
   const days = new Map();
   for (const r of rows) {
     const ist = new Date(r.time + IST).toISOString();
@@ -136,7 +136,7 @@ function dayRun(day, s, I, prev) {
   }
   return { trades, skip: trades.length ? null : why, ctx };
 }
-function runAll(days, s) {
+export function runAll(days, s) {
   const I = buildSeries(days, s), trades = [], skips = {};
   days.forEach((d, i) => { const r = dayRun(d, s, I, days[i - 1]); trades.push(...r.trades); if (r.skip) skips[r.skip] = (skips[r.skip] || 0) + 1; });
   return { trades, skips, I };
