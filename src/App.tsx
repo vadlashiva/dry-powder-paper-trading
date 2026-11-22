@@ -3333,6 +3333,12 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // Opening Positions brings the option positions card into view, since that's what people come to check.
+  useEffect(() => {
+    if (tab !== "positions" || optionPositions.length === 0) return;
+    const id = requestAnimationFrame(() => document.querySelector(".posHero")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    return () => cancelAnimationFrame(id);
+  }, [tab]);
   const goTab = (id) => {
     setTab(id);
     setMoreOpen(false);
@@ -4763,27 +4769,50 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
 
           {tab === "positions" && (
             <div className="posWrap">
-              {allocationItems.length > 0 && (
-                <div className="allocWrap">
-                  <h3>Allocation</h3>
-                  <div className="allocBar">
-                    {allocationItems.map((it) => (
-                      <div key={it.label} className="allocSeg" style={{ width: `${it.pct}%`, background: it.color }} title={`${it.label}: ${it.pct.toFixed(1)}%`} />
-                    ))}
+              {optionPositions.length > 0 && (
+                <div className="posHero">
+                  <div className="posHeroHead">
+                    <h3>Option Positions <span className="posHeroCount">{optionPositions.length}</span></h3>
+                    <div className="posHeroPnl">
+                      <span className="dim">Open P&amp;L</span>
+                      <b className={`mono ${optionUnrealized >= 0 ? "bull" : "bear"}`}>{optionUnrealized >= 0 ? "+" : ""}{fmtMoney(optionUnrealized)}</b>
+                    </div>
                   </div>
-                  <div className="allocLegend">
-                    {allocationItems.map((it) => (
-                      <div key={it.label} className="allocLegendItem">
-                        <span className="allocSwatch" style={{ background: it.color }} />
-                        <span>{it.label}</span>
-                        <span className="dim mono">{fmtMoney(it.value, 0)} &middot; {it.pct.toFixed(1)}%</span>
-                      </div>
-                    ))}
-                  </div>
+                  <table className="posTable posHeroTable">
+                    <thead><tr><th>Contract</th><th>Qty</th><th>Avg Premium</th><th>Last</th><th>Mkt Value</th><th>P&L</th><th></th></tr></thead>
+                    <tbody>
+                      {optionPositions.map((p) => {
+                        const spot = quotes[p.symbol]?.price ?? 0;
+                        const symMeta = allInstruments.find((s) => s.symbol === p.symbol);
+                        const pT = (p.expiry - nowMs()) / (365 * 24 * 3600 * 1000);
+                        const sigma = symMeta.iv * (1 + 0.15 * Math.abs(p.strike - spot) / spot);
+                        const price = realPremium(p) ?? blackScholes(spot, p.strike, pT, RISK_FREE, sigma, p.type).price;
+                        const source = premiumSource(p);
+                        const short = isShort(p);
+                        const mv = (short ? -1 : 1) * price * posMultiplier(p) * p.qty;
+                        const pnl = (short ? p.avgPremium - price : price - p.avgPremium) * posMultiplier(p) * p.qty;
+                        return (
+                          <tr key={p.id}>
+                            <td className="mono">{short && <span className="shortTag">SHORT</span>}{p.type === "call" ? "C" : "P"} {displayTicker(p.symbol)} {p.strike} {fmtDate(new Date(p.expiry))}{short && p.margin ? <div className="dim" style={{ fontSize: "11px" }}>margin {fmtMoney(p.margin, 0)}</div> : null}</td>
+                            <td className="mono">{p.lotBased ? `${p.qty} × ${lotSizeFor(p.symbol)}` : p.qty}</td>
+                            <td className="mono">{fmtMoney(p.avgPremium)}</td>
+                            <td className="mono" title={source === "model" ? "Calculated premium — no traded price for this contract yet" : source === "stale" ? "Last traded premium — not updated in the past minute" : "Last traded premium"}>{fmtMoney(price)}{source !== "real" && <span className="estTag">{source === "model" ? "est." : "delayed"}</span>}</td>
+                            <td className="mono">{fmtMoney(mv)}</td>
+                            <td className={`mono ${pnl >= 0 ? "bull" : "bear"}`}>{fmtMoney(pnl)}{p.stopLoss ? <div className="slTag">SL {fmtMoney(p.stopLoss)}</div> : null}</td>
+                            <td className="orderRowActions">
+                              <button className="closeBtn" onClick={() => { setSelected(p.symbol); setTab("trade"); }}><LineChart size={12} /> Chart</button>
+                              <button className="closeBtn" onClick={() => openStopLossEditor(p)}><Crosshair size={12} /> {p.stopLoss ? "Edit SL" : "Stop-Loss"}</button>
+                              <button className="closeBtn closeBtnExit" onClick={() => requestClose("option", p)}>{short ? "Cover" : "Close"}</button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               )}
 
-              <h3>Stock Positions</h3>
+              <h3 className={optionPositions.length > 0 ? "mt" : undefined}>Stock Positions</h3>
               {stockPositions.length === 0 ? (
                 <div className="empty">No open stock positions. Buy something on the Chart &amp; Trade tab.</div>
               ) : (
@@ -4814,42 +4843,31 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
                 </table>
               )}
 
-              <h3 className="mt">Option Positions</h3>
-              {optionPositions.length === 0 ? (
+              {optionPositions.length === 0 && (<>
+                <h3 className="mt">Option Positions</h3>
                 <div className="empty">No open option positions. Click a premium in the Options Chain to open one.</div>
-              ) : (
-                <table className="posTable">
-                  <thead><tr><th>Contract</th><th>Qty</th><th>Avg Premium</th><th>Last</th><th>Mkt Value</th><th>P&L</th><th></th></tr></thead>
-                  <tbody>
-                    {optionPositions.map((p) => {
-                      const spot = quotes[p.symbol]?.price ?? 0;
-                      const symMeta = allInstruments.find((s) => s.symbol === p.symbol);
-                      const pT = (p.expiry - nowMs()) / (365 * 24 * 3600 * 1000);
-                      const sigma = symMeta.iv * (1 + 0.15 * Math.abs(p.strike - spot) / spot);
-                      const price = realPremium(p) ?? blackScholes(spot, p.strike, pT, RISK_FREE, sigma, p.type).price;
-                      const source = premiumSource(p);
-                      const short = isShort(p);
-                      const mv = (short ? -1 : 1) * price * posMultiplier(p) * p.qty;
-                      const pnl = (short ? p.avgPremium - price : price - p.avgPremium) * posMultiplier(p) * p.qty;
-                      return (
-                        <tr key={p.id}>
-                          <td className="mono">{short && <span className="shortTag">SHORT</span>}{p.type === "call" ? "C" : "P"} {displayTicker(p.symbol)} {p.strike} {fmtDate(new Date(p.expiry))}{short && p.margin ? <div className="dim" style={{ fontSize: "11px" }}>margin {fmtMoney(p.margin, 0)}</div> : null}</td>
-                          <td className="mono">{p.lotBased ? `${p.qty} × ${lotSizeFor(p.symbol)}` : p.qty}</td>
-                          <td className="mono">{fmtMoney(p.avgPremium)}</td>
-                          <td className="mono" title={source === "model" ? "Calculated premium — no traded price for this contract yet" : source === "stale" ? "Last traded premium — not updated in the past minute" : "Last traded premium"}>{fmtMoney(price)}{source !== "real" && <span className="estTag">{source === "model" ? "est." : "delayed"}</span>}</td>
-                          <td className="mono">{fmtMoney(mv)}</td>
-                          <td className={`mono ${pnl >= 0 ? "bull" : "bear"}`}>{fmtMoney(pnl)}{p.stopLoss ? <div className="slTag">SL {fmtMoney(p.stopLoss)}</div> : null}</td>
-                          <td className="orderRowActions">
-                            <button className="closeBtn" onClick={() => { setSelected(p.symbol); setTab("trade"); }}><LineChart size={12} /> Chart</button>
-                            <button className="closeBtn" onClick={() => openStopLossEditor(p)}><Crosshair size={12} /> {p.stopLoss ? "Edit SL" : "Stop-Loss"}</button>
-                            <button className="closeBtn closeBtnExit" onClick={() => requestClose("option", p)}>{short ? "Cover" : "Close"}</button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+              </>)}
+
+              {allocationItems.length > 0 && (
+                <div className="allocWrap mt">
+                  <h3>Allocation</h3>
+                  <div className="allocBar">
+                    {allocationItems.map((it) => (
+                      <div key={it.label} className="allocSeg" style={{ width: `${it.pct}%`, background: it.color }} title={`${it.label}: ${it.pct.toFixed(1)}%`} />
+                    ))}
+                  </div>
+                  <div className="allocLegend">
+                    {allocationItems.map((it) => (
+                      <div key={it.label} className="allocLegendItem">
+                        <span className="allocSwatch" style={{ background: it.color }} />
+                        <span>{it.label}</span>
+                        <span className="dim mono">{fmtMoney(it.value, 0)} &middot; {it.pct.toFixed(1)}%</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
+
             </div>
           )}
 
@@ -6661,6 +6679,19 @@ const CSS = `
 .posTable th { text-align: left; font-size: 10px; color: var(--text-dim); text-transform: uppercase; padding: 10px 12px; border-bottom: 1px solid var(--border); }
 .posTable td { padding: 10px 12px; border-bottom: 1px solid var(--border); }
 .posTable tr:last-child td { border-bottom: none; }
+.posHero { background: var(--surface); border: 2px solid var(--accent); border-radius: 14px; padding: 16px 18px; box-shadow: 0 6px 24px rgba(0,0,0,0.06); }
+.posHeroHead { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.posWrap .posHero h3 { font-size: 20px; margin: 0; display: flex; align-items: center; gap: 8px; }
+.posHeroCount { background: var(--accent); color: #fff; font-size: 12px; font-weight: 700; border-radius: 999px; padding: 2px 9px; }
+.posHeroPnl { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.2; }
+.posHeroPnl .dim { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+.posHeroPnl b { font-size: 26px; font-weight: 700; }
+.posHeroTable { font-size: 15px; border: none; }
+.posHeroTable th { font-size: 11px; padding: 10px 14px; }
+.posHeroTable td { padding: 16px 14px; }
+.posHeroTable td:first-child { font-weight: 700; font-size: 16px; }
+.posHeroTable td.bull, .posHeroTable td.bear { font-size: 18px; font-weight: 700; }
+.posHeroTable .closeBtn { padding: 8px 14px; font-size: 13px; }
 .closeBtn { background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim); padding: 5px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
 .orderRowActions { display: flex; gap: 6px; }
 .closeBtn:hover { color: var(--bear); border-color: var(--bear); }
