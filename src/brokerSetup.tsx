@@ -41,6 +41,7 @@ const TEXT = {
     s3t: "Copy your key", s3: "Click Add. In My Smart API & Apps, click the eye icon beside your API Key and copy it. Don't copy any Secret Key.",
     s4t: (b) => `Paste your key and connect ${b}`, label: "SmartAPI key", connect: (b) => `Connect ${b}`,
     bad: "That doesn't look right. Copy it again from your broker's site.",
+    badEmpty: "Paste your key first.", badSecret: "That looks like the Secret Key. Go back to your app on the broker's site and copy the API Key instead (the short one).", badShort: "That key is too short. Click the eye icon beside API Key and copy the whole key.", badChars: "That has extra text in it. Copy only the key itself, nothing else.", cleaned: "We removed extra spaces or text from what you pasted.", show: "Show", hide: "Hide",
     note: (b) => `Your keys stay on this device. Enter your PIN or OTP only on ${b}'s own page. PaperRally can't place real orders, and all trades here use virtual money.`,
     helpT: "Having trouble?", h1: "Login page shows an error: check the Redirect URL matches exactly, including the last /.", h2: "Stuck on Connecting: your key may be wrong. Choose Use a different key.", h3: "Prices missing: wait about 15 seconds the first time.",
     choose: "Choose your broker",
@@ -74,6 +75,7 @@ const TEXT = {
     s3t: "अपनी key कॉपी करें", s3: "Add पर क्लिक करें। My Smart API & Apps में API Key के पास आँख के चिह्न पर क्लिक करके उसे कॉपी करें। Secret Key कॉपी न करें।",
     s4t: (b) => `अपनी key पेस्ट करके ${b} जोड़ें`, label: "SmartAPI key", connect: (b) => `${b} जोड़ें`,
     bad: "यह सही नहीं लगता। अपने ब्रोकर की साइट से फिर से कॉपी करें।",
+    badEmpty: "पहले अपनी key पेस्ट करें।", badSecret: "यह Secret Key लगती है। ब्रोकर की साइट पर अपने ऐप में जाएँ और API Key (छोटी वाली) कॉपी करें।", badShort: "यह key बहुत छोटी है। API Key के पास आँख के चिह्न पर क्लिक करें और पूरी key कॉपी करें।", badChars: "इसमें अतिरिक्त टेक्स्ट है। केवल key ही कॉपी करें।", cleaned: "आपने जो पेस्ट किया उसमें से अतिरिक्त स्पेस या टेक्स्ट हटा दिया गया।", show: "दिखाएँ", hide: "छिपाएँ",
     note: (b) => `आपकी keys इसी डिवाइस पर रहती हैं। अपना PIN या OTP केवल ${b} के पेज पर डालें। PaperRally असली ऑर्डर नहीं दे सकता, यहाँ सभी ट्रेड वर्चुअल पैसे से होते हैं।`,
     helpT: "कोई समस्या?", h1: "लॉगिन पेज पर त्रुटि: जाँचें कि Redirect URL अंतिम / सहित बिल्कुल वही है।", h2: "Connecting पर अटका है: key गलत हो सकती है। दूसरी key उपयोग करें चुनें।", h3: "कीमतें नहीं दिख रहीं: पहली बार लगभग 15 सेकंड प्रतीक्षा करें।",
     choose: "अपना ब्रोकर चुनें",
@@ -107,6 +109,7 @@ const TEXT = {
     s3t: "ನಿಮ್ಮ key ನಕಲಿಸಿ", s3: "Add ಕ್ಲಿಕ್ ಮಾಡಿ. My Smart API & Apps ನಲ್ಲಿ API Key ಪಕ್ಕದ ಕಣ್ಣಿನ ಚಿಹ್ನೆ ಕ್ಲಿಕ್ ಮಾಡಿ ನಕಲಿಸಿ. Secret Key ನಕಲಿಸಬೇಡಿ.",
     s4t: (b) => `ನಿಮ್ಮ key ಅಂಟಿಸಿ ${b} ಸಂಪರ್ಕಿಸಿ`, label: "SmartAPI key", connect: (b) => `${b} ಸಂಪರ್ಕಿಸಿ`,
     bad: "ಇದು ಸರಿಯಾಗಿ ಕಾಣುತ್ತಿಲ್ಲ. ನಿಮ್ಮ ಬ್ರೋಕರ್ ಸೈಟ್‌ನಿಂದ ಮತ್ತೆ ನಕಲಿಸಿ.",
+    badEmpty: "ಮೊದಲು ನಿಮ್ಮ key ಅಂಟಿಸಿ.", badSecret: "ಇದು Secret Key ತರಹ ಕಾಣುತ್ತದೆ. ಬ್ರೋಕರ್ ಸೈಟ್‌ನಲ್ಲಿ ನಿಮ್ಮ ಆ್ಯಪ್‌ಗೆ ಹೋಗಿ API Key (ಚಿಕ್ಕದು) ನಕಲಿಸಿ.", badShort: "ಈ key ತುಂಬಾ ಚಿಕ್ಕದಾಗಿದೆ. API Key ಪಕ್ಕದ ಕಣ್ಣಿನ ಚಿಹ್ನೆ ಕ್ಲಿಕ್ ಮಾಡಿ ಪೂರ್ತಿ key ನಕಲಿಸಿ.", badChars: "ಇದರಲ್ಲಿ ಹೆಚ್ಚುವರಿ ಪಠ್ಯ ಇದೆ. key ಮಾತ್ರ ನಕಲಿಸಿ.", cleaned: "ನೀವು ಅಂಟಿಸಿದ್ದರಿಂದ ಹೆಚ್ಚುವರಿ ಸ್ಪೇಸ್ ಅಥವಾ ಪಠ್ಯ ತೆಗೆದುಹಾಕಲಾಗಿದೆ.", show: "ತೋರಿಸಿ", hide: "ಮರೆಮಾಡಿ",
     note: (b) => `ನಿಮ್ಮ keys ಈ ಸಾಧನದಲ್ಲೇ ಇರುತ್ತವೆ. ನಿಮ್ಮ PIN ಅಥವಾ OTP ಅನ್ನು ${b} ಪುಟದಲ್ಲಿ ಮಾತ್ರ ನಮೂದಿಸಿ. PaperRally ನಿಜವಾದ ಆರ್ಡರ್ ಮಾಡಲಾಗದು, ಇಲ್ಲಿನ ಎಲ್ಲ ವಹಿವಾಟುಗಳು ವರ್ಚುವಲ್ ಹಣದಿಂದ.`,
     helpT: "ಸಮಸ್ಯೆ ಇದೆಯೇ?", h1: "ಲಾಗಿನ್ ಪುಟದಲ್ಲಿ ದೋಷ: Redirect URL ಕೊನೆಯ / ಸಹಿತ ಸರಿಯಾಗಿದೆಯೇ ಪರಿಶೀಲಿಸಿ.", h2: "Connecting ನಲ್ಲಿ ನಿಂತಿದೆ: key ತಪ್ಪಿರಬಹುದು. ಬೇರೆ key ಬಳಸಿ ಆಯ್ಕೆಮಾಡಿ.", h3: "ಬೆಲೆಗಳು ಕಾಣುತ್ತಿಲ್ಲ: ಮೊದಲ ಬಾರಿ ಸುಮಾರು 15 ಸೆಕೆಂಡು ಕಾಯಿರಿ.",
     choose: "ನಿಮ್ಮ ಬ್ರೋಕರ್ ಆಯ್ಕೆಮಾಡಿ",
@@ -183,6 +186,23 @@ export function AccountQuestion({ brand, onYes, onOther, onBack }) {
   );
 }
 
+// Clean what people paste: hidden characters, spaces, quotes and labels like "API Key:".
+export function cleanKey(raw: string): string {
+  let v = (raw || "").replace(/[\u200B-\u200D\u2060\uFEFF\u00A0]/g, " ").trim();
+  v = v.replace(/^(smart\s*api\s*)?(api\s*)?key\s*[:=-]\s*/i, "");
+  v = v.replace(/^["'`]+|["'`]+$/g, "");
+  return v.replace(/\s+/g, "");
+}
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Why a key can't be right, or "" if it looks fine. Angel One's Secret Key is a long UUID; its API Key is short.
+export function keyProblem(brokerId: string, key: string): string {
+  if (!key) return "empty";
+  if (brokerId === "angel" && UUID_RE.test(key)) return "secret";
+  if (!/^[A-Za-z0-9_-]+$/.test(key)) return "chars";
+  if (key.length < 6) return "short";
+  return "";
+}
+
 export function BrokerSetup({ brokers, broker, hasKey, error, onChoose, onConnect, onReconnect, onForget, brand }) {
   const { lang, t, langs } = useSetupLang();
   const [step, setStep] = useState(1);
@@ -194,7 +214,9 @@ export function BrokerSetup({ brokers, broker, hasKey, error, onChoose, onConnec
   }, [step, broker?.id, hasKey]);
   const [key, setKey] = useState("");
   const [secret, setSecret] = useState("");
-  const [bad, setBad] = useState(false);
+  const [bad, setBad] = useState("");
+  const [cleaned, setCleaned] = useState(false);
+  const [showKey, setShowKey] = useState(true);
   const [ip, setIp] = useState("");
   const [ipState, setIpState] = useState("idle");
   const redirect = `${window.location.origin}/`;
@@ -210,13 +232,18 @@ export function BrokerSetup({ brokers, broker, hasKey, error, onChoose, onConnec
   };
   const submit = (e) => {
     e.preventDefault();
-    if (!/^[A-Za-z0-9_-]{6,}$/.test(key.trim()) || (broker.needsSecret && secret.trim().length < 6)) {
-      track("setup_key_invalid", { broker: broker.id });
-      return setBad(true);
+    const k = cleanKey(key);
+    const sec = cleanKey(secret);
+    if (k !== key || sec !== secret) { setKey(k); setSecret(sec); setCleaned(true); }
+    const problem = keyProblem(broker.id, k) || (broker.needsSecret && sec.length < 6 ? "secret_short" : "");
+    if (problem) {
+      track("setup_key_invalid", { broker: broker.id, reason: problem, len: k.length, cleaned: k !== key });
+      return setBad(problem);
     }
-    track("setup_key_entered", { broker: broker.id });
-    onConnect({ key: key.trim(), secret: secret.trim() });
+    track("setup_key_entered", { broker: broker.id, cleaned: k !== key });
+    onConnect({ key: k, secret: sec });
   };
+  const badMsg = { empty: t.badEmpty, secret: t.badSecret, short: t.badShort, chars: t.badChars }[bad] || t.bad;
   if (!broker) {
     return (
       <div className="authCard angelCard">
@@ -280,12 +307,18 @@ export function BrokerSetup({ brokers, broker, hasKey, error, onChoose, onConnec
       {step === 4 && (<>
         <h2>{t.s4t(name)}</h2>
         <label htmlFor="brokerKey">{broker.keyLabel}</label>
-        <input id="brokerKey" type="password" autoComplete="off" spellCheck={false} value={key} onChange={(e) => { setKey(e.target.value); setBad(false); }} />
+        <div className="setupKeyRow" style={{ display: "flex", gap: 8 }}>
+          <input id="brokerKey" style={{ flex: 1 }} type={showKey ? "text" : "password"} autoComplete="off" autoCapitalize="off" autoCorrect="off" spellCheck={false} value={key}
+            onChange={(e) => { setKey(e.target.value); setBad(""); setCleaned(false); }}
+            onPaste={(e) => { const v = cleanKey(e.clipboardData.getData("text")); if (v) { e.preventDefault(); setKey(v); setBad(""); setCleaned(v !== e.clipboardData.getData("text")); } }} />
+          <button type="button" className="btn btnGhost" onClick={() => setShowKey(!showKey)}>{showKey ? t.hide : t.show}</button>
+        </div>
         {broker.needsSecret && (<>
           <label htmlFor="brokerSecret">{t.secretLabel}</label>
-          <input id="brokerSecret" type="password" autoComplete="off" spellCheck={false} value={secret} onChange={(e) => { setSecret(e.target.value); setBad(false); }} />
+          <input id="brokerSecret" type="password" autoComplete="off" spellCheck={false} value={secret} onChange={(e) => { setSecret(e.target.value); setBad(""); }} />
         </>)}
-        {(bad || error) && <div className="authError" role="alert">{bad ? t.bad : error}</div>}
+        {cleaned && !bad && <div className="dim angelNote">{t.cleaned}</div>}
+        {(bad || error) && <div className="authError" role="alert">{bad ? badMsg : error}</div>}
         <button type="submit" className="btn btnBull authSubmit">{t.connect(name)}</button>
         <div className="dim angelNote">{t.note(name)}</div>
         <details className="setupHelp"><summary>{t.helpT}</summary><ul><li>{t.h1}</li><li>{t.h2}</li><li>{t.h3}</li></ul></details>
