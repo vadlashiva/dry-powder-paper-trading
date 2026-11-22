@@ -361,24 +361,47 @@ export function LeaderboardPanel({ supabase, userId, prefs, defaultName, weekKey
   const nameOk = /^[\p{L}\p{N} _.\-]{2,20}$/u.test(cleanName);
   const myIdx = rows ? rows.findIndex((r) => r.user_id === userId) : -1;
 
+  const initials = (n) => String(n || "?").trim().split(/[\s._-]+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("") || "?";
+  const maxAbs = rows && rows.length ? Math.max(...rows.map((r) => Math.abs(Number(r.return_pct) || 0)), 0.01) : 1;
+  // The board resets at the start of Monday, India time.
+  const istDay = new Date(Date.now() + 19800000).getUTCDay(); // 0 = Sunday
+  const resetIn = istDay === 0 ? 1 : 8 - istDay;
+  const weekNo = (weekKey.split("-W")[1] || "").replace(/^0/, "");
+  const podium = status === "ok" && rows ? rows.slice(0, 3) : [];
+  const rest = status === "ok" && rows ? rows.slice(3) : [];
+  const Avatar = ({ name, me }) => <span className={`lbAvatar ${me ? "lbAvatarMe" : ""}`}>{initials(name)}</span>;
+
   return (
     <div className="lbWrap">
       <div className="lbHero">
-        <div>
-          <div className="lbKicker">Weekly challenge · {weekKey.replace("-W", " · week ")}</div>
+        <div className="lbHeroCopy">
+          <div className="lbKicker">Weekly challenge · Week {weekNo}</div>
           <h3>Best % return wins the week</h3>
-          <p className="dim">Everyone starts the week where their portfolio is on Monday. The board ranks by % return, updates through the day, and resets every Monday. Virtual money only — bragging rights, no prizes.</p>
+          <p>Everyone starts from their Monday portfolio. Ranked by % return, updated through the day, reset every Monday. Virtual money only.</p>
         </div>
-        <div className="lbMine">
-          <span className="dim">Your week</span>
-          <span className={`mono lbMineVal ${weekReturn >= 0 ? "bull" : "bear"}`}>{fmtPct(weekReturn)}</span>
-          <span className="dim">{weekTrades} trade{weekTrades === 1 ? "" : "s"} · {myIdx >= 0 ? `rank #${myIdx + 1}` : joined ? "not in top 50 yet" : "not joined"}</span>
-          <button className="btn btnGhost" onClick={onShare}>Share my week</button>
+        <div className="lbStats">
+          <div className="lbStat lbStatMain">
+            <span className="lbStatLabel">Your return</span>
+            <span className={`mono lbStatValue ${weekReturn >= 0 ? "lbUp" : "lbDown"}`}>{weekReturn >= 0 ? "+" : ""}{fmtPct(weekReturn).replace(/^\+/, "")}</span>
+          </div>
+          <div className="lbStat">
+            <span className="lbStatLabel">Rank</span>
+            <span className="mono lbStatValue">{myIdx >= 0 ? `#${myIdx + 1}` : "—"}</span>
+          </div>
+          <div className="lbStat">
+            <span className="lbStatLabel">Trades</span>
+            <span className="mono lbStatValue">{weekTrades}</span>
+          </div>
+          <div className="lbStat">
+            <span className="lbStatLabel">Resets in</span>
+            <span className="mono lbStatValue">{resetIn}d</span>
+          </div>
+          <button className="btn lbShare" onClick={onShare}>Share my week</button>
         </div>
       </div>
 
-      {status === "missing" && <div className="empty">The leaderboard opens soon — check back in a little while.</div>}
-      {status === "error" && <div className="empty">Couldn't load the leaderboard. Check your connection and try again.</div>}
+      {status === "missing" && <div className="lbEmpty">The leaderboard opens soon — check back in a little while.</div>}
+      {status === "error" && <div className="lbEmpty">Couldn't load the leaderboard. Check your connection and try again.</div>}
 
       {status !== "missing" && !joined && (
         <div className="lbJoin">
@@ -386,34 +409,61 @@ export function LeaderboardPanel({ supabase, userId, prefs, defaultName, weekKey
             <p className="dim">You reset your account this week, so you can join again from Monday.</p>
           ) : (
             <>
-              <label htmlFor="lbName" className="dim">Name to show on the board</label>
-              <div className="inviteLinkRow">
-                <input id="lbName" className="qtyInput" maxLength={20} value={name} onChange={(e) => setName(e.target.value)} />
-                <button className="btn btnBull" disabled={!nameOk || !agree} onClick={() => onJoin(cleanName)}>Join this week</button>
+              <div className="lbJoinHead">
+                <div>
+                  <div className="lbJoinTitle">Join this week's challenge</div>
+                  <div className="dim lbJoinSub">Pick the name other traders will see. You can leave any time.</div>
+                </div>
+              </div>
+              <div className="lbJoinRow">
+                <input id="lbName" aria-label="Name to show on the board" className="lbJoinInput" maxLength={20} value={name} onChange={(e) => setName(e.target.value)} placeholder="Display name" />
+                <button className="btn btnBull lbJoinBtn" disabled={!nameOk || !agree} onClick={() => onJoin(cleanName)}>Join the board</button>
               </div>
               {!nameOk && <div className="orderHint bear">2–20 letters, numbers, spaces, dots or dashes.</div>}
-              <label className="slPlanToggle lbAgree"><input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} /> <span>Show this name and my weekly % return to other PaperRally users</span></label>
+              <label className="lbAgree"><input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} /> <span>Show this name and my weekly % return to other PaperRally users</span></label>
             </>
           )}
         </div>
       )}
 
-      {status === "ok" && (
-        rows.length === 0 ? <div className="empty">No one on the board yet this week — be the first.</div> : (
-          <table className="posTable lbTable">
-            <thead><tr><th>#</th><th>Trader</th><th>Return</th><th>Trades</th></tr></thead>
-            <tbody>
-              {rows.map((r, i) => (
-                <tr key={r.user_id} className={r.user_id === userId ? "lbMe" : ""}>
-                  <td className="mono">{i < 3 ? ["🥇", "🥈", "🥉"][i] : i + 1}</td>
-                  <td>{r.display_name}{r.user_id === userId ? " (you)" : ""}</td>
-                  <td className={`mono ${Number(r.return_pct) >= 0 ? "bull" : "bear"}`}>{fmtPct(Number(r.return_pct))}</td>
-                  <td className="mono">{r.trades}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )
+      {status === "loading" && <div className="lbEmpty">Loading this week's board…</div>}
+      {status === "ok" && rows.length === 0 && <div className="lbEmpty"><b>No one on the board yet this week.</b><br />Join now and take the top spot.</div>}
+
+      {podium.length > 0 && (
+        <div className="lbPodium">
+          {[1, 0, 2].filter((i) => podium[i]).map((i) => {
+            const r = podium[i], me = r.user_id === userId, ret = Number(r.return_pct);
+            return (
+              <div key={r.user_id} className={`lbPod lbPod${i + 1} ${me ? "lbPodMe" : ""}`}>
+                <span className={`lbMedal lbMedal${i + 1}`}>{i + 1}</span>
+                <Avatar name={r.display_name} me={me} />
+                <div className="lbPodName">{r.display_name}{me && <span className="lbYou">You</span>}</div>
+                <div className={`mono lbPodRet ${ret >= 0 ? "lbUp" : "lbDown"}`}>{ret >= 0 ? "+" : ""}{fmtPct(ret).replace(/^\+/, "")}</div>
+                <div className="dim lbPodTrades">{r.trades} trade{r.trades === 1 ? "" : "s"}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {rest.length > 0 && (
+        <div className="lbList" role="table" aria-label="Leaderboard">
+          <div className="lbRow lbRowHead" role="row"><span role="columnheader">Rank</span><span role="columnheader">Trader</span><span role="columnheader">Return</span><span role="columnheader" className="lbNum">Trades</span></div>
+          {rest.map((r, k) => {
+            const i = k + 3, me = r.user_id === userId, ret = Number(r.return_pct);
+            return (
+              <div key={r.user_id} className={`lbRow ${me ? "lbRowMe" : ""}`} role="row">
+                <span className="mono lbRank" role="cell">{i + 1}</span>
+                <span className="lbTrader" role="cell"><Avatar name={r.display_name} me={me} />{r.display_name}{me && <span className="lbYou">You</span>}</span>
+                <span className="lbRet" role="cell">
+                  <span className={`mono ${ret >= 0 ? "lbUp" : "lbDown"}`}>{ret >= 0 ? "+" : ""}{fmtPct(ret).replace(/^\+/, "")}</span>
+                  <span className="lbBar"><span className={ret >= 0 ? "lbBarUp" : "lbBarDown"} style={{ width: `${Math.max(4, (Math.abs(ret) / maxAbs) * 100)}%` }} /></span>
+                </span>
+                <span className="mono lbNum" role="cell">{r.trades}</span>
+              </div>
+            );
+          })}
+        </div>
       )}
 
       {joined && (
