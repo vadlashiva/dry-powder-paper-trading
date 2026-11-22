@@ -130,9 +130,15 @@ export function JournalModal({ trade, onSave, onClose }) {
   );
 }
 
-export function JournalStatsCard({ trades, fmtMoney }) {
+export function JournalStatsCard({ trades, fmtMoney, onTag }) {
   const rows = useMemo(() => journalStats(trades), [trades]);
   const tagged = trades.filter((t) => t.tag).length;
+  // Closed trades that have no reason yet (directly or from the trade that opened them), newest first.
+  const untagged = useMemo(() => {
+    const opened = {};
+    trades.slice().reverse().forEach((t) => { if (t.realized == null && t.tag && t.key) opened[t.key] = t.tag; });
+    return trades.filter((t) => t.realized != null && !t.tag && !(t.key && opened[t.key])).slice(0, 5);
+  }, [trades]);
   return (
     <div className="journalCard">
       <h4>Your trades by reason</h4>
@@ -152,6 +158,20 @@ export function JournalStatsCard({ trades, fmtMoney }) {
             ))}
           </tbody>
         </table>
+      )}
+      {onTag && untagged.length > 0 && (
+        <div className="tagRecent">
+          <div className="tagRecentHead">Tag your recent trades <span className="dim">· why did you take each one?</span></div>
+          {untagged.map((t) => (
+            <div key={t.id} className="tagRecentRow">
+              <div className="tagRecentTrade">
+                <span className="mono">{String(t.label).replace(/ @ .*$/, "")}</span>
+                <b className={`mono ${t.realized >= 0 ? "bull" : "bear"}`}>{t.realized >= 0 ? "+" : ""}{fmtMoney(t.realized, 0)}</b>
+              </div>
+              <TagChips compact value={t.tag} onPick={(tag) => onTag(t.id, tag)} />
+            </div>
+          ))}
+        </div>
       )}
       {rows.some((r) => BAD_TAGS.has(r.tag) && r.net < 0) && (
         <p className="journalInsight">Trades driven by FOMO, revenge or tips are costing you money. Skipping them is the cheapest improvement you can make.</p>
