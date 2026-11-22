@@ -6444,9 +6444,11 @@ const CSS = `
 .navBackBtn { display: inline-flex; align-items: center; gap: 6px; background: none; border: none; color: var(--text-dim); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; padding: 6px 2px; margin-bottom: 8px; }
 .navBackBtn:hover { color: var(--text); }
 .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 20px; flex-wrap: wrap; }
-.tab { background: none; border: none; color: var(--text-dim); padding: 10px 16px; font-size: 13px; cursor: pointer; border-bottom: 2px solid transparent; }
-.tab:hover { color: var(--text); }
-.tabActive { color: var(--text); border-bottom: 2px solid var(--accent); }
+.tab { background: none; border: none; color: var(--text-dim); padding: 10px 16px; font-size: 13px; cursor: pointer; border-bottom: 2px solid transparent; border-radius: 8px 8px 0 0; transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease; }
+.tab:hover { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); border-bottom-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.tabActive { color: var(--text); font-weight: 600; border-bottom: 2px solid var(--accent); }
+.tabActive:hover { color: var(--text); border-bottom-color: var(--accent); }
 
 .tradeGrid { display: grid; grid-template-columns: 1fr 260px; gap: 20px; }
 .chartCard { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; transition: box-shadow 0.2s ease, border-color 0.2s ease; }
