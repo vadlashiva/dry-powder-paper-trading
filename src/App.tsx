@@ -1262,7 +1262,10 @@ async function fetchYahoo(symbol, interval = "5m", range = "1d") {
 // proxy, up to 30 per call). Returns the same shape as Promise.allSettled over
 // fetchYahoo, and quietly falls back to one-by-one if the proxy is an older version.
 async function fetchYahooAll(symbols) {
-  const prices = await fetchQuotes(symbols);
+  // Visitors who haven't connected a broker have no price feed: report "no price" instead of throwing.
+  if (!activeBroker()) return symbols.map(() => ({ status: "rejected", reason: new Error("no broker") }));
+  let prices = {};
+  try { prices = (await fetchQuotes(symbols)) || {}; } catch { prices = {}; }
   return symbols.map((s) => (prices[s]?.price
     ? { status: "fulfilled", value: { price: prices[s].price, prevClose: prices[s].prevClose, history: [], live: true } }
     : { status: "rejected", reason: new Error("no price") }));
