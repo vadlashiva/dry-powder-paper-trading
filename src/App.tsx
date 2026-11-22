@@ -7535,6 +7535,15 @@ a.resetBtn { text-decoration: none; }
 .setupLink { background: none; border: none; color: var(--text-dim); text-decoration: underline; font: inherit; font-size: 12.5px; cursor: pointer; padding: 10px 0 0; }
 .setupHelp { margin-top: 10px; font-size: 12.5px; color: var(--text-dim); }
 .setupHelp ul { margin: 6px 0 0; padding-left: 18px; line-height: 1.5; }
+.rtGuide { margin: 4px 0 18px; border: 1px solid color-mix(in srgb, #7B61FF 35%, var(--border)); border-radius: 12px; background: color-mix(in srgb, #7B61FF 6%, var(--surface)); }
+.rtGuide summary { cursor: pointer; padding: 12px 14px; font-weight: 600; font-size: 13.5px; list-style: none; }
+.rtGuide summary::-webkit-details-marker { display: none; }
+.rtGuide summary::before { content: "▸"; display: inline-block; margin-right: 8px; color: #7B61FF; transition: transform 0.15s ease; }
+.rtGuide[open] summary::before { transform: rotate(90deg); }
+.rtGuideBody { padding: 0 16px 14px; font-size: 13px; line-height: 1.6; }
+.rtGuideBody p { margin: 8px 0; }
+.rtGuideBody ol, .rtGuideBody ul { margin: 6px 0 10px; padding-left: 20px; }
+.rtGuideBody li { margin: 4px 0; }
 
 /* phone order screen */
 .orderCard.mOrderClosed { display: none; }
