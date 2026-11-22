@@ -312,6 +312,38 @@ export function RuleTester({ api }) {
   return (
     <div>
       <p className="stratDesc dim">Write an intraday rule and see how it would have done on every day, using real 5-minute candles from your broker. Then open any single day to see whether the stop or the target came first.</p>
+      <details className="rtGuide" onToggle={(e) => { if (e.currentTarget.open) track("rule_guide_open"); }}>
+        <summary>How the Rule tester works <span className="dim">· 2-minute guide</span></summary>
+        <div className="rtGuideBody">
+          <p><b>What it does.</b> You describe a trading rule — when to enter, where your stop-loss goes and where you take profit. PaperRally replays that rule on every trading day in the period you choose, using real 5-minute candles from your broker, and shows what would have happened. In seconds you see whether an idea has an edge before you risk money on it.</p>
+          <ol>
+            <li><b>Pick the market and history.</b> Choose NIFTY, BANKNIFTY or SENSEX and how far back to test (1 month to 1 year), then press <b>Load candles</b>.</li>
+            <li><b>Choose a rule.</b> The quickest start is a <b>preset</b>, such as the 15-minute opening candle breakout. You can then change any setting: the candle timeframe, long or short, entry hours, and how many trades a day.</li>
+            <li><b>Set the stop-loss and target.</b> Pick where the stop goes (for example the other side of the first candle) and a risk : reward such as 1 : 2, which puts the target at twice the risk. Every open trade is closed at the exit time you set.</li>
+            <li><b>Add costs.</b> Enter a few points per trade for brokerage, taxes and slippage. A rule that only wins before costs doesn't really win.</li>
+            <li><b>Read the results.</b> See the summary below.</li>
+          </ol>
+          <p><b>Reading the results</b></p>
+          <ul>
+            <li><b>Win rate</b>: how many trades made money. A rule can win less than half the time and still profit if its wins are bigger than its losses.</li>
+            <li><b>Total points and ₹</b>: the overall result, and what it means for the number of lots you entered.</li>
+            <li><b>Avg R per trade</b>: average profit measured in units of risk. Above 0 means the rule made money on average; +0.3R means 30% of your risk on each trade.</li>
+            <li><b>Profit factor</b>: money won ÷ money lost. Above 1.5 is good; below 1 means it loses.</li>
+            <li><b>Max drawdown</b>: the deepest fall from a high point. Ask yourself whether you could sit through it.</li>
+            <li><b>Target / Stop / Time</b>: how trades ended. The equity curve shows how the result built up over time.</li>
+          </ul>
+          <p><b>Check single days.</b> Under <b>Test one day</b>, open any day to see the candles with entry, stop and target marked. Tick <b>Practice: hide the result</b> to guess the outcome first, then reveal it.</p>
+          <p><b>Compare variations.</b> <b>Compare timeframes &amp; stop / R:R variations</b> runs the same idea on 5, 15, 30 and 60-minute candles and with different stops and targets, so you can see which version holds up.</p>
+          <p><b>Use it honestly.</b></p>
+          <ul>
+            <li>Test at least 30 trades. Fewer than that and a good result can easily be luck.</li>
+            <li>Be careful of tuning settings until the past looks perfect. A rule that only works with very exact numbers rarely works in future.</li>
+            <li>When the stop and the target fall in the same 5-minute candle, the tester counts it as a stop by default, the safer assumption.</li>
+            <li>Past results do not guarantee future profit. This is for learning, not advice.</li>
+          </ul>
+          <p className="dim">Once a rule looks good here, practise it live or in Replay with virtual money before trading it for real.</p>
+        </div>
+      </details>
 
       <h4>Market</h4>
       <Chips label="Index" items={INDEXES} value={sym} onPick={(v) => { setSym(v); setPick(null); setCompare(null); }} />
