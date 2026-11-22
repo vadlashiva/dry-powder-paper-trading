@@ -2130,7 +2130,6 @@ function AuthGate({ themeIdx, cycleTheme, initialMode, onBack }) {
     if (mode === "register") {
       const phoneErr = phoneInputError(normalizedPhone());
       if (phoneErr) return setError(phoneErr);
-      if (password !== confirm) return setError("Passwords don't match.");
     }
 
     setBusy(true);
@@ -2259,12 +2258,6 @@ function AuthGate({ themeIdx, cycleTheme, initialMode, onBack }) {
               >
                 <Mail size={14} /> Email support to reset password
               </a>
-            </div>
-          )}
-          {mode === "register" && (
-            <div className="authField">
-              <Lock size={14} className="authIcon" />
-              <input type={showPw ? "text" : "password"} placeholder="Confirm password" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" />
             </div>
           )}
           {error && <div className="authError">{error}</div>}
@@ -4236,7 +4229,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
         </div>
       )}
 
-      {isMobile && !install.standalone && !installBannerDismissed && (
+      {isMobile && !install.standalone && !installBannerDismissed && firstTradeDone && (
         <div className="installBar">
           <Smartphone size={18} className="installBarIcon" />
           <div className="installBarText"><b>Get the PaperRally app</b><span className="dim">Opens full-screen, loads fast, sends alert notifications.</span></div>
@@ -4298,8 +4291,10 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
                       <span className="wlName">{s.name}</span>
                     </div>
                     <div className="wlPriceCol">
-                      <span className="wlPrice mono">{fmtMoney(qq.price)}</span>
-                      <span className={`wlChg mono ${up ? "bull" : "bear"}`}>{up ? <TrendingUp size={11} /> : <TrendingDown size={11} />}{fmtPct(chg)}</span>
+                      {qq.live || replayActive ? (<>
+                        <span className="wlPrice mono">{fmtMoney(qq.price)}</span>
+                        <span className={`wlChg mono ${up ? "bull" : "bear"}`}>{up ? <TrendingUp size={11} /> : <TrendingDown size={11} />}{fmtPct(chg)}</span>
+                      </>) : <span className="wlLoading dim">Loading…</span>}
                     </div>
                   </button>
                 );
@@ -4378,8 +4373,10 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
               <span className="mainHeadName">{meta.name}</span>
             </div>
             <div className="mainHeadPrice">
-              <span className="mono bigPrice">{fmtMoney(q.price)}</span>
-              <span className={`mono ${q.price >= q.prevClose ? "bull" : "bear"}`}>{fmtPct(((q.price - q.prevClose) / q.prevClose) * 100)}</span>
+              {q.live || replayActive ? (<>
+                <span className="mono bigPrice">{fmtMoney(q.price)}</span>
+                <span className={`mono ${q.price >= q.prevClose ? "bull" : "bear"}`}>{fmtPct(((q.price - q.prevClose) / q.prevClose) * 100)}</span>
+              </>) : <span className="dim wlLoading">Loading live price…</span>}
               <span className={`marketStatusBadge ${marketStatus.isOpen ? "marketOpen" : "marketClosed"}`}>{marketStatus.label}</span>
             </div>
           </div>
@@ -5414,7 +5411,9 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
         <div className="mTradeBar">
           <div className="mTradeBarPrice">
             <span className="mono">{displayTicker(selected)}</span>
-            <span className="mono">{fmtMoney(q.price)} <span className={q.price >= q.prevClose ? "bull" : "bear"}>{fmtPct(((q.price - q.prevClose) / q.prevClose) * 100)}</span></span>
+            {q.live || replayActive
+              ? <span className="mono">{fmtMoney(q.price)} <span className={q.price >= q.prevClose ? "bull" : "bear"}>{fmtPct(((q.price - q.prevClose) / q.prevClose) * 100)}</span></span>
+              : <span className="dim wlLoading">Loading live price…</span>}
           </div>
           {isIndex ? (
             <button className="btn btnBull" onClick={() => setTab("chain")}>Trade options</button>
@@ -6741,6 +6740,8 @@ const CSS = `
 .stratNudgeX { position: absolute; top: 10px; right: 10px; background: none; border: none; color: var(--text-dim); cursor: pointer; padding: 4px; }
 @media (max-width: 760px) { .stratNudge { right: 16px; left: 16px; width: auto; bottom: auto; top: 44px; } }
 .posWrap h3.mt { margin-top: 26px; }
+.wlLoading { font-size: 12px; font-style: italic; }
+.setupKeyRow .btn { flex: none; width: auto; padding: 0 14px; }
 .posHero { background: var(--surface); border: 2px solid var(--accent); border-radius: 14px; padding: 16px 18px; box-shadow: 0 6px 24px rgba(0,0,0,0.06); }
 .posHeroHead { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
 .posWrap .posHero h3 { font-size: 20px; margin: 0; display: flex; align-items: center; gap: 8px; }
