@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { STRATEGIES, buildLegs, payoffAt, summarizePayoff, runBacktest } from "./strategyMath";
 import { RuleTester } from "./ruleTester";
+import { track } from "./growth";
 
 const INDEXES = [["^NSEI", "NIFTY"], ["^NSEBANK", "BANKNIFTY"], ["^BSESN", "SENSEX"]];
 const MAX_LEGS = 6;
@@ -237,13 +238,14 @@ function Backtest({ api }) {
   );
 }
 
-export function StrategyPanel({ api }) {
-  const [view, setView] = useState("builder");
+export function StrategyPanel({ api, initialView = "builder" }) {
+  const [view, setView] = useState(initialView);
+  const pickView = (v) => { setView(v); track("strategy_tool", { view: v }); };
   return (
     <div className="stratWrap">
       <div className="stratHead">
         <h3>Strategies</h3>
-        <Chips label="Strategy tools" items={[["builder", "Builder"], ["backtest", "Backtest"], ["rules", "Rule tester"]]} value={view} onPick={setView} />
+        <Chips label="Strategy tools" items={[["builder", "Builder"], ["backtest", "Backtest"], ["rules", "Rule tester ✦"]]} value={view} onPick={pickView} />
       </div>
       {view === "builder" ? <Builder api={api} /> : view === "backtest" ? <Backtest api={api} /> : <RuleTester api={api} />}
       <div className="dim stratNote">For education only. Premiums are model estimates, not exchange quotes, and nothing here is a recommendation.</div>
