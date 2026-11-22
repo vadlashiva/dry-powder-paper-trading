@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { createClient } from "@supabase/supabase-js";
 import {TrendingUp, TrendingDown, RotateCcw, X, Flame, Activity, LogOut, Lock, User as UserIcon, Bell, Trash2, Maximize2, Download, Newspaper, Crosshair, Sparkles,Eye, EyeOff, LineChart, Layers, Play, GraduationCap, Phone,
   List, BarChart3, Ellipsis, BookOpen, Briefcase, ListOrdered, Mail, KeyRound, Hourglass, MessageSquare, Trophy, Share2, Smartphone, Compass, NotebookPen,
-  ArrowLeft,
+  ArrowLeft, FlaskConical,
 } from "lucide-react";
 import { StrategyPanel } from "./strategies";
 import { computeSMC, SMCPrimitive } from "./smc";
@@ -1296,8 +1296,9 @@ async function fetchSymbolNews(query) {
 }
 
 const LANDING_FEATURES = [
+  { icon: FlaskConical, title: "Rule Tester: Backtest Your Idea", desc: "Write your intraday rule — opening-range breakout, EMA cross, RSI bounce — and see in seconds how it did on past days: win rate, profit and every trade." },
+  { icon: BarChart3, title: "Strategy Builder", desc: "Build multi-leg option strategies, see the payoff chart, place every leg at once and backtest on past index prices." },
   { icon: Activity, title: "NSE & BSE Market Data", desc: "Market prices from a public data feed, updated during market hours. Prices can lag the exchange." },
-  { icon: BarChart3, title: "Strategy Builder & Backtest", desc: "Build multi-leg option strategies, see the payoff chart, place every leg at once and backtest on past index prices." },
   { icon: Layers, title: "Options Chain & Greeks", desc: "Black-Scholes pricing with Delta, Gamma, Theta, and Vega across every strike and expiry." },
   { icon: LineChart, title: "Charts & Indicators", desc: "Candlestick and line charts with MA, RSI, and MACD, across five timeframes." },
   { icon: TrendingDown, title: "Option Writing, with Margin", desc: "Sell calls and puts the way real writers do — premium credited, margin blocked — and see why the risk on that side is so different." },
@@ -1309,6 +1310,7 @@ const LANDING_FEATURES = [
 ];
 
 const WHATS_NEW = [
+  { icon: FlaskConical, title: "Rule tester: would your idea have worked?", desc: "Pick a rule like the 15-minute opening-candle breakout and test it on past days in seconds — win rate, total profit and each trade, across timeframes.", tag: "New" },
   { icon: Play, title: "Trade any time — even after hours", desc: "Market closed? Jump into the last trading session from its 9:15 AM open and trade it as if it's live. Evenings and weekends count too.", tag: "Practise now" },
   { icon: Maximize2, title: "Pop-out trading window", desc: "A big full-day chart in its own window, with shares and options — calls, puts, any expiry and strike — traded right next to it.", tag: "Shares + options" },
   { icon: Activity, title: "All 5,000+ BSE stocks", desc: "Tap BSE to browse every active BSE company, largest first, and add any of them to your watchlist in one tap.", tag: "5,123 stocks" },
@@ -2501,6 +2503,12 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
   const setLang = (code) => { setLangState(code); saveLang(code); };
   const L = LEARN[lang] || LEARN.en;
   const chargesKey = `pr_charges_on_${userId}`;
+  // Strategies discovery: a NEW badge until the user opens it, and a one-time pointer after their first closed trade.
+  const stratSeenKey = `pr_strat_seen_${userId}`;
+  const stratNudgeKey = `pr_strat_nudge_${userId}`;
+  const [stratSeen, setStratSeen] = useState(() => loadSetting(stratSeenKey, false));
+  const [stratNudge, setStratNudge] = useState(false);
+  const [stratView, setStratView] = useState("builder");
   const [chargesOn, setChargesOn] = useState(() => loadSetting(chargesKey, false));
   const chargesOnRef = useRef(chargesOn);
   useEffect(() => { chargesOnRef.current = chargesOn; saveSetting(chargesKey, chargesOn); }, [chargesOn]);
@@ -3342,6 +3350,19 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
     const id = requestAnimationFrame(() => document.querySelector(".posHero")?.scrollIntoView({ behavior: "smooth", block: "start" }));
     return () => cancelAnimationFrame(id);
   }, [tab]);
+  useEffect(() => {
+    if (tab !== "strategies") return;
+    track("strategies_open", { pro: !!isPro, first: !stratSeen });
+    setStratNudge(false);
+    if (!stratSeen) { setStratSeen(true); saveSetting(stratSeenKey, true); }
+  }, [tab]);
+  useEffect(() => {
+    if (stratSeen || stratNudge || loadSetting(stratNudgeKey, false) || replayActive) return;
+    if (!trades.some((t) => t.realized != null)) return;
+    const id = setTimeout(() => { setStratNudge(true); saveSetting(stratNudgeKey, true); track("strat_nudge_shown"); }, 2500);
+    return () => clearTimeout(id);
+  }, [trades, stratSeen]);
+  const openRuleTester = (from) => { track("strat_nudge_click", { from }); setStratNudge(false); setStratView("rules"); goTab("strategies"); };
   const goTab = (id) => {
     setTab(id);
     setMoreOpen(false);
@@ -4034,6 +4055,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
     { title: "Pick a stock", text: isMobile ? "Tap Watchlist to see NSE & BSE prices. Tap any stock to open its chart." : "Your watchlist shows NSE & BSE prices. Click any stock to open its chart, or search all 5,000+ BSE companies.", target: () => document.querySelector(isMobile ? ".bottomNav .bottomNavItem" : ".watchlist") },
     { title: "Read the chart", text: "Switch timeframes, add indicators like RSI and MACD, and draw trendlines. Practice today replays the market from 9:15 AM.", target: () => document.querySelector(".chartCard") },
     { title: "Place a practice trade", text: `${isMobile ? "Tap Buy, then choose" : "Choose"} a quantity, keep the suggested stop-loss, and check how much you'd risk before you press Buy. It's all virtual money.`, target: () => (isMobile ? document.querySelector(".mTradeBar") : document.getElementById("stockOrderCard")) },
+    { title: "Test your ideas", text: isMobile ? "Under More → Strategies, the Rule tester shows how a rule like the 15-minute breakout did on past days — in seconds." : "Strategies has a Rule tester: pick a rule like the 15-minute opening breakout and see how it did on past days, in seconds.", target: () => document.querySelector(isMobile ? ".bottomNav .bottomNavItem:last-child" : ".tab-strategies") },
     { title: "Track and improve", text: isMobile ? "Positions shows your P&L. Under More you'll find Performance, the weekly Leaderboard and Learn." : "Positions shows P&L. Performance shows your win rate and habits, and the Leaderboard runs a new challenge every week.", target: () => document.querySelector(isMobile ? ".bottomNav" : ".tabs") },
   ];
 
@@ -4370,7 +4392,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
 
           <div className="tabs" role="tablist" aria-label="Terminal sections">
             {TAB_DEFS.map(([id, label]) => (
-              <button key={id} role="tab" aria-selected={tab === id} className={`tab ${tab === id ? "tabActive" : ""}`} onClick={() => setTab(id)}>{label}</button>
+              <button key={id} role="tab" aria-selected={tab === id} className={`tab ${tab === id ? "tabActive" : ""} tab-${id}`} onClick={() => setTab(id)}>{label}{id === "strategies" && !stratSeen && <span className="newPill">NEW</span>}</button>
             ))}
           </div>
           {isMobile && ["chain", "alerts", "news"].includes(tab) && (
@@ -5127,8 +5149,8 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
 
           {tab === "strategies" && (
             isPro
-              ? <StrategyPanel api={strategyApi} />
-              : <ProLockPanel title="Strategies is a Pro feature" description="Build multi-leg option strategies, see payoff charts and backtest them on past index prices." onUpgrade={() => setUpgradeModalOpen(true)} />
+              ? <StrategyPanel key={stratView} api={strategyApi} initialView={stratView} />
+              : <ProLockPanel title="Strategies is a Pro feature" description="Test your trading rules on past days, build multi-leg option strategies, see payoff charts and backtest them on past index prices." onUpgrade={() => setUpgradeModalOpen(true)} />
           )}
 
           {tab === "replay" && (
@@ -5274,6 +5296,21 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
       })()}
 
       {tourOpen && <TourOverlay steps={tourSteps} onDone={finishTour} />}
+      {stratNudge && !tourOpen && (
+        <div className="stratNudge" role="dialog" aria-label="New: Rule tester">
+          <button className="stratNudgeX" aria-label="Close" onClick={() => { setStratNudge(false); track("strat_nudge_dismiss"); }}><X size={14} /></button>
+          <div className="stratNudgeIcon"><FlaskConical size={18} /></div>
+          <div className="stratNudgeBody">
+            <div className="stratNudgeEyebrow">NEW · RULE TESTER</div>
+            <div className="stratNudgeTitle">Would your idea have worked?</div>
+            <p>Test a rule like the 15-minute opening breakout on past days — win rate, profit and every trade, in seconds.</p>
+            <div className="stratNudgeActions">
+              <button className="btn btnBull" onClick={() => openRuleTester("nudge")}>Try the Rule tester</button>
+              <button className="btn btnGhost" onClick={() => { setStratNudge(false); track("strat_nudge_dismiss"); }}>Later</button>
+            </div>
+          </div>
+        </div>
+      )}
       {installHelpOpen && <InstallHelp platform={install.platform} onClose={() => setInstallHelpOpen(false)} />}
       {journalEditing && (
         <JournalModal
@@ -5345,7 +5382,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
                 ["learn", L.learnTab, BookOpen],
               ].map(([id, label, Icon]) => (
                 <button key={id} className={`sheetItem ${tab === id ? "sheetItemActive" : ""}`} onClick={() => goTab(id)}>
-                  <Icon size={18} /><span>{label}</span>
+                  <Icon size={18} /><span>{label}</span>{id === "strategies" && !stratSeen && <span className="newPill">NEW</span>}
                 </button>
               ))}
             </div>
@@ -5397,6 +5434,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
             <button key={id} className={`bottomNavItem ${active ? "bottomNavItemActive" : ""}`} aria-current={active ? "page" : undefined} onClick={onClick}>
               <Icon size={20} />
               <span>{label}</span>
+              {id === "more" && !stratSeen && <span className="navDot" aria-label="New feature inside" />}
             </button>
           ))}
         </nav>
@@ -6682,6 +6720,21 @@ const CSS = `
 .posTable th { text-align: left; font-size: 10px; color: var(--text-dim); text-transform: uppercase; padding: 10px 12px; border-bottom: 1px solid var(--border); }
 .posTable td { padding: 10px 12px; border-bottom: 1px solid var(--border); }
 .posTable tr:last-child td { border-bottom: none; }
+.newPill { display: inline-block; margin-left: 6px; padding: 2px 7px; border-radius: 999px; font-size: 9.5px; font-weight: 700; letter-spacing: 0.07em; line-height: 1.4; vertical-align: middle; color: #fff; background: linear-gradient(135deg, #7B61FF 0%, #3D8BFF 100%); box-shadow: 0 0 0 0 rgba(123, 97, 255, 0.55); animation: newPillPulse 2.6s ease-out infinite; }
+@keyframes newPillPulse { 0% { box-shadow: 0 0 0 0 rgba(123, 97, 255, 0.55); } 70% { box-shadow: 0 0 0 7px rgba(123, 97, 255, 0); } 100% { box-shadow: 0 0 0 0 rgba(123, 97, 255, 0); } }
+.bottomNavItem { position: relative; }
+.navDot { position: absolute; top: 6px; right: calc(50% - 16px); width: 8px; height: 8px; border-radius: 50%; background: linear-gradient(135deg, #7B61FF, #3D8BFF); box-shadow: 0 0 0 2px var(--surface); }
+.stratNudge { position: fixed; right: 24px; bottom: 24px; z-index: 60; width: min(380px, calc(100vw - 32px)); display: flex; gap: 14px; padding: 18px 18px 16px; border-radius: 16px; background: linear-gradient(180deg, color-mix(in srgb, #7B61FF 10%, var(--surface)) 0%, var(--surface) 60%); border: 1px solid color-mix(in srgb, #7B61FF 45%, var(--border)); box-shadow: 0 18px 50px rgba(15, 20, 40, 0.28); animation: stratNudgeIn 0.35s ease-out; }
+@keyframes stratNudgeIn { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+.stratNudgeIcon { flex: none; width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: #fff; background: linear-gradient(135deg, #7B61FF 0%, #3D8BFF 100%); }
+.stratNudgeBody { min-width: 0; }
+.stratNudgeEyebrow { font-size: 10.5px; font-weight: 700; letter-spacing: 0.09em; color: color-mix(in srgb, #7B61FF 72%, var(--text)); margin-bottom: 4px; }
+.stratNudgeTitle { font-family: 'Instrument Sans', 'Inter', system-ui, sans-serif; font-size: 17px; font-weight: 700; margin-bottom: 6px; }
+.stratNudgeBody p { margin: 0 0 14px; font-size: 13px; line-height: 1.55; color: var(--text-dim); }
+.stratNudgeActions { display: flex; gap: 8px; flex-wrap: wrap; }
+.stratNudgeActions .btn { flex: none; padding: 9px 14px; font-size: 13px; }
+.stratNudgeX { position: absolute; top: 10px; right: 10px; background: none; border: none; color: var(--text-dim); cursor: pointer; padding: 4px; }
+@media (max-width: 760px) { .stratNudge { right: 16px; left: 16px; width: auto; bottom: 84px; } }
 .posHero { background: var(--surface); border: 2px solid var(--accent); border-radius: 14px; padding: 16px 18px; box-shadow: 0 6px 24px rgba(0,0,0,0.06); }
 .posHeroHead { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
 .posWrap .posHero h3 { font-size: 20px; margin: 0; display: flex; align-items: center; gap: 8px; }

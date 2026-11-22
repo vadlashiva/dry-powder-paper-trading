@@ -3,6 +3,7 @@
 // previous-day high/low break), then test it on months of real 5-minute index candles from
 // the user's own broker connection. Every trade is checked on 5-minute bars, so it is clear
 // whether the stop or the target came first.
+import { track } from "./growth";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 const INDEXES = [["^NSEI", "NIFTY"], ["^NSEBANK", "BANKNIFTY"], ["^BSESN", "SENSEX"]];
@@ -260,6 +261,7 @@ export function RuleTester({ api }) {
   };
 
   const res = useMemo(() => (days ? runAll(days, s) : null), [days, s]);
+  useEffect(() => { if (res) track("rule_test_run", { trades: res.trades?.length ?? 0 }); }, [res]);
   const st = useMemo(() => (res ? stats(res.trades) : null), [res]);
   const lot = api.lotFor ? api.lotFor(sym) : 1;
   const name = INDEXES.find((x) => x[0] === sym)[1];
