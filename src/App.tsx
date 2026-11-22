@@ -4788,6 +4788,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
                 </table>
               </div>
               {isMobile && <div className="chainNote chainTapHint">Tap any premium to buy or sell that option. Theta and IV are in the order ticket.</div>}
+              {renderTagPrompt()}
               <div className="chainNote">Premiums are the last traded prices from your broker connection where it supplies them. A premium marked "est." is calculated from the underlying price via Black-Scholes until a traded price arrives; Greeks and IV are always calculated. Index IV follows India VIX{indiaVix ? ` (now ${indiaVix.toFixed(2)})` : ""}. Quantities are in exchange lots (NIFTY 65, BANKNIFTY 30, SENSEX 20). You can buy or sell (short) options; selling blocks an estimated margin from your cash.</div>
               {!marketStatus.isOpen && (
                 <div className="chainNote" style={{ color: "var(--bear)", fontWeight: 600 }}>Market Closed — you can browse the chain, but new orders are disabled until 9:15 AM Mon–Fri.</div>
@@ -5086,7 +5087,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
                   <button className="btn btnBull" onClick={shareWeek}><Share2 size={14} /> Share my week</button>
                 </div>
               )}
-              <JournalStatsCard trades={trades} fmtMoney={fmtMoney} />
+              <JournalStatsCard trades={trades} fmtMoney={fmtMoney} onTag={(id, tag) => { setTrades((prev) => prev.map((t) => (t.id === id ? { ...t, tag } : t))); if (tag) track("trade_tagged", { tag, from: "performance" }); }} />
               <AchievementsGrid unlocked={prefs.achievements || [...unlockedNow]} />
             </div>
           )}
@@ -7297,6 +7298,10 @@ a.resetBtn { text-decoration: none; }
 .journalCard, .achCard, .inviteCard { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
 .journalCard h4, .achCard h4, .inviteCard h4 { margin: 0 0 8px; font-size: 14px; }
 .journalCard p { margin: 0; font-size: 13px; line-height: 1.5; }
+.tagRecent { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 12px; }
+.tagRecentHead { font-size: 13px; font-weight: 600; }
+.tagRecentRow { display: flex; flex-direction: column; gap: 6px; }
+.tagRecentTrade { display: flex; justify-content: space-between; gap: 10px; font-size: 12.5px; }
 .journalTable { margin-top: 4px; }
 .journalInsight { margin-top: 10px !important; padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--bear) 10%, transparent); border: 1px solid color-mix(in srgb, var(--bear) 35%, transparent); }
 .achGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
