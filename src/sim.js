@@ -8,7 +8,7 @@
 import { read, write, remove, readJson, IST_MS } from "./brokerUtil";
 
 const STORE = "pr_sim_on";
-const CLOCK = "pr_sim_clock"; // { realStart, simStart }: set when the user presses "Start market"
+const CLOCK = "pr_sim_clock"; // { realStart, simStart, rate }: set by "Start market" and the speed buttons
 const DAY = 86400000;
 const OPEN_MIN = 9 * 60 + 15;
 const MINUTES = 375; // 9:15 to 3:30
@@ -230,7 +230,16 @@ export function simCandles({ symbol, interval, fromMs, toMs }, nowMs = simNow())
 // The clock only ever moves forward, so positions, intraday square-off and history stay in order.
 export function simNow(realMs = Date.now()) {
   const c = readJson(CLOCK);
-  return c && c.simStart > 0 ? c.simStart + (realMs - c.realStart) : realMs;
+  return c && c.simStart > 0 ? c.simStart + (realMs - c.realStart) * (c.rate || 1) : realMs;
+}
+export const SIM_SPEEDS = [1, 2, 5, 10];
+// How fast the practice market runs: 1 = real time, 5 = a minute of trading every 12 seconds.
+export const simSpeed = () => readJson(CLOCK)?.rate || 1;
+const clockChanged = () => { try { window.dispatchEvent(new Event("pr-sim-clock")); } catch { /* no window */ } };
+export function setSimSpeed(rate, realMs = Date.now()) {
+  const r = SIM_SPEEDS.includes(rate) ? rate : 1;
+  write(CLOCK, JSON.stringify({ realStart: realMs, simStart: simNow(realMs), rate: r })); // carry on from the same moment
+  clockChanged();
 }
 // Is the practice market in session at practice time `t`? (Weekdays 9:15 AM to 3:30 PM.)
 export function simIsOpen(t = simNow()) {
@@ -249,8 +258,8 @@ export function startSimMarket(realMs = Date.now()) {
   const t = simNow(realMs);
   if (simIsOpen(t)) return t;
   const simStart = nextSimOpen(t);
-  write(CLOCK, JSON.stringify({ realStart: realMs, simStart }));
-  try { window.dispatchEvent(new Event("pr-sim-clock")); } catch { /* no window */ }
+  write(CLOCK, JSON.stringify({ realStart: realMs, simStart, rate: simSpeed() }));
+  clockChanged();
   return simStart;
 }
 export const clockNow = () => simNow();

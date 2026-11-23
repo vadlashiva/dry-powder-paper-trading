@@ -96,3 +96,29 @@ describe("practice market clock (Start market)", () => {
     expect(startSimMarket(ist(2026, 11, 24, 7, 0))).toBe(ist(2026, 11, 24, 9, 15));
   });
 });
+
+describe("practice market speed", () => {
+  const { simNow, startSimMarket, setSimSpeed, simSpeed } = require("./sim");
+  beforeEach(() => localStorage.clear());
+
+  test("5x runs five practice minutes per real minute and carries on from the same moment", () => {
+    const real = ist(2026, 11, 23, 22, 0);
+    const open = startSimMarket(real);
+    setSimSpeed(5, real + 60000); // after 1 real minute at 1x: 9:16
+    expect(simSpeed()).toBe(5);
+    expect(simNow(real + 60000)).toBe(open + 60000);
+    expect(simNow(real + 120000)).toBe(open + 60000 + 5 * 60000);
+    setSimSpeed(1, real + 120000);
+    expect(simNow(real + 180000)).toBe(open + 60000 + 5 * 60000 + 60000);
+  });
+
+  test("the speed is kept when the next session starts", () => {
+    const real = ist(2026, 11, 23, 22, 0);
+    startSimMarket(real);
+    setSimSpeed(10, real);
+    const later = real + 40 * 60000; // 400 practice minutes: past the 3:30 close
+    startSimMarket(later);
+    expect(simSpeed()).toBe(10);
+    expect(simNow(later)).toBe(ist(2026, 11, 25, 9, 15));
+  });
+});
