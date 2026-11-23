@@ -1,6 +1,7 @@
 // @ts-nocheck
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
+import { lotSizeFrom, positionMultiplier, isShortPos, shortMarginPerLot, fetchPortfolioVersionWith, savePortfolioVersionedWith } from "./positionMath";
 import {TrendingUp, TrendingDown, RotateCcw, X, Flame, Activity, LogOut, Lock, User as UserIcon, Bell, Trash2, Maximize2, Download, Newspaper, Crosshair, Sparkles,Eye, EyeOff, LineChart, Layers, Play, GraduationCap, Phone,
   List, BarChart3, Ellipsis, BookOpen, Briefcase, ListOrdered, Mail, KeyRound, Hourglass, MessageSquare, Trophy, Share2, Smartphone, Compass, NotebookPen,
   ArrowLeft, FlaskConical,
@@ -90,8 +91,6 @@ const RISK_FREE = 0.065;
 // Exchange lot sizes. Stock lots come from NSE's fo_mktlots.csv, copied daily into
 // public/lot-sizes.json (see .github/workflows/lot-sizes.yml); they are per expiry month
 // because NSE revises them a few times a year. Index lots below are the fallback.
-const LOT_SIZES = { NIFTY: 65, BANKNIFTY: 30, SENSEX: 20 };
-const MONTHS3 = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 let LOT_TABLE = (() => { try { return JSON.parse(localStorage.getItem("pr_lot_sizes") || "null")?.lots || null; } catch { return null; } })();
 if (typeof window !== "undefined") {
   fetch("/lot-sizes.json", { cache: "no-cache" }).then((r) => (r.ok ? r.json() : null)).then((d) => {
@@ -101,39 +100,14 @@ if (typeof window !== "undefined") {
     }
   }).catch(() => {});
 }
-const monthKey = (ms) => {
-  const d = new Date(ms + 5.5 * 3600 * 1000);
-  return `${MONTHS3[d.getUTCMonth()]}-${String(d.getUTCFullYear()).slice(2)}`;
-};
-// Lot size for a contract on `symbol` expiring at `expiryMs` (defaults to the current month).
-// Returns null for a stock whose lot size is not known (not in NSE F&O, or list not loaded).
-const lotSizeOrNull = (symbol, expiryMs) => {
-  const t = displayTicker(symbol);
-  const when = expiryMs ?? Date.now();
-  if (t === "SENSEX") return when >= Date.UTC(2027, 0, 1) ? 25 : 20; // BSE: 25 from Jan-2027 expiries
-  const row = LOT_TABLE?.[t];
-  if (row) {
-    const exact = row[monthKey(when)];
-    if (exact) return exact;
-    const vals = Object.entries(row).sort((a, b) => MONTHS3.indexOf(a[0].slice(0, 3)) + 12 * +a[0].slice(4) - (MONTHS3.indexOf(b[0].slice(0, 3)) + 12 * +b[0].slice(4)));
-    return vals.length ? vals[vals.length - 1][1] : null;
-  }
-  return LOT_SIZES[t] ?? null;
-};
+// Lot size for a contract on `symbol` expiring at `expiryMs` (defaults to now). See positionMath.js.
+const lotSizeOrNull = (symbol, expiryMs) => lotSizeFrom(LOT_TABLE, displayTicker(symbol), expiryMs ?? Date.now());
 const lotSizeFor = (symbol, expiryMs) => lotSizeOrNull(symbol, expiryMs) ?? 1;
 const hasLotSize = (symbol, expiryMs) => lotSizeOrNull(symbol, expiryMs) != null;
-// Positions opened before this change were stored in units, not lots.
-// A position keeps the lot size it was opened with. Older positions saved without one
-// were opened with the fixed index lots (or 1 for stock options), so they keep that.
-const posMultiplier = (p) => (p.lot ? p.lot : p.lotBased ? (LOT_SIZES[displayTicker(p.symbol)] ?? 1) : 1);
-const isShort = (p) => p.side === "short";
+const posMultiplier = (p) => positionMultiplier(p, displayTicker(p.symbol));
+const isShort = isShortPos;
 // Simplified estimate of SPAN + exposure margin for SELLING one lot of an option.
 // Not exchange-exact: about 9% of contract value, reduced for out-of-the-money strikes, minimum 4%.
-function shortMarginPerLot(spot, strike, type, lot) {
-  const contract = spot * lot;
-  const otm = Math.max(0, type === "call" ? strike - spot : spot - strike) * lot;
-  return Math.round(Math.max(0.09 * contract - 0.5 * otm, 0.04 * contract));
-}
 const TRIAL_DAYS = 7;
 // During Replay the whole terminal runs on a simulated clock.
 let SIM_NOW = null;
@@ -1117,32 +1091,9 @@ async function fetchPortfolio(userId) {
   Object.defineProperty(p, "_version", { value: data?.updated_at ?? null, enumerable: false });
   return p;
 }
-async function fetchPortfolioVersion(userId) {
-  const { data, error } = await supabase.from("portfolios").select("updated_at").eq("user_id", userId).maybeSingle();
-  if (error) throw error;
-  return data?.updated_at ?? null;
-}
-// Saves only if nobody else saved since `version`. Returns { ok, version } or { conflict: true }.
-async function savePortfolioVersioned(userId, payload, version) {
-  const now = new Date().toISOString();
-  if (!version) {
-    const { data, error } = await supabase.from("portfolios").upsert({ user_id: userId, data: payload, updated_at: now }).select("updated_at").maybeSingle();
-    if (error) { console.error("portfolio save failed", error); return { ok: false }; }
-    return { ok: true, version: data?.updated_at ?? now };
-  }
-  const { data, error } = await supabase.from("portfolios").update({ data: payload, updated_at: now }).eq("user_id", userId).eq("updated_at", version).select("updated_at");
-  if (error) { console.error("portfolio save failed", error); return { ok: false }; }
-  if (!data || data.length === 0) {
-    // Safety net: if the stored version is still the one we hold, the mismatch was only a
-    // timestamp-format difference, not another device. Save normally instead of reloading.
-    const cur = await fetchPortfolioVersion(userId).catch(() => undefined);
-    if (cur === undefined || !cur || Date.parse(cur) !== Date.parse(version)) return { conflict: true };
-    const r = await supabase.from("portfolios").upsert({ user_id: userId, data: payload, updated_at: now }).select("updated_at").maybeSingle();
-    if (r.error) { console.error("portfolio save failed", r.error); return { ok: false }; }
-    return { ok: true, version: r.data?.updated_at ?? now };
-  }
-  return { ok: true, version: data[0].updated_at };
-}
+const fetchPortfolioVersion = (userId) => fetchPortfolioVersionWith(supabase, userId);
+// Saves only if nobody else saved since `version` (see positionMath.js).
+const savePortfolioVersioned = (userId, payload, version) => savePortfolioVersionedWith(supabase, userId, payload, version);
 
 async function fetchSubscription(userId) {
   const { data, error } = await supabase.from("subscriptions").select("status, current_period_end").eq("user_id", userId).maybeSingle();
