@@ -4797,53 +4797,81 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
           {tab === "positions" && (
             <div className="posWrap">
               {optionPositions.length > 0 && (
-                <div className="posHero">
-                  <div className="posHeroHead">
-                    <h3>Option Positions <span className="posHeroCount">{optionPositions.length}</span></h3>
+                <section className="posHero" aria-label="Option positions">
+                  <header className="posHeroHead">
+                    <div className="posHeroTitle">
+                      <span className="posEyebrow">Derivatives</span>
+                      <h3>Option Positions <span className="posHeroCount">{optionPositions.length}</span></h3>
+                    </div>
                     <div className="posHeroPnl">
-                      <span className="dim">Open P&amp;L</span>
+                      <span className="posEyebrow">Open P&amp;L</span>
                       <b className={`mono ${optionUnrealized >= 0 ? "bull" : "bear"}`}>{optionUnrealized >= 0 ? "+" : ""}{fmtMoney(optionUnrealized)}</b>
                     </div>
+                  </header>
+                  <div className="optCards">
+                    {optionPositions.map((p) => {
+                      const spot = quotes[p.symbol]?.price ?? 0;
+                      const symMeta = allInstruments.find((s) => s.symbol === p.symbol);
+                      const pT = (p.expiry - nowMs()) / (365 * 24 * 3600 * 1000);
+                      const sigma = symMeta.iv * (1 + 0.15 * Math.abs(p.strike - spot) / spot);
+                      const price = realPremium(p) ?? blackScholes(spot, p.strike, pT, RISK_FREE, sigma, p.type).price;
+                      const source = premiumSource(p);
+                      const short = isShort(p);
+                      const mult = posMultiplier(p);
+                      const mv = (short ? -1 : 1) * price * mult * p.qty;
+                      const pnl = (short ? p.avgPremium - price : price - p.avgPremium) * mult * p.qty;
+                      const basis = p.avgPremium * mult * p.qty;
+                      const pnlPct = basis > 0 ? (pnl / basis) * 100 : 0;
+                      const istDay = (ms) => new Date(ms).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+                      const expToday = istDay(p.expiry) === istDay(nowMs());
+                      const itm = spot > 0 && (p.type === "call" ? spot > p.strike : spot < p.strike);
+                      const gap = spot > 0 ? Math.abs(spot - p.strike) : 0;
+                      const right = p.type === "call" ? "CE" : "PE";
+                      return (
+                        <article key={p.id} className={`optCard ${pnl >= 0 ? "optCardUp" : "optCardDown"}`}>
+                          <div className="optCardTop">
+                            <div className="optContract">
+                              <div className="optTags">
+                                <span className={`sideTag ${short ? "sideShort" : "sideLong"}`}>{short ? "Short" : "Long"} {p.type === "call" ? "Call" : "Put"}</span>
+                                <span className={`expTag ${expToday ? "expToday" : ""}`}><Hourglass size={11} /> {expToday ? "Expires today" : `Exp ${fmtDate(new Date(p.expiry))}`}</span>
+                              </div>
+                              <div className="optName"><span>{displayTicker(p.symbol)}</span> <span className="mono">{p.strike.toLocaleString("en-IN")}</span> <span className="optRight">{right}</span></div>
+                              {spot > 0 && (
+                                <div className="optSpot dim">Spot <span className="mono">{spot.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span> · <span className={itm ? "optItm" : ""}>{itm ? "In the money" : "Out of the money"} by <span className="mono">{gap.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</span> pts</span></div>
+                              )}
+                            </div>
+                            <div className="optPnl">
+                              <b className={`mono ${pnl >= 0 ? "bull" : "bear"}`}>{pnl >= 0 ? "+" : ""}{fmtMoney(pnl)}</b>
+                              <span className={`optPnlPct mono ${pnl >= 0 ? "bull" : "bear"}`}>{pnlPct >= 0 ? "+" : ""}{pnlPct.toFixed(1)}% of premium</span>
+                              {p.stopLoss ? <span className="slTag">SL {fmtMoney(p.stopLoss)}</span> : null}
+                            </div>
+                          </div>
+                          <dl className="optStats">
+                            <div><dt>Quantity</dt><dd className="mono">{p.lotBased ? <>{p.qty} lot{p.qty > 1 ? "s" : ""} <span className="dim">× {mult}</span></> : p.qty}</dd></div>
+                            <div><dt>Avg premium</dt><dd className="mono">{fmtMoney(p.avgPremium)}</dd></div>
+                            <div><dt>Last traded</dt><dd className="mono" title={source === "model" ? "Calculated premium — no traded price for this contract yet" : source === "stale" ? "Last traded premium — not updated in the past minute" : "Last traded premium"}>{fmtMoney(price)}{source !== "real" && <span className="estTag">{source === "model" ? "est." : "delayed"}</span>}</dd></div>
+                            <div><dt>Market value</dt><dd className="mono">{fmtMoney(mv)}</dd></div>
+                            {short && p.margin ? <div><dt>Margin blocked</dt><dd className="mono">{fmtMoney(p.margin, 0)}</dd></div> : null}
+                          </dl>
+                          <div className="optActions">
+                            <div className="optActionsLeft">
+                              <button className="posBtn" onClick={() => { setSelected(p.symbol); setTab("trade"); }}><LineChart size={14} /> Chart</button>
+                              <button className="posBtn" onClick={() => openStopLossEditor(p)}><Crosshair size={14} /> {p.stopLoss ? "Edit stop-loss" : "Set stop-loss"}</button>
+                            </div>
+                            <button className="posBtn posBtnExit" onClick={() => requestClose("option", p)}>{short ? "Cover position" : "Close position"}</button>
+                          </div>
+                        </article>
+                      );
+                    })}
                   </div>
-                  <table className="posTable posHeroTable">
-                    <thead><tr><th>Contract</th><th>Qty</th><th>Avg Premium</th><th>Last</th><th>Mkt Value</th><th>P&L</th><th></th></tr></thead>
-                    <tbody>
-                      {optionPositions.map((p) => {
-                        const spot = quotes[p.symbol]?.price ?? 0;
-                        const symMeta = allInstruments.find((s) => s.symbol === p.symbol);
-                        const pT = (p.expiry - nowMs()) / (365 * 24 * 3600 * 1000);
-                        const sigma = symMeta.iv * (1 + 0.15 * Math.abs(p.strike - spot) / spot);
-                        const price = realPremium(p) ?? blackScholes(spot, p.strike, pT, RISK_FREE, sigma, p.type).price;
-                        const source = premiumSource(p);
-                        const short = isShort(p);
-                        const mv = (short ? -1 : 1) * price * posMultiplier(p) * p.qty;
-                        const pnl = (short ? p.avgPremium - price : price - p.avgPremium) * posMultiplier(p) * p.qty;
-                        return (
-                          <tr key={p.id}>
-                            <td className="mono">{short && <span className="shortTag">SHORT</span>}{p.type === "call" ? "C" : "P"} {displayTicker(p.symbol)} {p.strike} {fmtDate(new Date(p.expiry))}{short && p.margin ? <div className="dim" style={{ fontSize: "11px" }}>margin {fmtMoney(p.margin, 0)}</div> : null}</td>
-                            <td className="mono">{p.lotBased ? `${p.qty} × ${lotSizeFor(p.symbol)}` : p.qty}</td>
-                            <td className="mono">{fmtMoney(p.avgPremium)}</td>
-                            <td className="mono" title={source === "model" ? "Calculated premium — no traded price for this contract yet" : source === "stale" ? "Last traded premium — not updated in the past minute" : "Last traded premium"}>{fmtMoney(price)}{source !== "real" && <span className="estTag">{source === "model" ? "est." : "delayed"}</span>}</td>
-                            <td className="mono">{fmtMoney(mv)}</td>
-                            <td className={`mono ${pnl >= 0 ? "bull" : "bear"}`}>{fmtMoney(pnl)}{p.stopLoss ? <div className="slTag">SL {fmtMoney(p.stopLoss)}</div> : null}</td>
-                            <td className="orderRowActions">
-                              <button className="closeBtn" onClick={() => { setSelected(p.symbol); setTab("trade"); }}><LineChart size={12} /> Chart</button>
-                              <button className="closeBtn" onClick={() => openStopLossEditor(p)}><Crosshair size={12} /> {p.stopLoss ? "Edit SL" : "Stop-Loss"}</button>
-                              <button className="closeBtn closeBtnExit" onClick={() => requestClose("option", p)}>{short ? "Cover" : "Close"}</button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                </section>
               )}
 
               <h3 className={optionPositions.length > 0 ? "mt" : undefined}>Stock Positions</h3>
               {stockPositions.length === 0 ? (
                 <div className="empty">No open stock positions. Buy something on the Chart &amp; Trade tab.</div>
               ) : (
-                <table className="posTable">
+                <table className="posTable posTableNum">
                   <thead><tr><th>Symbol</th><th>Qty</th><th>Avg Cost</th><th>Last</th><th>Mkt Value</th><th>P&L</th><th></th></tr></thead>
                   <tbody>
                     {stockPositions.map((p) => {
@@ -6744,19 +6772,61 @@ const CSS = `
 .posWrap h3.mt { margin-top: 26px; }
 .wlLoading { font-size: 12px; font-style: italic; }
 .setupKeyRow .btn { flex: none; width: auto; padding: 0 14px; }
-.posHero { background: var(--surface); border: 2px solid var(--accent); border-radius: 14px; padding: 16px 18px; box-shadow: 0 6px 24px rgba(0,0,0,0.06); }
-.posHeroHead { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
-.posWrap .posHero h3 { font-size: 20px; margin: 0; display: flex; align-items: center; gap: 8px; }
-.posHeroCount { background: var(--accent); color: #fff; font-size: 12px; font-weight: 700; border-radius: 999px; padding: 2px 9px; }
-.posHeroPnl { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.2; }
-.posHeroPnl .dim { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
-.posHeroPnl b { font-size: 26px; font-weight: 700; }
-.posHeroTable { font-size: 15px; border: none; }
-.posHeroTable th { font-size: 11px; padding: 10px 14px; }
-.posHeroTable td { padding: 16px 14px; }
-.posHeroTable td:first-child { font-weight: 700; font-size: 16px; }
-.posHeroTable td.bull, .posHeroTable td.bear { font-size: 18px; font-weight: 700; }
-.posHeroTable .closeBtn { padding: 8px 14px; font-size: 13px; }
+.posHero { position: relative; background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 7%, var(--surface)) 0%, var(--surface) 140px); border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--border)); border-radius: 18px; padding: 22px 24px 24px; box-shadow: 0 1px 0 color-mix(in srgb, var(--accent) 20%, transparent) inset, 0 18px 40px -24px rgba(20, 16, 60, 0.35); }
+.posHeroHead { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
+.posEyebrow { display: block; font-size: 10.5px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim); margin-bottom: 4px; }
+.posWrap .posHero h3 { font-family: 'Instrument Sans', 'Inter', system-ui, sans-serif; font-size: 22px; font-weight: 700; letter-spacing: -0.3px; margin: 0; display: flex; align-items: center; gap: 10px; }
+.posHeroCount { background: var(--accent); color: #fff; font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 700; border-radius: 999px; min-width: 22px; height: 22px; display: inline-grid; place-items: center; padding: 0 7px; }
+.posHeroPnl { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.15; }
+.posHeroPnl b { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.optCards { display: flex; flex-direction: column; gap: 14px; }
+.optCard { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px 20px 16px 24px; overflow: hidden; transition: border-color 0.15s ease, box-shadow 0.15s ease; }
+.optCard::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--bull); }
+.optCardDown::before { background: var(--bear); }
+.optCard:hover { border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); box-shadow: 0 10px 28px -18px rgba(0,0,0,0.35); }
+.optCardTop { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; flex-wrap: wrap; }
+.optTags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+.sideTag, .expTag { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 3px 8px; border-radius: 6px; white-space: nowrap; }
+.sideShort { background: color-mix(in srgb, var(--bear) 14%, transparent); color: var(--bear); }
+.sideLong { background: color-mix(in srgb, var(--bull) 14%, transparent); color: color-mix(in srgb, var(--bull) 75%, var(--text)); }
+.expTag { background: var(--surface-2); color: var(--text-dim); border: 1px solid var(--border); }
+.expToday { background: color-mix(in srgb, var(--amber) 16%, transparent); color: color-mix(in srgb, var(--amber) 70%, var(--text)); border-color: color-mix(in srgb, var(--amber) 45%, transparent); }
+.optName { font-family: 'Instrument Sans', 'Inter', system-ui, sans-serif; font-size: 22px; font-weight: 700; letter-spacing: -0.3px; white-space: nowrap; }
+.optName .mono { font-family: 'JetBrains Mono', monospace; font-size: 20px; letter-spacing: -0.5px; }
+.optRight { font-size: 14px; font-weight: 700; color: var(--text-dim); margin-left: 2px; }
+.optSpot { font-size: 12.5px; margin-top: 4px; }
+.optSpot .mono { color: var(--text); }
+.optItm { color: color-mix(in srgb, var(--amber) 75%, var(--text)); font-weight: 600; }
+.optPnl { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; text-align: right; }
+.optPnl b { font-size: 24px; font-weight: 700; letter-spacing: -0.4px; font-variant-numeric: tabular-nums; white-space: nowrap; line-height: 1.1; }
+.optPnlPct { font-size: 12px; font-weight: 600; white-space: nowrap; opacity: 0.9; }
+.optStats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 1px; margin: 16px 0 14px; background: var(--border); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.optStats > div { background: var(--surface-2); padding: 10px 14px; min-width: 0; }
+.optStats dt { font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-dim); margin-bottom: 4px; white-space: nowrap; }
+.optStats dd { margin: 0; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.optActions { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.optActionsLeft { display: flex; gap: 8px; flex-wrap: wrap; }
+.posBtn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 38px; padding: 0 16px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.1s ease; }
+.posBtn:hover { border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); background: color-mix(in srgb, var(--accent) 8%, var(--surface-2)); }
+.posBtn:active { transform: translateY(1px); }
+.posBtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.posBtnExit { background: var(--bear); border-color: var(--bear); color: #fff; padding: 0 20px; }
+.posBtnExit:hover { background: color-mix(in srgb, var(--bear) 86%, #000); border-color: color-mix(in srgb, var(--bear) 86%, #000); color: #fff; }
+.posTableNum th:not(:first-child):not(:last-child), .posTableNum td:not(:first-child):not(:last-child) { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.posTableNum td.orderRowActions { justify-content: flex-end; }
+@media (max-width: 700px) {
+  .posHero { padding: 16px 14px 16px; border-radius: 16px; }
+  .posHeroPnl { align-items: flex-start; }
+  .posHeroPnl b { font-size: 24px; }
+  .optStats > div:last-child:nth-child(odd) { grid-column: 1 / -1; }
+  .optCard { padding: 14px 14px 14px 18px; }
+  .optName { font-size: 19px; } .optName .mono { font-size: 17px; }
+  .optPnl { align-items: flex-start; text-align: left; }
+  .optStats { grid-template-columns: 1fr 1fr; }
+  .optActions { flex-direction: column; align-items: stretch; }
+  .optActionsLeft { display: grid; grid-template-columns: 1fr 1fr; }
+  .posBtn { height: 44px; }
+}
 .closeBtn { background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim); padding: 5px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
 .orderRowActions { display: flex; gap: 6px; }
 .closeBtn:hover { color: var(--bear); border-color: var(--bear); }
