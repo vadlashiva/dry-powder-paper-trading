@@ -6135,7 +6135,7 @@ function BrokerGate({ children }) {
     } catch (e) {
       if (pending) { track("setup_failed", { broker: b.id, kind: pending.kind, message: String(e?.message || e).slice(0, 120) }); writePending(null); }
       b.api.clearConnection();
-      setError(`${b.name} couldn't confirm this login. Check your key and try again.`);
+      setError(e?.userMessage || `${b.name} couldn't confirm this login. Check your key and try again.`);
       setState("connect");
     }
   };

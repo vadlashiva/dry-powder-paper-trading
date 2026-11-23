@@ -21,6 +21,18 @@ export function forgetCredentials() { remove(CREDS); remove(SESSION); }
 export const saveCredentials = ({ key, secret }) => write(CREDS, JSON.stringify({ key, secret }));
 export const loginUrl = () => `${BASE}/v2/login/authorization/dialog?response_type=code&client_id=${encodeURIComponent(creds().key)}&redirect_uri=${encodeURIComponent(redirectUri())}&state=upstox`;
 
+// Upstox explains why a login failed; keep its reason so the person knows what to fix.
+const LOGIN_HELP = {
+  UDAPI100069: "Upstox says your API Key or API Secret is wrong. Open your app on Upstox, copy both again, then choose \"Use a different key\".",
+};
+function loginError(json) {
+  const e = (json?.errors || [])[0] || {};
+  const code = e.errorCode || e.error_code || "";
+  const err = new Error(`Upstox login failed${code ? ` (${code})` : ""}: ${e.message || "no reason given"}`);
+  err.userMessage = LOGIN_HELP[code] || (e.message ? `Upstox couldn't log you in: ${e.message}` : null);
+  return err;
+}
+
 export async function finishLogin() {
   const qs = new URLSearchParams(window.location.search);
   const code = qs.get("code");
@@ -32,7 +44,7 @@ export async function finishLogin() {
     body: new URLSearchParams({ code, client_id: c?.key, client_secret: c?.secret, redirect_uri: redirectUri(), grant_type: "authorization_code" }),
   });
   const json = await res.json().catch(() => ({}));
-  if (!json.access_token) throw new Error("Upstox login failed");
+  if (!json.access_token) throw loginError(json);
   write(SESSION, JSON.stringify({ token: json.access_token, until: validUntil() }));
   return true;
 }
