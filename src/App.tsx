@@ -87,10 +87,45 @@ const INSTRUMENTS = [
 const STARTING_CASH = 1000000;
 const RISK_FREE = 0.065;
 // Index option lot sizes (NSE revised Jan 2026). Reviewed every ~6 months.
+// Exchange lot sizes. Stock lots come from NSE's fo_mktlots.csv, copied daily into
+// public/lot-sizes.json (see .github/workflows/lot-sizes.yml); they are per expiry month
+// because NSE revises them a few times a year. Index lots below are the fallback.
 const LOT_SIZES = { NIFTY: 65, BANKNIFTY: 30, SENSEX: 20 };
-const lotSizeFor = (symbol) => LOT_SIZES[displayTicker(symbol)] ?? 1;
+const MONTHS3 = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+let LOT_TABLE = (() => { try { return JSON.parse(localStorage.getItem("pr_lot_sizes") || "null")?.lots || null; } catch { return null; } })();
+if (typeof window !== "undefined") {
+  fetch("/lot-sizes.json", { cache: "no-cache" }).then((r) => (r.ok ? r.json() : null)).then((d) => {
+    if (d?.lots && Object.keys(d.lots).length > 50) {
+      LOT_TABLE = d.lots;
+      try { localStorage.setItem("pr_lot_sizes", JSON.stringify(d)); } catch { /* storage full */ }
+    }
+  }).catch(() => {});
+}
+const monthKey = (ms) => {
+  const d = new Date(ms + 5.5 * 3600 * 1000);
+  return `${MONTHS3[d.getUTCMonth()]}-${String(d.getUTCFullYear()).slice(2)}`;
+};
+// Lot size for a contract on `symbol` expiring at `expiryMs` (defaults to the current month).
+// Returns null for a stock whose lot size is not known (not in NSE F&O, or list not loaded).
+const lotSizeOrNull = (symbol, expiryMs) => {
+  const t = displayTicker(symbol);
+  const when = expiryMs ?? Date.now();
+  if (t === "SENSEX") return when >= Date.UTC(2027, 0, 1) ? 25 : 20; // BSE: 25 from Jan-2027 expiries
+  const row = LOT_TABLE?.[t];
+  if (row) {
+    const exact = row[monthKey(when)];
+    if (exact) return exact;
+    const vals = Object.entries(row).sort((a, b) => MONTHS3.indexOf(a[0].slice(0, 3)) + 12 * +a[0].slice(4) - (MONTHS3.indexOf(b[0].slice(0, 3)) + 12 * +b[0].slice(4)));
+    return vals.length ? vals[vals.length - 1][1] : null;
+  }
+  return LOT_SIZES[t] ?? null;
+};
+const lotSizeFor = (symbol, expiryMs) => lotSizeOrNull(symbol, expiryMs) ?? 1;
+const hasLotSize = (symbol, expiryMs) => lotSizeOrNull(symbol, expiryMs) != null;
 // Positions opened before this change were stored in units, not lots.
-const posMultiplier = (p) => (p.lotBased ? lotSizeFor(p.symbol) : 1);
+// A position keeps the lot size it was opened with. Older positions saved without one
+// were opened with the fixed index lots (or 1 for stock options), so they keep that.
+const posMultiplier = (p) => (p.lot ? p.lot : p.lotBased ? (LOT_SIZES[displayTicker(p.symbol)] ?? 1) : 1);
 const isShort = (p) => p.side === "short";
 // Simplified estimate of SPAN + exposure margin for SELLING one lot of an option.
 // Not exchange-exact: about 9% of contract value, reduced for out-of-the-money strikes, minimum 4%.
@@ -3778,14 +3813,19 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
     const T = (ticket.expiry - nowMs()) / (365 * 24 * 3600 * 1000);
     const sigma = symMeta.iv * (1 + 0.15 * Math.abs(ticket.strike - spot) / spot);
     const price = realPremium(ticket) ?? blackScholes(spot, ticket.strike, T, RISK_FREE, sigma, ticket.type).price;
-    const lot = lotSizeFor(ticket.symbol);
-    const premiumTotal = price * lot * qty;
+    const opening = mode === "buy" || mode === "short";
+    if (opening && !hasLotSize(ticket.symbol, ticket.expiry)) return { ok: false, msg: `Lot size for ${displayTicker(ticket.symbol)} options isn't available yet — refresh the page in a moment` };
+    const lot = lotSizeFor(ticket.symbol, ticket.expiry);
     const label = `${ticket.type.toUpperCase()} ${displayTicker(ticket.symbol)} ${ticket.strike} ${fmtDate(new Date(ticket.expiry))}`;
 
-    const plural = `${qty} lot${qty > 1 ? "s" : ""} (${qty * lot} units)`;
     const sameContract = (p) => p.symbol === ticket.symbol && p.type === ticket.type && p.strike === ticket.strike && p.expiry === ticket.expiry && p.lotBased;
-    const longKey = (p) => sameContract(p) && !isShort(p);
-    const shortKey = (p) => sameContract(p) && isShort(p);
+    // Closing uses the lot size the position was opened with; opening only adds to a position with the same lot size.
+    const closing = mode === "sell" ? optionPositions.find((p) => sameContract(p) && !isShort(p)) : mode === "cover" ? optionPositions.find((p) => sameContract(p) && isShort(p)) : null;
+    const unit = closing ? posMultiplier(closing) : lot;
+    const premiumTotal = price * unit * qty;
+    const plural = `${qty} lot${qty > 1 ? "s" : ""} (${qty * unit} units)`;
+    const longKey = (p) => sameContract(p) && !isShort(p) && (closing ? p.id === closing.id : posMultiplier(p) === lot);
+    const shortKey = (p) => sameContract(p) && isShort(p) && (closing ? p.id === closing.id : posMultiplier(p) === lot);
 
     if (mode === "buy") {
       if (premiumTotal > cash) return { ok: false, msg: "Insufficient buying power" };
@@ -3797,7 +3837,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
           const avgPremium = (existing.avgPremium * existing.qty + price * qty) / totalQty;
           return prev.map((p) => (longKey(p) ? { ...p, qty: totalQty, avgPremium, stopLoss: stopLoss ?? p.stopLoss ?? null } : p));
         }
-        return [...prev, { id: uid(), symbol: ticket.symbol, type: ticket.type, strike: ticket.strike, expiry: ticket.expiry, qty, avgPremium: price, lotBased: true, side: "long", stopLoss }];
+        return [...prev, { id: uid(), symbol: ticket.symbol, type: ticket.type, strike: ticket.strike, expiry: ticket.expiry, qty, avgPremium: price, lotBased: true, lot, side: "long", stopLoss }];
       });
       logTrade(`BTO ${plural} ${label} @ ${fmtMoney(price)}`, -premiumTotal);
       return { ok: true, kind: "bull", msg: `Bought ${plural} ${label}${stopLoss ? ` · SL ${fmtMoney(stopLoss)}` : ""}` };
@@ -3807,7 +3847,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
       if (qty > held) return { ok: false, msg: held ? `Only ${held} lot${held > 1 ? "s" : ""} held — use Sell to Open to go short` : "You don't hold this option — use Sell to Open to go short" };
       setCash((c) => c + premiumTotal);
       setOptionPositions((prev) => prev.map((p) => (longKey(p) ? { ...p, qty: p.qty - qty } : p)).filter((p) => p.qty > 0));
-      logTrade(`STC ${plural} ${label} @ ${fmtMoney(price)}`, premiumTotal, (price - existing.avgPremium) * lot * qty);
+      logTrade(`STC ${plural} ${label} @ ${fmtMoney(price)}`, premiumTotal, (price - existing.avgPremium) * unit * qty);
       return { ok: true, kind: "bear", msg: `Sold ${plural} ${label}` };
     } else if (mode === "short") {
       const marginNeeded = shortMarginPerLot(spot, ticket.strike, ticket.type, lot) * qty;
@@ -3820,7 +3860,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
           const avgPremium = (existing.avgPremium * existing.qty + price * qty) / totalQty;
           return prev.map((p) => (shortKey(p) ? { ...p, qty: totalQty, avgPremium, margin: (p.margin || 0) + marginNeeded, stopLoss: stopLoss ?? p.stopLoss ?? null } : p));
         }
-        return [...prev, { id: uid(), symbol: ticket.symbol, type: ticket.type, strike: ticket.strike, expiry: ticket.expiry, qty, avgPremium: price, lotBased: true, side: "short", margin: marginNeeded, stopLoss }];
+        return [...prev, { id: uid(), symbol: ticket.symbol, type: ticket.type, strike: ticket.strike, expiry: ticket.expiry, qty, avgPremium: price, lotBased: true, lot, side: "short", margin: marginNeeded, stopLoss }];
       });
       logTrade(`STO ${plural} ${label} @ ${fmtMoney(price)} (margin ${fmtMoney(marginNeeded, 0)} blocked)`, premiumTotal);
       return { ok: true, kind: "bear", msg: `Shorted ${plural} ${label} — margin ${fmtMoney(marginNeeded, 0)} blocked${stopLoss ? ` · SL ${fmtMoney(stopLoss)}` : ""}` };
@@ -3832,7 +3872,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
       if (premiumTotal > cash + release) return { ok: false, msg: "Insufficient funds to buy back" };
       setCash((c) => c + release - premiumTotal);
       setOptionPositions((prev) => prev.map((p) => (shortKey(p) ? { ...p, qty: p.qty - qty, margin: (p.margin || 0) - release } : p)).filter((p) => p.qty > 0));
-      logTrade(`BTC ${plural} ${label} @ ${fmtMoney(price)}`, -premiumTotal, (existing.avgPremium - price) * lot * qty);
+      logTrade(`BTC ${plural} ${label} @ ${fmtMoney(price)}`, -premiumTotal, (existing.avgPremium - price) * unit * qty);
       return { ok: true, kind: "bull", msg: `Covered ${plural} ${label}` };
     }
     return { ok: false, msg: "Unknown order type" };
@@ -3847,7 +3887,8 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
     if (!marketStatus.isOpen) return showToast(replayActive ? "This replay day has ended — press Restart day to trade it again" : "Market is closed — press Practice today to try this in Replay", "bear");
     const spot = quotes[sym]?.price;
     if (!spot) return showToast("Price is still loading — try again in a moment", "bear");
-    const lot = lotSizeFor(sym);
+    if (!hasLotSize(sym, expiry)) return showToast(`Lot size for ${displayTicker(sym)} options isn't available yet — refresh the page in a moment`, "bear");
+    const lot = lotSizeFor(sym, expiry);
     const needed = legs.reduce((sum, l) => sum + (l.side === "buy" ? l.premium * lot * lots : (shortMarginPerLot(spot, l.strike, l.type, lot) - l.premium * lot) * lots), 0);
     if (needed > cash) return showToast(`Not enough funds — this needs about ${fmtMoney(needed, 0)} (margin is estimated per leg)`, "bear");
     const ordered = [...legs].sort((a, b) => (a.side === b.side ? 0 : a.side === "buy" ? -1 : 1));
@@ -5612,7 +5653,7 @@ function OptionTicket({ ticket, quotes, instruments, onClose, onSubmit, heldQty,
   const sigma = symMeta.iv * (1 + 0.15 * Math.abs(ticket.strike - spot) / spot);
   const modelGreeks = blackScholes(spot, ticket.strike, T, RISK_FREE, sigma, ticket.type);
   const greeks = { ...modelGreeks, price: realPremium(ticket) ?? modelGreeks.price };
-  const lot = lotSizeFor(ticket.symbol);
+  const lot = lotSizeFor(ticket.symbol, ticket.expiry);
   const marginEst = shortMarginPerLot(spot, ticket.strike, ticket.type, lot) * qty;
 
   return (
@@ -5899,7 +5940,7 @@ function PopoutChart() {
   const optStrikes = optSpot ? strikesAround(optSpot, 11, optStep) : [];
   const atmStrike = optStrikes[Math.floor(optStrikes.length / 2)];
   const strikeNow = optStrike != null && optStrikes.includes(optStrike) ? optStrike : atmStrike;
-  const optLot = lotSizeFor(sym);
+  const optLot = lotSizeFor(sym, optExpiry ? optExpiry.getTime() : undefined);
   let optPremium = null;
   if (optSpot && optIv && optExpiry && strikeNow) {
     const T = (optExpiry.getTime() - optNow) / (365 * 24 * 3600 * 1000);
