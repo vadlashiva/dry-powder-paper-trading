@@ -56,3 +56,14 @@ test("'Start again' returns to step 1", () => {
   fireEvent.click(screen.getByText("Start again from Step 1"));
   expect(screen.getByText("Step 1 of 4")).toBeInTheDocument();
 });
+
+test("the first question offers the practice market", () => {
+  const { AccountQuestion } = require("./brokerSetup");
+  const onPractice = jest.fn();
+  render(<AccountQuestion brand={null} onYes={() => {}} onOther={() => {}} onBack={() => {}} onPractice={onPractice} />);
+  fireEvent.click(screen.getByText("Practise now with a simulated market"));
+  expect(onPractice).toHaveBeenCalledWith("question");
+  fireEvent.click(screen.getByText("No, not yet"));
+  fireEvent.click(screen.getByText("Practise now with a simulated market"));
+  expect(onPractice).toHaveBeenLastCalledWith("no_account");
+});

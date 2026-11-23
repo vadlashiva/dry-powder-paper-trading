@@ -70,7 +70,7 @@ const POSITIONS = [
   { name: "TCS", qty: 8, avg: 3291.0, ltp: 3342.75 },
 ];
 
-export function AppPreview({ brand, onConnect }) {
+export function AppPreview({ brand, onConnect, onPractice }) {
   const [tab, setTab] = useState("chart");
   const [locked, setLocked] = useState(false);
   const candles = useMemo(sampleCandles, []);
@@ -154,6 +154,7 @@ export function AppPreview({ brand, onConnect }) {
         </div>
       )}
       <button type="button" className="btn btnBull authSubmit pvCta" onClick={() => connect(locked ? "lock" : "cta")}>Connect your broker to start trading</button>
+      {onPractice && <button type="button" className="btn btnGhost authSubmit pvCta" style={{ marginTop: 8 }} onClick={() => onPractice(locked ? "preview_lock" : "preview")}>No broker? Practise with a simulated market</button>}
       <div className="dim angelNote">Takes about 3 minutes, once. All trades use virtual money; PaperRally can't place real orders.</div>
     </div>
   );
