@@ -7855,7 +7855,9 @@ a.resetBtn { text-decoration: none; }
 .setupBrokers { display: grid; gap: 8px; margin: 14px 0; }
 .setupBrokers .btn { padding: 13px; font-size: 15px; justify-content: center; }
 .practiceBox { margin: 14px 0 6px; padding-top: 12px; border-top: 1px dashed var(--border); display: flex; flex-direction: column; gap: 6px; }
-.practiceBtn { width: 100%; }
+.practiceBtn { width: 100%; border: 1px solid #F5B82E; color: #FFE3A3; animation: practiceBlink 1.6s ease-in-out infinite; }
+@keyframes practiceBlink { 0%, 100% { box-shadow: 0 0 0 0 rgba(245,184,46,0); } 50% { box-shadow: 0 0 0 6px rgba(245,184,46,0.28); background: color-mix(in srgb, #F5B82E 18%, var(--surface-2)); } }
+@media (prefers-reduced-motion: reduce) { .practiceBtn { animation: none; box-shadow: 0 0 0 3px rgba(245,184,46,0.35); } }
 .setupOpen { display: block; text-align: center; text-decoration: none; padding: 10px; }
 .setupNav { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 .prodToggle { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 12px; }

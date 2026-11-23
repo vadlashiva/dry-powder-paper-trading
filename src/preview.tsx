@@ -154,13 +154,19 @@ export function AppPreview({ brand, onConnect, onPractice }) {
         </div>
       )}
       <button type="button" className="btn btnBull authSubmit pvCta" onClick={() => connect(locked ? "lock" : "cta")}>Connect your broker to start trading</button>
-      {onPractice && <button type="button" className="btn btnGhost authSubmit pvCta" style={{ marginTop: 8 }} onClick={() => onPractice(locked ? "preview_lock" : "preview")}>No broker? Practise with a simulated market</button>}
+      {onPractice && <button type="button" className="btn btnGhost authSubmit pvCta practiceBlink" style={{ marginTop: 8 }} onClick={() => onPractice(locked ? "preview_lock" : "preview")}>No broker? Practise with a simulated market</button>}
       <div className="dim angelNote">Takes about 3 minutes, once. All trades use virtual money; PaperRally can't place real orders.</div>
     </div>
   );
 }
 
 export const PREVIEW_CSS = `
+.practiceBlink { border: 1px solid #F5B82E; color: #FFE3A3; animation: practiceBlink 1.6s ease-in-out infinite; }
+@keyframes practiceBlink {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245,184,46,0); background: var(--surface-2); }
+  50% { box-shadow: 0 0 0 6px rgba(245,184,46,0.28); background: color-mix(in srgb, #F5B82E 18%, var(--surface-2)); }
+}
+@media (prefers-reduced-motion: reduce) { .practiceBlink { animation: none; box-shadow: 0 0 0 3px rgba(245,184,46,0.35); } }
 .pvCard { max-width: 480px; width: 100%; box-sizing: border-box; }
 .pvCard h1 { font-size: 20px; margin: 12px 0 8px; }
 .pvBadge { display: inline-block; margin: 12px 0 4px; font-size: 11.5px; font-weight: 600; color: var(--amber); background: color-mix(in srgb, var(--amber) 14%, transparent); padding: 4px 10px; border-radius: 20px; }
