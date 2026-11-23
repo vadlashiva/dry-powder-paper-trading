@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
-import { lotSizeFrom, positionMultiplier, isShortPos, shortMarginPerLot, fetchPortfolioVersionWith, savePortfolioVersionedWith } from "./positionMath";
+import { lotSizeFrom, positionMultiplier, isShortPos, shortMarginPerLot, fetchPortfolioVersionWith, savePortfolioVersionedWith, MIS, CF, productOf, isIntraday, stockCashNeeded, stockPositionValue, stockSaleCash, squareOffDue, intradayClosed, MIS_STOCK_MARGIN } from "./positionMath";
 import {TrendingUp, TrendingDown, RotateCcw, X, Flame, Activity, LogOut, Lock, User as UserIcon, Bell, Trash2, Maximize2, Download, Newspaper, Crosshair, Sparkles,Eye, EyeOff, LineChart, Layers, Play, GraduationCap, Phone,
   List, BarChart3, Ellipsis, BookOpen, Briefcase, ListOrdered, Mail, KeyRound, Hourglass, MessageSquare, Trophy, Share2, Smartphone, Compass, NotebookPen,
   ArrowLeft, FlaskConical,
@@ -2530,6 +2530,11 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
   useEffect(() => { chargesOnRef.current = chargesOn; saveSetting(chargesKey, chargesOn); }, [chargesOn]);
   // Planned stop-loss on the stock order ticket ("" = use the suggested 2% stop).
   const [slOn, setSlOn] = useState(true);
+  // Intraday (MIS) or carry-forward (CNC / NRML) for new orders; remembered between visits.
+  const [product, setProductRaw] = useState(() => { try { return localStorage.getItem("pr_product") === MIS ? MIS : CF; } catch { return CF; } });
+  const productRef = useRef(product);
+  productRef.current = product;
+  const setProduct = (v) => { setProductRaw(v); try { localStorage.setItem("pr_product", v); } catch { /* storage unavailable */ } };
   const [slPrice, setSlPrice] = useState("");
   const [targetOn, setTargetOn] = useState(false);
   const [targetPrice, setTargetPrice] = useState("");
@@ -2995,20 +3000,24 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
 
     toFill.forEach((o) => {
       const { fillPrice, ...orderCore } = o;
-      const idx = workingPositions.findIndex((p) => p.symbol === o.symbol);
+      const prod = o.product === MIS ? MIS : CF;
+      const idx = o.side === "buy"
+        ? workingPositions.findIndex((p) => p.symbol === o.symbol && productOf(p) === prod)
+        : workingPositions.indexOf(stockPosFor(workingPositions, o.symbol, prod));
 
       if (o.side === "buy") {
-        const affordableQty = Math.max(0, Math.floor(workingCash / fillPrice));
+        const affordableQty = Math.max(0, Math.floor(workingCash / stockCashNeeded(fillPrice, 1, prod)));
         const fillQty = Math.min(o.qty, affordableQty);
         if (fillQty <= 0) { cancelled.push(o); return; }
         const total = fillPrice * fillQty;
-        workingCash -= total;
+        const need = stockCashNeeded(fillPrice, fillQty, prod);
+        workingCash -= need;
         if (idx >= 0) {
           const totalQty = workingPositions[idx].qty + fillQty;
           const avgPrice = (workingPositions[idx].avgPrice * workingPositions[idx].qty + total) / totalQty;
-          workingPositions[idx] = { ...workingPositions[idx], qty: totalQty, avgPrice };
+          workingPositions[idx] = { ...workingPositions[idx], qty: totalQty, avgPrice, ...(prod === MIS ? { margin: (workingPositions[idx].margin || 0) + need } : {}) };
         } else {
-          workingPositions.push({ id: uid(), symbol: o.symbol, qty: fillQty, avgPrice: fillPrice });
+          workingPositions.push({ id: uid(), symbol: o.symbol, qty: fillQty, avgPrice: fillPrice, product: prod, ...(prod === MIS ? { margin: need, openedAt: nowMs() } : {}) });
         }
         if (fillQty < o.qty) {
           remaining.push({ ...orderCore, qty: o.qty - fillQty });
@@ -3020,10 +3029,10 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
         const held = idx >= 0 ? workingPositions[idx].qty : 0;
         const fillQty = Math.min(o.qty, held);
         if (fillQty <= 0) { cancelled.push(o); return; }
-        const total = fillPrice * fillQty;
-        workingCash += total;
+        workingCash += stockSaleCash(workingPositions[idx], fillPrice, fillQty);
         const realized = (fillPrice - workingPositions[idx].avgPrice) * fillQty;
-        workingPositions[idx] = { ...workingPositions[idx], qty: workingPositions[idx].qty - fillQty };
+        const wp = workingPositions[idx];
+        workingPositions[idx] = { ...wp, qty: wp.qty - fillQty, ...(isIntraday(wp) ? { margin: (wp.margin || 0) * (1 - fillQty / wp.qty) } : {}) };
         if (fillQty < o.qty) {
           partial.push({ ...o, filledQty: fillQty, remainingQty: o.qty - fillQty, resolution: "cancelled", realized });
         } else {
@@ -3182,7 +3191,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
     return () => { cancelled = true; };
   }, [tab, selected, meta.name, isPro]);
 
-  const stockMktValue = stockPositions.reduce((sum, p) => sum + (quotes[p.symbol]?.price ?? 0) * p.qty, 0);
+  const stockMktValue = stockPositions.reduce((sum, p) => sum + stockPositionValue(p, quotes[p.symbol]?.price ?? 0), 0);
   const optionMktValue = optionPositions.reduce((sum, p) => {
     const spot = quotes[p.symbol]?.price ?? 0;
     const symMeta = allInstruments.find((s) => s.symbol === p.symbol);
@@ -3211,8 +3220,8 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
   const allocationItems = useMemo(() => {
     const items = [];
     stockPositions.forEach((p) => {
-      const mv = (quotes[p.symbol]?.price ?? 0) * p.qty;
-      if (mv > 0) items.push({ label: displayTicker(p.symbol), value: mv });
+      const mv = stockPositionValue(p, quotes[p.symbol]?.price ?? 0);
+      if (mv > 0) items.push({ label: displayTicker(p.symbol) + (isIntraday(p) ? " (MIS)" : ""), value: mv });
     });
     if (optionMktValue > 0) items.push({ label: "Options", value: optionMktValue });
     if (cash > 0) items.push({ label: "Cash", value: cash });
@@ -3579,7 +3588,9 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
 
   // One market-order path for both the main screen and the pop-out chart window,
   // so every trade lands in the same cash, positions and history.
-  const executeStockOrder = (sym, side, qtyIn) => {
+  // The held position an order on `sym` acts on: the one with the chosen product, else the only one held.
+  const stockPosFor = (list, sym, prod) => list.find((p) => p.symbol === sym && productOf(p) === prod) || (list.filter((p) => p.symbol === sym).length === 1 ? list.find((p) => p.symbol === sym) : undefined);
+  const executeStockOrder = (sym, side, qtyIn, prod = productRef.current) => {
     if (!marketStatus.isOpen) {
       return { ok: false, msg: replayActive ? "This replay day has ended — press Restart day to trade it again" : "Market is closed — orders can only be placed 9:15 AM–3:30 PM, Mon–Fri" };
     }
@@ -3592,28 +3603,33 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
     const qty = Math.floor(Number(qtyIn));
     if (!(qty > 0)) return { ok: false, msg: "Enter a valid quantity" };
     const cost = price * qty;
+    const tag = (pr) => (pr === MIS ? " (Intraday)" : "");
     if (side === "buy") {
-      if (cost > cash) return { ok: false, msg: "Insufficient buying power" };
-      setCash((c) => c - cost);
+      if (prod === MIS && intradayClosed(nowMs())) return { ok: false, msg: "Intraday orders close at 3:20 PM — choose Delivery to buy now" };
+      const need = stockCashNeeded(price, qty, prod);
+      if (need > cash) return { ok: false, msg: "Insufficient buying power" };
+      setCash((c) => c - need);
       setStockPositions((prev) => {
-        const existing = prev.find((p) => p.symbol === sym);
+        const same = (p) => p.symbol === sym && productOf(p) === prod;
+        const existing = prev.find(same);
         if (existing) {
           const totalQty = existing.qty + qty;
           const avgPrice = (existing.avgPrice * existing.qty + cost) / totalQty;
-          return prev.map((p) => (p.symbol === sym ? { ...p, qty: totalQty, avgPrice } : p));
+          return prev.map((p) => (same(p) ? { ...p, qty: totalQty, avgPrice, ...(prod === MIS ? { margin: (p.margin || 0) + need } : {}) } : p));
         }
-        return [...prev, { id: uid(), symbol: sym, qty, avgPrice: price }];
+        return [...prev, { id: uid(), symbol: sym, qty, avgPrice: price, product: prod, ...(prod === MIS ? { margin: need, openedAt: nowMs() } : {}) }];
       });
-      logTrade(`BUY ${qty} ${displayTicker(sym)} @ ${fmtMoney(price)}`, -cost);
-      return { ok: true, msg: `Bought ${qty} ${displayTicker(sym)} @ ${fmtMoney(price)}` };
+      logTrade(`BUY ${qty} ${displayTicker(sym)} @ ${fmtMoney(price)}${tag(prod)}`, -need);
+      return { ok: true, msg: `Bought ${qty} ${displayTicker(sym)} @ ${fmtMoney(price)}${tag(prod)}` };
     }
-    const existing = stockPositions.find((p) => p.symbol === sym);
+    const existing = stockPosFor(stockPositions, sym, prod);
     const held = existing?.qty ?? 0;
     if (qty > held) return { ok: false, msg: `Only ${held} shares held` };
-    setCash((c) => c + cost);
-    setStockPositions((prev) => prev.map((p) => (p.symbol === sym ? { ...p, qty: p.qty - qty } : p)).filter((p) => p.qty > 0));
-    logTrade(`SELL ${qty} ${displayTicker(sym)} @ ${fmtMoney(price)}`, cost, (price - existing.avgPrice) * qty);
-    return { ok: true, msg: `Sold ${qty} ${displayTicker(sym)} @ ${fmtMoney(price)}` };
+    const back = stockSaleCash(existing, price, qty);
+    setCash((c) => c + back);
+    setStockPositions((prev) => prev.map((p) => (p.id === existing.id ? { ...p, qty: p.qty - qty, ...(isIntraday(p) ? { margin: (p.margin || 0) * (1 - qty / p.qty) } : {}) } : p)).filter((p) => p.qty > 0));
+    logTrade(`SELL ${qty} ${displayTicker(sym)} @ ${fmtMoney(price)}${tag(productOf(existing))}`, back, (price - existing.avgPrice) * qty);
+    return { ok: true, msg: `Sold ${qty} ${displayTicker(sym)} @ ${fmtMoney(price)}${tag(productOf(existing))}` };
   };
   const executeStockOrderRef = useRef(executeStockOrder);
   executeStockOrderRef.current = executeStockOrder;
@@ -3638,14 +3654,14 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
     if (r.ok) closeOrderScreen();
     if (r.ok && wantTarget) {
       const qty = Math.floor(Number(orderQty));
-      setPendingOrders((prev) => [{ id: uid(), symbol: selected, side: "sell", kind: "limit", qty, price: +target.toFixed(2), createdAt: new Date(nowMs()), bracketId }, ...prev]);
+      setPendingOrders((prev) => [{ id: uid(), symbol: selected, side: "sell", kind: "limit", qty, price: +target.toFixed(2), createdAt: new Date(nowMs()), bracketId, product }, ...prev]);
       setTargetPrice("");
       if (!wantStop) { showToast(`${r.msg} · target set at ${fmtMoney(target)}`, "bull"); return; }
     }
     if (r.ok && wantStop) {
       if (isPro) {
         const qty = Math.floor(Number(orderQty));
-        setPendingOrders((prev) => [{ id: uid(), symbol: selected, side: "sell", kind: "stop", qty, price: +stop.toFixed(2), createdAt: new Date(nowMs()), bracketId }, ...prev]);
+        setPendingOrders((prev) => [{ id: uid(), symbol: selected, side: "sell", kind: "stop", qty, price: +stop.toFixed(2), createdAt: new Date(nowMs()), bracketId, product }, ...prev]);
         showToast(`${r.msg} · stop-loss set at ${fmtMoney(stop)}${wantTarget ? `, target ${fmtMoney(target)}` : ""}`, "bull");
       } else {
         showToast(`${r.msg} · automatic stop-loss orders need Pro — watch your ${fmtMoney(stop)} level`, "bull");
@@ -3664,13 +3680,14 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
     if (qty <= 0) return showToast("Enter a valid quantity", "bear");
 
     if (side === "buy") {
-      if (price * qty > cash) return showToast("Order exceeds available cash", "bear");
+      if (product === MIS && intradayClosed(nowMs())) return showToast("Intraday orders close at 3:20 PM — choose Delivery", "bear");
+      if (stockCashNeeded(price, qty, product) > cash) return showToast("Order exceeds available cash", "bear");
     } else {
-      const held = stockPositions.find((p) => p.symbol === selected)?.qty ?? 0;
+      const held = stockPosFor(stockPositions, selected, product)?.qty ?? 0;
       if (qty > held) return showToast(`Only ${held} shares held`, "bear");
     }
 
-    const order = { id: uid(), symbol: selected, side, kind: orderType, qty, price, createdAt: new Date() };
+    const order = { id: uid(), symbol: selected, side, kind: orderType, qty, price, createdAt: new Date(), product };
     setPendingOrders((prev) => [order, ...prev]);
     setOrderPrice("");
     closeOrderScreen();
@@ -3717,9 +3734,10 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
     const qty = Math.max(1, parseInt(editQty) || 1);
     const price = parseFloat(editPrice);
     if (!price || price <= 0) return showToast("Enter a valid price", "bear");
-    if (editingOrder.side === "buy" && price * qty > cash) return showToast("Order exceeds available cash", "bear");
+    const eProd = editingOrder.product === MIS ? MIS : CF;
+    if (editingOrder.side === "buy" && stockCashNeeded(price, qty, eProd) > cash) return showToast("Order exceeds available cash", "bear");
     if (editingOrder.side === "sell") {
-      const held = stockPositions.find((p) => p.symbol === editingOrder.symbol)?.qty ?? 0;
+      const held = stockPosFor(stockPositions, editingOrder.symbol, eProd)?.qty ?? 0;
       if (qty > held) return showToast(`Only ${held} shares held`, "bear");
     }
     setPendingOrders((prev) => prev.map((o) => (o.id === editingOrder.id ? { ...o, qty, price } : o)));
@@ -3752,7 +3770,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
 
   // One option-order path for the order ticket and the pop-out chart window.
   // t = { symbol, type: "call" | "put", strike, expiry (ms) }; mode = buy | sell | short | cover.
-  const executeOptionOrder = (t, mode, qtyIn, stopLoss = null) => {
+  const executeOptionOrder = (t, mode, qtyIn, stopLoss = null, prod = productRef.current) => {
     if (!marketStatus.isOpen) return { ok: false, closed: true, msg: replayActive ? "This replay day has ended — press Restart day to trade it again" : "Market is closed — orders can only be placed 9:15 AM–3:30 PM, Mon–Fri" };
     const qty = Math.floor(Number(qtyIn));
     if (!t || !(qty > 0)) return { ok: false, msg: "Enter a valid number of lots" };
@@ -3765,18 +3783,22 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
     const sigma = symMeta.iv * (1 + 0.15 * Math.abs(ticket.strike - spot) / spot);
     const price = realPremium(ticket) ?? blackScholes(spot, ticket.strike, T, RISK_FREE, sigma, ticket.type).price;
     const opening = mode === "buy" || mode === "short";
+    if (opening && prod === MIS && intradayClosed(nowMs())) return { ok: false, msg: "Intraday orders close at 3:20 PM — choose Carry-forward to trade now" };
     if (opening && !hasLotSize(ticket.symbol, ticket.expiry)) return { ok: false, msg: `Lot size for ${displayTicker(ticket.symbol)} options isn't available yet — refresh the page in a moment` };
     const lot = lotSizeFor(ticket.symbol, ticket.expiry);
     const label = `${ticket.type.toUpperCase()} ${displayTicker(ticket.symbol)} ${ticket.strike} ${fmtDate(new Date(ticket.expiry))}`;
 
     const sameContract = (p) => p.symbol === ticket.symbol && p.type === ticket.type && p.strike === ticket.strike && p.expiry === ticket.expiry && p.lotBased;
     // Closing uses the lot size the position was opened with; opening only adds to a position with the same lot size.
-    const closing = mode === "sell" ? optionPositions.find((p) => sameContract(p) && !isShort(p)) : mode === "cover" ? optionPositions.find((p) => sameContract(p) && isShort(p)) : null;
+    const pickClose = (sideOk) => optionPositions.find((p) => sameContract(p) && sideOk(p) && productOf(p) === prod) || optionPositions.find((p) => sameContract(p) && sideOk(p));
+    const closing = mode === "sell" ? pickClose((p) => !isShort(p)) : mode === "cover" ? pickClose((p) => isShort(p)) : null;
     const unit = closing ? posMultiplier(closing) : lot;
     const premiumTotal = price * unit * qty;
     const plural = `${qty} lot${qty > 1 ? "s" : ""} (${qty * unit} units)`;
-    const longKey = (p) => sameContract(p) && !isShort(p) && (closing ? p.id === closing.id : posMultiplier(p) === lot);
-    const shortKey = (p) => sameContract(p) && isShort(p) && (closing ? p.id === closing.id : posMultiplier(p) === lot);
+    const longKey = (p) => sameContract(p) && !isShort(p) && (closing ? p.id === closing.id : posMultiplier(p) === lot && productOf(p) === prod);
+    const shortKey = (p) => sameContract(p) && isShort(p) && (closing ? p.id === closing.id : posMultiplier(p) === lot && productOf(p) === prod);
+    const prodFields = prod === MIS ? { product: MIS, openedAt: nowMs() } : { product: CF };
+    const tagTxt = prod === MIS ? " (Intraday)" : "";
 
     if (mode === "buy") {
       if (premiumTotal > cash) return { ok: false, msg: "Insufficient buying power" };
@@ -3788,9 +3810,9 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
           const avgPremium = (existing.avgPremium * existing.qty + price * qty) / totalQty;
           return prev.map((p) => (longKey(p) ? { ...p, qty: totalQty, avgPremium, stopLoss: stopLoss ?? p.stopLoss ?? null } : p));
         }
-        return [...prev, { id: uid(), symbol: ticket.symbol, type: ticket.type, strike: ticket.strike, expiry: ticket.expiry, qty, avgPremium: price, lotBased: true, lot, side: "long", stopLoss }];
+        return [...prev, { id: uid(), symbol: ticket.symbol, type: ticket.type, strike: ticket.strike, expiry: ticket.expiry, qty, avgPremium: price, lotBased: true, lot, side: "long", stopLoss, ...prodFields }];
       });
-      logTrade(`BTO ${plural} ${label} @ ${fmtMoney(price)}`, -premiumTotal);
+      logTrade(`BTO ${plural} ${label} @ ${fmtMoney(price)}${tagTxt}`, -premiumTotal);
       return { ok: true, kind: "bull", msg: `Bought ${plural} ${label}${stopLoss ? ` · SL ${fmtMoney(stopLoss)}` : ""}` };
     } else if (mode === "sell") {
       const existing = optionPositions.find(longKey);
@@ -3811,9 +3833,9 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
           const avgPremium = (existing.avgPremium * existing.qty + price * qty) / totalQty;
           return prev.map((p) => (shortKey(p) ? { ...p, qty: totalQty, avgPremium, margin: (p.margin || 0) + marginNeeded, stopLoss: stopLoss ?? p.stopLoss ?? null } : p));
         }
-        return [...prev, { id: uid(), symbol: ticket.symbol, type: ticket.type, strike: ticket.strike, expiry: ticket.expiry, qty, avgPremium: price, lotBased: true, lot, side: "short", margin: marginNeeded, stopLoss }];
+        return [...prev, { id: uid(), symbol: ticket.symbol, type: ticket.type, strike: ticket.strike, expiry: ticket.expiry, qty, avgPremium: price, lotBased: true, lot, side: "short", margin: marginNeeded, stopLoss, ...prodFields }];
       });
-      logTrade(`STO ${plural} ${label} @ ${fmtMoney(price)} (margin ${fmtMoney(marginNeeded, 0)} blocked)`, premiumTotal);
+      logTrade(`STO ${plural} ${label} @ ${fmtMoney(price)}${tagTxt} (margin ${fmtMoney(marginNeeded, 0)} blocked)`, premiumTotal);
       return { ok: true, kind: "bear", msg: `Shorted ${plural} ${label} — margin ${fmtMoney(marginNeeded, 0)} blocked${stopLoss ? ` · SL ${fmtMoney(stopLoss)}` : ""}` };
     } else if (mode === "cover") {
       const existing = optionPositions.find(shortKey);
@@ -3926,6 +3948,25 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
     });
   }, [quotes, optTick]);
 
+  // Intraday (MIS) positions are squared off at 3:20 PM IST, like a broker does; open intraday
+  // orders are cancelled. A position left open past its day (app closed) is squared off on the
+  // next check at the latest price.
+  const sqFiredRef = useRef(new Set());
+  const [sqTick, setSqTick] = useState(0);
+  useEffect(() => { const iv = setInterval(() => setSqTick((n) => n + 1), 15000); return () => clearInterval(iv); }, []);
+  useEffect(() => {
+    const now = nowMs();
+    const dueStocks = stockPositions.filter((p) => isIntraday(p) && squareOffDue(p.openedAt, now) && !sqFiredRef.current.has(p.id) && (quotes[p.symbol]?.price ?? 0) > 0);
+    const dueOpts = optionPositions.filter((p) => isIntraday(p) && squareOffDue(p.openedAt, now) && !sqFiredRef.current.has(p.id) && (quotes[p.symbol]?.price ?? 0) > 0);
+    dueStocks.forEach((p) => { sqFiredRef.current.add(p.id); closeStockPosition(p, "Auto square-off"); });
+    dueOpts.forEach((p) => {
+      sqFiredRef.current.add(p.id);
+      const prem = optionPremiumNow(p, quotes, allInstruments) ?? p.avgPremium;
+      closeOptionPosition(p, prem, "Auto square-off");
+    });
+    if (intradayClosed(now)) setPendingOrders((prev) => (prev.some((o) => o.product === MIS) ? prev.filter((o) => o.product !== MIS) : prev));
+  }, [quotes, optTick, sqTick]);
+
   // Close buttons open a confirmation first — one stray tap on a phone shouldn't exit a trade.
   const requestClose = (kind, pos) => {
     if (!marketStatus.isOpen) {
@@ -3951,13 +3992,14 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
     }
   };
 
-  const closeStockPosition = (pos) => {
+  const closeStockPosition = (pos, reason = null) => {
     const price = quotes[pos.symbol]?.price ?? 0;
-    const total = price * pos.qty;
+    const total = stockSaleCash(pos, price, pos.qty);
     setCash((c) => c + total);
     setStockPositions((prev) => prev.filter((p) => p.id !== pos.id));
-    logTrade(`SELL ${pos.qty} ${displayTicker(pos.symbol)} @ ${fmtMoney(price)}`, total, (price - pos.avgPrice) * pos.qty);
-    showToast("Position closed", "bear");
+    logTrade(`${reason ? `${reason} ` : ""}SELL ${pos.qty} ${displayTicker(pos.symbol)} @ ${fmtMoney(price)}${isIntraday(pos) ? " (Intraday)" : ""}`, total, (price - pos.avgPrice) * pos.qty);
+    showToast(reason ? `${reason}: ${displayTicker(pos.symbol)} sold @ ${fmtMoney(price)}` : "Position closed", "bear");
+    if (reason) notify(`${reason}: ${displayTicker(pos.symbol)}`, `Sold ${pos.qty} @ ${fmtMoney(price)}`, { tag: `sq-${pos.id}` });
   };
 
   const doReset = () => {
@@ -4213,8 +4255,8 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
 
   // Order-ticket helpers: quantity shortcuts and the planned stop-loss / risk preview.
   const tradePrice = selected ? (orderType === "market" ? q.price : parseFloat(orderPrice) || q.price) : 0;
-  const heldShares = selected ? (stockPositions.find((p) => p.symbol === selected)?.qty ?? 0) : 0;
-  const maxAffordable = tradePrice > 0 ? Math.max(0, Math.floor(cash / tradePrice)) : 0;
+  const heldShares = selected ? (stockPosFor(stockPositions, selected, product)?.qty ?? 0) : 0;
+  const maxAffordable = tradePrice > 0 ? Math.max(0, Math.floor(cash / stockCashNeeded(tradePrice, 1, product))) : 0;
   const qtyShortcuts = [
     ["1", 1],
     ["10", 10],
@@ -4628,6 +4670,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
                       </button>
                     ))}
                   </div>
+                  <ProductToggle product={product} onChange={setProduct} kind="stock" />
 
                   <div className="orderRow">
                     <label htmlFor="orderQtyInput">Quantity</label>
@@ -4661,8 +4704,8 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
                   </button>
 
                   <div className="orderEst mono">
-                    <span className="dim">Est. cost</span>
-                    <span>{fmtMoney(tradePrice * orderQty)}</span>
+                    <span className="dim">{product === MIS ? "Margin (20%)" : "Est. cost"}</span>
+                    <span>{fmtMoney(stockCashNeeded(tradePrice, orderQty, product))}</span>
                   </div>
                   <div className="orderSizeHint dim">
                     That's <b className={positionPct > 25 ? "bear" : ""}>{positionPct.toFixed(1)}%</b> of your capital{positionPct > 25 ? " — a large position for one stock" : ""}.
@@ -4742,7 +4785,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
                   {renderTagPrompt()}
 
                   {(() => {
-                    const pos = stockPositions.find((p) => p.symbol === selected);
+                    const pos = stockPosFor(stockPositions, selected, product);
                     if (!pos) return <div className="held mono">Held: 0 shares</div>;
                     const mv = q.price * pos.qty;
                     const pnl = mv - pos.avgPrice * pos.qty;
@@ -4917,6 +4960,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
                               <div className="optTags">
                                 <span className={`sideTag ${short ? "sideShort" : "sideLong"}`}>{short ? "Short" : "Long"} {p.type === "call" ? "Call" : "Put"}</span>
                                 <span className={`expTag ${expToday ? "expToday" : ""}`}><Hourglass size={11} /> {expToday ? "Expires today" : `Exp ${fmtDate(new Date(p.expiry))}`}</span>
+                                <span className={`prodTag ${isIntraday(p) ? "prodMis" : ""}`} title={isIntraday(p) ? "Intraday (MIS): squared off automatically at 3:20 PM" : "Carry-forward (NRML): stays open until you close it or it expires"}>{isIntraday(p) ? "Intraday · sq. off 3:20 PM" : "Carry-forward"}</span>
                               </div>
                               <div className="optName"><span>{displayTicker(p.symbol)}</span> <span className="mono">{p.strike.toLocaleString("en-IN")}</span> <span className="optRight">{right}</span></div>
                               {spot > 0 && (
@@ -4963,13 +5007,13 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
                       const pnl = mv - p.avgPrice * p.qty;
                       return (
                         <tr key={p.id}>
-                          <td className="mono">{displayTicker(p.symbol)}</td>
+                          <td className="mono">{displayTicker(p.symbol)} <span className={`prodTag ${isIntraday(p) ? "prodMis" : ""}`}>{isIntraday(p) ? "Intraday" : "Delivery"}</span></td>
                           <td className="mono">{p.qty}</td>
                           <td className="mono">{fmtMoney(p.avgPrice)}</td>
                           <td className="mono">{fmtMoney(last)}</td>
                           <td className="mono">{fmtMoney(mv)}</td>
                           <td className={`mono ${pnl >= 0 ? "bull" : "bear"}`}>{fmtMoney(pnl)}</td>
-                          <td className="orderRowActions">
+                          <td className="orderRowActions" data-prod={productOf(p)}>
                             <button className="closeBtn" onClick={() => { setSelected(p.symbol); setTab("trade"); }}><LineChart size={12} /> Chart</button>
                             <button className="closeBtn" onClick={() => startStopLossFromPosition(p)}><Crosshair size={12} /> Stop-Loss</button>
                             <button className="closeBtn closeBtnExit" onClick={() => requestClose("stock", p)}>Close</button>
@@ -5303,6 +5347,8 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
           instruments={allInstruments}
           onClose={() => setTicket(null)}
           onSubmit={placeOptionOrder}
+          product={product}
+          onProduct={setProduct}
           marketOpen={marketStatus.isOpen}
           isPro={isPro}
           onUpgrade={() => setUpgradeModalOpen(true)}
@@ -5593,7 +5639,26 @@ function ProLockPanel({ title, description, onUpgrade }) {
   );
 }
 
-function OptionTicket({ ticket, quotes, instruments, onClose, onSubmit, heldQty, shortQty, marketOpen, isPro, onUpgrade }) {
+// Intraday (MIS) / carry-forward choice shown on every order ticket.
+export function ProductToggle({ product, onChange, kind }) {
+  const opts = [[MIS, "Intraday", "MIS"], [CF, kind === "stock" ? "Delivery" : "Carry-forward", kind === "stock" ? "CNC" : "NRML"]];
+  return (
+    <div className="prodToggle" role="radiogroup" aria-label="Product type">
+      {opts.map(([v, label, code]) => (
+        <button key={v} type="button" role="radio" aria-checked={product === v} className={`prodOpt ${product === v ? "prodOptActive" : ""}`} onClick={() => onChange(v)}>
+          {label} <span className="dim">{code}</span>
+        </button>
+      ))}
+      <div className="prodNote dim">
+        {product === MIS
+          ? (kind === "stock" ? "Intraday: 20% margin (5x). Squared off automatically at 3:20 PM." : "Intraday: squared off automatically at 3:20 PM.")
+          : (kind === "stock" ? "Delivery: full amount paid; shares stay until you sell." : "Carry-forward: stays open overnight until you close it or it expires.")}
+      </div>
+    </div>
+  );
+}
+
+function OptionTicket({ ticket, quotes, instruments, onClose, onSubmit, heldQty, shortQty, marketOpen, isPro, onUpgrade, product, onProduct }) {
   const [qty, setQty] = useState(1);
   const [sl, setSl] = useState("");
   const [slErr, setSlErr] = useState("");
@@ -5628,6 +5693,7 @@ function OptionTicket({ ticket, quotes, instruments, onClose, onSubmit, heldQty,
           <div><span className="dim" title="Implied Volatility (IV) — the market's expectation of how much the underlying will swing, expressed as an annualized percentage. Higher IV means a pricier option.">IV</span>{(sigma * 100).toFixed(1)}%</div>
         </div>
 
+        <ProductToggle product={product} onChange={onProduct} kind="option" />
         <div className="orderRow">
           <label>Lots <span className="dim">(1 lot = {lot})</span></label>
           <input type="number" min="1" inputMode="numeric" aria-label="Number of lots" className="qtyInput mono" value={qty} onChange={(e) => setQty(Math.max(1, parseInt(e.target.value) || 1))} />
@@ -7771,6 +7837,13 @@ a.resetBtn { text-decoration: none; }
 .setupBrokers .btn { padding: 13px; font-size: 15px; justify-content: center; }
 .setupOpen { display: block; text-align: center; text-decoration: none; padding: 10px; }
 .setupNav { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.prodToggle { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 12px; }
+.prodOpt { flex: 1; min-width: 120px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.prodOpt .dim { font-weight: 500; font-size: 11px; margin-left: 4px; }
+.prodOptActive { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, var(--surface-2)); }
+.prodNote { width: 100%; font-size: 11.5px; }
+.prodTag { display: inline-flex; align-items: center; font-size: 10.5px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--border); color: var(--text-dim); vertical-align: middle; }
+.prodMis { color: var(--amber); border-color: color-mix(in srgb, var(--amber) 50%, var(--border)); }
 .setupNav .btn:disabled, .authSubmit:disabled { opacity: .45; cursor: not-allowed; }
 .setupNoKey { margin-top: 12px; padding: 12px; border: 1px dashed var(--border); border-radius: 10px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 .setupNoKey p { margin: 0; font-size: 12.5px; }
