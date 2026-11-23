@@ -60,3 +60,39 @@ test("the market mixes rising and falling weeks", () => {
     expect(maxRun).toBeLessThanOrEqual(5);
   }
 });
+
+describe("practice market clock (Start market)", () => {
+  const { simNow, simIsOpen, startSimMarket } = require("./sim");
+  beforeEach(() => localStorage.clear());
+
+  test("keeps real time until Start market is pressed", () => {
+    const real = ist(2026, 11, 23, 22, 0);
+    expect(simNow(real)).toBe(real);
+    expect(simIsOpen(real)).toBe(false);
+  });
+
+  test("Start market at 10 PM opens the next session at 9:15 and runs in real time", () => {
+    const real = ist(2026, 11, 23, 22, 0); // Monday night
+    const open = startSimMarket(real);
+    expect(open).toBe(ist(2026, 11, 24, 9, 15));
+    expect(simNow(real)).toBe(open);
+    expect(simIsOpen(simNow(real + 60000))).toBe(true);
+    expect(simNow(real + 30 * 60000)).toBe(ist(2026, 11, 24, 9, 45));
+  });
+
+  test("pressing it again during a session changes nothing; after the close it moves on, never back", () => {
+    const real = ist(2026, 11, 27, 21, 0); // Friday night: next session is Monday
+    const open = startSimMarket(real);
+    expect(open).toBe(ist(2026, 11, 30, 9, 15));
+    expect(startSimMarket(real + 3600000)).toBe(simNow(real + 3600000));
+    const afterClose = real + 6.5 * 3600000; // 3:45 PM practice time
+    expect(simIsOpen(simNow(afterClose))).toBe(false);
+    const next = startSimMarket(afterClose);
+    expect(next).toBe(ist(2026, 12, 1, 9, 15));
+    expect(next).toBeGreaterThan(simNow(afterClose - 1));
+  });
+
+  test("Start market before 9:15 on a weekday opens today's session", () => {
+    expect(startSimMarket(ist(2026, 11, 24, 7, 0))).toBe(ist(2026, 11, 24, 9, 15));
+  });
+});

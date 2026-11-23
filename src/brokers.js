@@ -17,6 +17,8 @@ const STORE = "pr_broker";
 export const activeBroker = () => BROKERS[read(STORE)] || (angel.hasCredentials() ? BROKERS.angel : null);
 export const chooseBroker = (id) => { write(STORE, id); try { window.dispatchEvent(new Event("pr-broker-changed")); } catch { /* no window */ } };
 export const isSimulated = () => !!activeBroker()?.simulated;
+// The market's clock: real time with a broker; the practice market's own clock without one (see sim.js).
+export const marketNow = () => { const b = activeBroker(); return b?.api.clockNow ? b.api.clockNow() : Date.now(); };
 const api = () => {
   const b = activeBroker();
   if (!b) throw new Error("No broker connected");
@@ -33,7 +35,7 @@ export const fetchOptionQuotes = (contracts) => {
 
 const RANGE_DAYS = { "1d": 6, "5d": 8, "1mo": 32, "6mo": 190, "1y": 370 };
 async function chartJson({ symbol, interval, range, period1, period2 }) {
-  const now = Date.now();
+  const now = marketNow();
   const toMs = period2 ? Math.min(Number(period2) * 1000, now) : now;
   const fromMs = period1 ? Number(period1) * 1000 : now - (RANGE_DAYS[range] ?? 8) * 86400000;
   let candles = await api().fetchCandles({ symbol, interval, fromMs, toMs });

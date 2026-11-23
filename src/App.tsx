@@ -10,7 +10,8 @@ import { StrategyPanel } from "./strategies";
 import { computeSMC, SMCPrimitive } from "./smc";
 import { BrokerSetup, AccountQuestion } from "./brokerSetup";
 import { AppPreview, PREVIEW_CSS } from "./preview";
-import { BROKERS, activeBroker, chooseBroker, answerFeedRequest, fetchQuotes, fetchOptionQuotes } from "./brokers";
+import { BROKERS, activeBroker, chooseBroker, answerFeedRequest, fetchQuotes, fetchOptionQuotes, isSimulated, marketNow } from "./brokers";
+import { startSimMarket } from "./sim";
 import { LEARN, LangSwitch, loadLang, saveLang } from "./i18n";
 import { useIsMobile, loadSetting, saveSetting, computeCharges, PerformancePanel } from "./extras";
 import { isoWeekIST, initTelemetry, track, tradeKey, TagChips, JournalModal, JournalStatsCard, computeAchievements, AchievementsGrid, ACHIEVEMENTS, makeShareImage, shareImage, captureReferralFromUrl, syncReferrals, InvitePanel, LeaderboardPanel, TourOverlay, InstallHelp } from "./growth";
@@ -111,7 +112,8 @@ const isShort = isShortPos;
 const TRIAL_DAYS = 7;
 // During Replay the whole terminal runs on a simulated clock.
 let SIM_NOW = null;
-const nowMs = () => (SIM_NOW ?? Date.now());
+// Without a broker the practice market runs on its own clock (see sim.js); with a broker, real time.
+const nowMs = () => (SIM_NOW ?? marketNow());
 // Real traded option premiums from the user's broker, keyed by contract. Where a contract has one, it is used
 // instead of the calculated (Black-Scholes) premium everywhere: chain, ticket, positions, P&L, stop-loss and fills.
 // Once a contract has a real premium it keeps its last real value rather than switching back to the calculated
@@ -157,7 +159,12 @@ const NSE_HOLIDAYS = {
 };
 
 function getMarketStatus() {
-  const ist = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+  const ist = new Date(new Date(marketNow()).toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+  if (isSimulated()) { // the practice market has no holidays and opens whenever the user presses "Start market"
+    const d = ist.getDay(), m = ist.getHours() * 60 + ist.getMinutes();
+    const open = d >= 1 && d <= 5 && m >= 555 && m < 930;
+    return { isOpen: open, label: open ? "Practice market open" : "Practice market closed" };
+  }
   const day = ist.getDay();
   const mins = ist.getHours() * 60 + ist.getMinutes();
   const key = `${ist.getFullYear()}-${String(ist.getMonth() + 1).padStart(2, "0")}-${String(ist.getDate()).padStart(2, "0")}`;
@@ -231,7 +238,7 @@ const IST_MS = 19800000;
 const expiryRuleFor = (symbol) => EXPIRY_RULES[symbol] ?? { weekday: symbol.endsWith(".BO") ? 4 : 2, weekly: false };
 function optionExpiries(symbol, n = 4, base = null) {
   const rule = expiryRuleFor(symbol);
-  const now = base ?? Date.now();
+  const now = base ?? nowMs();
   const ist = new Date(now + IST_MS); // IST wall clock, read with UTC getters
   const day = new Date(Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), ist.getUTCDate()));
   const out = [];
@@ -1160,11 +1167,11 @@ const REPLAY_CANDLE_MS = 5 * 60 * 1000;
 const REPLAY_CHANNEL = "paperrally-replay";
 
 // Today's date in India (YYYY-MM-DD).
-const istTodayISO = () => new Date(Date.now() + 19800000).toISOString().slice(0, 10);
+const istTodayISO = () => new Date(marketNow() + 19800000).toISOString().slice(0, 10);
 
 // Most recent completed NSE session (skips weekends and NSE holidays).
 function lastTradingDayISO() {
-  const istNow = new Date(Date.now() + 19800000); // IST wall clock, read with UTC getters
+  const istNow = new Date(marketNow() + 19800000); // IST wall clock, read with UTC getters
   let d = new Date(Date.UTC(istNow.getUTCFullYear(), istNow.getUTCMonth(), istNow.getUTCDate()));
   const afterClose = istNow.getUTCHours() * 60 + istNow.getUTCMinutes() >= 15 * 60 + 30;
   if (!afterClose) d.setUTCDate(d.getUTCDate() - 1);
@@ -2415,6 +2422,14 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
   const replayDayRef = useRef("");
   useEffect(() => { replayDayRef.current = replayDay; }, [replayDay]);
   SIM_NOW = replayActive ? replayClock : null;
+  // No broker connected: the simulated practice market. Replay and "Practice today" need real past prices,
+  // so they are for broker users only; practice users get "Start market" instead.
+  const practiceMode = isSimulated();
+  useEffect(() => {
+    const onClock = () => setMarketStatus(getMarketStatus());
+    window.addEventListener("pr-sim-clock", onClock);
+    return () => window.removeEventListener("pr-sim-clock", onClock);
+  }, []);
   const marketStatus = replayActive && replayData
     ? { isOpen: replayClock >= replayData.dayStart && replayClock < replayData.dayEnd, label: replayClock >= replayData.dayEnd ? `Replay · session closed (${replayData.date})` : `Replay · ${fmtReplayTime(replayClock)}` }
     : liveMarketStatus;
@@ -2427,6 +2442,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
   const [exchangeFilter, setExchangeFilter] = useState("ALL");
   const [selected, setSelected] = useState(null);
   const [tab, setTab] = useState(() => window.history.state?.prNav?.tab || "trade");
+  useEffect(() => { if (practiceMode && tab === "replay") setTab("trade"); }, [practiceMode, tab]); // eslint-disable-line react-hooks/exhaustive-deps
   const [cash, setCash] = useState(() => saved?.cash ?? STARTING_CASH);
   const [stockPositions, setStockPositions] = useState(() => saved?.stockPositions ?? []);
   const [optionPositions, setOptionPositions] = useState(() => saved?.optionPositions ?? []);
@@ -3261,6 +3277,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
   // opts.quiet: skip the toast (the first-trade card explains replay instead).
   // Resolves true once replay is running, false otherwise.
   const startReplay = async (dayArg, opts = {}) => {
+    if (isSimulated()) return showToast("Replay uses real past prices from your own broker. Connect a broker to replay a day.", "bear");
     const replayDay = typeof dayArg === "string" ? dayArg : replayDayRef.current;
     if (!replayDay) return showToast("Pick a date first", "bear");
     setReplayDay(replayDay);
@@ -3361,12 +3378,19 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
 
   const autoReplayTriedRef = useRef(false);
   useEffect(() => {
-    if (autoReplayTriedRef.current || firstTradeDone || replayActive || liveMarketStatus.isOpen) return;
+    if (autoReplayTriedRef.current || firstTradeDone || replayActive || liveMarketStatus.isOpen || practiceMode) return;
     autoReplayTriedRef.current = true;
     startReplay(lastSessionISO, { focus: "RELIANCE.NS", quiet: true });
   }, [firstTradeDone, replayActive, liveMarketStatus.isOpen]);
 
   const practiceLastSession = () => startReplay(lastSessionISO);
+  // No broker: "Start market" opens a fresh simulated session at once, at any hour.
+  const startPracticeMarket = () => {
+    startSimMarket();
+    setMarketStatus(getMarketStatus());
+    track("sim_market_start");
+    showToast("Practice market open: simulated prices from 9:15 AM, moving in real time", "bull");
+  };
 
   const setUpFirstTrade = () => {
     setSelected("RELIANCE.NS");
@@ -4210,7 +4234,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
     ["history", "History"],
     ["perf", "Performance"],
     ["leaderboard", "Leaderboard"],
-    ["replay", "Replay"],
+    ...(practiceMode ? [] : [["replay", "Replay"]]),
     ["learn", L.learnTab],
   ];
   // "Why did you take this trade?" sits in the order box, or below the chart once the phone order screen has closed.
@@ -4303,6 +4327,11 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
           <button className="resetBtn" onClick={popOutChart} title="Open a full-day chart in a new window"><Maximize2 size={14} /> Pop-out chart</button>
           <button className="themeBtn" onClick={cycleTheme} title="Change background theme"><span className="themeEmoji">{THEMES[themeIdx].emoji}</span> {THEMES[themeIdx].name}</button>
           <button className="resetBtn" onClick={() => setConfirmReset(true)}><RotateCcw size={14} /> Reset</button>
+          {practiceMode ? (
+            <button className="resetBtn practiceTopBtn" onClick={startPracticeMarket} disabled={liveMarketStatus.isOpen} title={liveMarketStatus.isOpen ? "The practice market is open" : "Open a new practice session now, from 9:15 AM"}>
+              <Play size={14} /> {liveMarketStatus.isOpen ? "Market open" : "Start market"}
+            </button>
+          ) : (
           <button
             className="resetBtn practiceTopBtn"
             onClick={replayActive ? restartReplayDay : practiceToday}
@@ -4311,6 +4340,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
           >
             <Play size={14} /> {replayBusy ? "Loading…" : replayActive ? "Restart day" : "Practice today"}
           </button>
+          )}
           <button className="resetBtn" onClick={onLogout}><LogOut size={14} /> Log out</button>
         </div>
       </div>
@@ -4382,7 +4412,14 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
           </ol>
         </div>
       )}
-      {!liveMarketStatus.isOpen && !replayActive && (
+      {practiceMode && !liveMarketStatus.isOpen && (
+        <div className="closedBar">
+          <span className="closedBarTag">Practice market</span>
+          <span className="closedBarText">Simulated prices for beginners, no broker needed. Press Start market to open a full session from 9:15 AM, right now.</span>
+          <button className="btn btnBull closedBarBtn" onClick={startPracticeMarket}><Play size={13} /> Start market</button>
+        </div>
+      )}
+      {!practiceMode && !liveMarketStatus.isOpen && !replayActive && (
         <div className="closedBar">
           <span className="closedBarTag">Market closed</span>
           <span className="closedBarText">Orders open at 9:15 AM, Mon–Fri. Meanwhile, practise the last session ({lastSessionLabel}) candle by candle — with separate practice money.</span>
@@ -4400,7 +4437,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
             ))}
           </div>
           <div className="wlHead">
-            <span>{replayActive ? "Replay: past session prices" : `Prices from your ${activeBroker()?.name ?? "broker"} connection`}</span>
+            <span>{replayActive ? "Replay: past session prices" : practiceMode ? "Practice market: simulated prices" : `Prices from your ${activeBroker()?.name ?? "broker"} connection`}</span>
             <Activity size={12} className={quotes[selected]?.live ? "liveDot" : "liveDotOff"} />
           </div>
           <div className="wlList">
@@ -4558,6 +4595,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
                     <button className={`indToggle ${activeIndicatorCount ? "indToggleActive" : ""}`} onClick={() => setTab("indicators")}>
                       <Layers size={11} /> Indicators{activeIndicatorCount ? ` (${activeIndicatorCount})` : ""}
                     </button>
+                    {!practiceMode && (
                     <button
                       className="indToggle practiceTodayBtn"
                       title={replayActive ? "Reset the clock to 9:15 AM and start this day's practice over" : "Rewind today to the 9:15 AM open and practice it with a separate practice balance"}
@@ -4566,6 +4604,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
                     >
                       <RotateCcw size={11} /> {replayBusy ? "Loading…" : replayActive ? "Restart day" : "Practice today"}
                     </button>
+                    )}
                     <button className="indToggle" title="Open a full-day chart in a new window" onClick={popOutChart}>
                       <Maximize2 size={11} /> Pop out
                     </button>
@@ -4770,7 +4809,15 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
                     {orderScreen !== "sell" && <button className={`btn btnBull ${highlightBuy && marketStatus.isOpen && !firstTradeDone ? "buyGlow" : ""}`} disabled={!marketStatus.isOpen} onClick={() => (orderType === "market" ? placeStockOrder("buy") : placeConditionalOrder("buy"))}><TrendingUp size={14} /> Buy</button>}
                     {orderScreen !== "buy" && <button className="btn btnBear" disabled={!marketStatus.isOpen} onClick={() => (orderType === "market" ? placeStockOrder("sell") : placeConditionalOrder("sell"))}><TrendingDown size={14} /> Sell</button>}
                   </div>
-                  {!marketStatus.isOpen && !replayActive && (
+                  {!marketStatus.isOpen && practiceMode && (
+                    <div className="closedOrderHint">
+                      <div className="orderHint dim" style={{ textAlign: "center" }}>The practice market is closed.</div>
+                      <button className="btn btnBull closedPracticeBtn" onClick={startPracticeMarket}>
+                        <Play size={13} /> Start market
+                      </button>
+                    </div>
+                  )}
+                  {!marketStatus.isOpen && !replayActive && !practiceMode && (
                     <div className="closedOrderHint">
                       <div className="orderHint dim" style={{ textAlign: "center" }}>Trading resumes when the market opens.</div>
                       <button className="btn btnGhost closedPracticeBtn" onClick={practiceLastSession} disabled={replayBusy}>
@@ -5310,7 +5357,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
               : <ProLockPanel title="Strategies is a Pro feature" description="Test your trading rules on past days, build multi-leg option strategies, see payoff charts and backtest them on past index prices." onUpgrade={() => setUpgradeModalOpen(true)} />
           )}
 
-          {tab === "replay" && (
+          {tab === "replay" && !practiceMode && (
             <div className="replayWrap">
               <div className="replayControls">
                 {!replayActive ? (
@@ -5537,7 +5584,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
                 ["history", "History", ListOrdered],
                 ["perf", "Performance", TrendingUp],
                 ["leaderboard", "Leaderboard", Trophy],
-                ["replay", "Replay", Play],
+                ...(practiceMode ? [] : [["replay", "Replay", Play]]),
                 ["learn", L.learnTab, BookOpen],
               ].map(([id, label, Icon]) => (
                 <button key={id} className={`sheetItem ${tab === id ? "sheetItemActive" : ""}`} onClick={() => goTab(id)}>
@@ -5549,7 +5596,9 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
               {!isPaidPro && !inTrial && (
                 <button className="btn btnMarigold" onClick={() => { setMoreOpen(false); setUpgradeModalOpen(true); }}><Sparkles size={14} /> Upgrade to Pro</button>
               )}
-              <button className="btn btnGhost" onClick={() => { setMoreOpen(false); replayActive ? restartReplayDay() : practiceToday(); }} disabled={replayBusy}><Play size={14} /> {replayActive ? "Restart day" : "Practice today"}</button>
+              {practiceMode
+                ? <button className="btn btnGhost" onClick={() => { setMoreOpen(false); startPracticeMarket(); }} disabled={liveMarketStatus.isOpen}><Play size={14} /> {liveMarketStatus.isOpen ? "Market open" : "Start market"}</button>
+                : <button className="btn btnGhost" onClick={() => { setMoreOpen(false); replayActive ? restartReplayDay() : practiceToday(); }} disabled={replayBusy}><Play size={14} /> {replayActive ? "Restart day" : "Practice today"}</button>}
               {replayActive && <button className="btn btnGhost" onClick={() => { setMoreOpen(false); exitReplay(); }}>Exit replay</button>}
               {!install.standalone && <button className="btn btnBull" onClick={doInstall}><Smartphone size={14} /> Install app</button>}
               <a className="btn feedbackSheetBtn" href={feedbackHref}><MessageSquare size={14} /> Feedback</a>
@@ -5893,12 +5942,12 @@ function PopoutChart() {
   }, [date]);
 
   // Today, market hours, not linked to a replay: track the real clock and refresh candles every minute.
-  const liveNow = !linked && isToday && liveFollow && Date.now() >= dayStart && Date.now() < dayEnd + 60000;
+  const liveNow = !linked && isToday && liveFollow && marketNow() >= dayStart && marketNow() < dayEnd + 60000;
   useEffect(() => {
     if (!liveNow) return;
     setRunning(false);
-    setClock(Math.min(Date.now(), dayEnd));
-    const tick = setInterval(() => setClock(Math.min(Date.now(), dayEnd)), 1000);
+    setClock(Math.min(marketNow(), dayEnd));
+    const tick = setInterval(() => setClock(Math.min(marketNow(), dayEnd)), 1000);
     const refetch = setInterval(() => { fetchYahooDay(sym, date).then((e) => { if (e.candles.length) setEntry(e); }).catch(() => {}); }, 60000);
     return () => { clearInterval(tick); clearInterval(refetch); };
   }, [liveNow, sym, date]);
@@ -5940,6 +5989,7 @@ function PopoutChart() {
   let tradeBlock = null;
   if (!termConnected) tradeBlock = { text: "Keep your PaperRally tab open in this browser to trade from this window." };
   else if (acct.mode === "replay" && acct.date !== date) tradeBlock = { text: `Your terminal is replaying ${dayLabel(acct.date)}, but this chart shows ${dayLabel(date)}.`, action: { label: `Show ${dayLabel(acct.date)}`, run: () => setDate(acct.date) } };
+  else if (acct.mode === "live" && !acct.open && isSimulated()) tradeBlock = { text: "The practice market is closed. Press Start market in your PaperRally tab to open a new session." };
   else if (acct.mode === "live" && !acct.open) tradeBlock = { text: `The market is closed. Practise ${dayLabel(date)} from 9:15 AM — with separate practice money — and trade it right here.`, action: { label: `Practise ${dayLabel(date)}`, run: () => chRef.current?.postMessage({ type: "startReplay", date }) } };
   else if (acct.mode === "live" && !isToday) tradeBlock = { text: "The market is open now — switch the chart to today to trade.", action: { label: "Show today", run: () => { setLiveFollow(true); setDate(istTodayISO()); } } };
   else if (acct.mode === "replay" && !acct.open) tradeBlock = { text: "This replay day has ended. Restart it from the terminal to trade again." };
@@ -6057,7 +6107,7 @@ function PopoutChart() {
             {liveNow
               ? <span className="popLiveTag">● TODAY</span>
               : <button className="btn btnBull popPlay" onClick={togglePlay} disabled={!entry}>{running ? "Pause" : clock >= dayEnd ? "Replay day" : "Play"}</button>}
-            {!linked && isToday && !liveFollow && Date.now() < dayEnd && <button className="indToggle" onClick={() => setLiveFollow(true)}>Follow today</button>}
+            {!linked && isToday && !liveFollow && marketNow() < dayEnd && <button className="indToggle" onClick={() => setLiveFollow(true)}>Follow today</button>}
             <span className="mono popClock">{timeLabel}</span>
             <div className="popSliderWrap">
               <input type="range" className="replaySlider popSlider" aria-label="Choose time" min={dayStart} max={dayEnd} step={60000} value={clock} onChange={(e) => seek(Number(e.target.value))} disabled={!entry} />
