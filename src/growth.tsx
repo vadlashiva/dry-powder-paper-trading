@@ -247,7 +247,7 @@ export async function makeShareImage({ title, bigValue, positive, lines }) {
   g.fillStyle = "#FFB020"; g.font = `700 54px ${sans}`; g.fillText("🔥", 80, 140);
   g.fillStyle = "#FFFFFF"; g.font = `700 56px ${sans}`; g.fillText("PaperRally", 160, 138);
   g.fillStyle = "#C9D6F2"; g.font = `600 44px ${sans}`; g.fillText(title, 80, 330);
-  g.fillStyle = positive ? "#14E8A0" : "#FF5470"; g.font = `800 190px ${sans}`; g.fillText(bigValue, 72, 540);
+  g.fillStyle = positive ? "#22C55E" : "#EF4444"; g.font = `800 190px ${sans}`; g.fillText(bigValue, 72, 540);
   g.font = `600 48px ${sans}`;
   lines.forEach((ln, i) => {
     const y = 700 + i * 92;

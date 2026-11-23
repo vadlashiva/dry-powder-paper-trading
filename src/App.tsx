@@ -54,7 +54,7 @@ declare global { interface Window { Razorpay: any; } }
 /* ---------------- background themes ---------------- */
 const THEMES = [
   { name: "Night", emoji: "🌙", vars: { "--bg": "#0A0D14", "--surface": "#121722", "--surface-2": "#1A2130", "--border": "#232B3D", "--text": "#E7ECF6", "--text-dim": "#8B96AA" } },
-  { name: "Day", emoji: "☀️", vars: { "--bg": "#F3F4F7", "--surface": "#FFFFFF", "--surface-2": "#EEF0F4", "--border": "#DADDE3", "--text": "#12151C", "--text-dim": "#5B6270" } },
+  { name: "Day", emoji: "☀️", vars: { "--bg": "#F3F4F7", "--surface": "#FFFFFF", "--surface-2": "#EEF0F4", "--border": "#DADDE3", "--text": "#12151C", "--text-dim": "#5B6270", "--bull": "#16A34A", "--bear": "#DC2626" } },
 ];
 const LS_THEME = "tf_theme";
 function loadThemeIdx() {
@@ -407,10 +407,10 @@ const INDICATOR_DEFS = [
   { key: "ema9", group: "overlay", name: "EMA 9", color: IND_COLORS.ema9, pro: true, desc: "Fast exponential average that reacts quickly to recent prices." },
   { key: "ema21", group: "overlay", name: "EMA 21", color: IND_COLORS.ema21, pro: true, desc: "Medium exponential average. EMA 9 crossing EMA 21 is a popular trend signal." },
   { key: "bb", group: "overlay", name: "Bollinger Bands (20, 2)", color: IND_COLORS.bb, pro: true, desc: "A band two standard deviations around SMA 20. Price at the edges means it's stretched." },
-  { key: "st", group: "overlay", name: "Supertrend (10, 3)", color: "#14E8A0", pro: true, desc: "Trend-following line: green below price in an uptrend, red above price in a downtrend." },
+  { key: "st", group: "overlay", name: "Supertrend (10, 3)", color: "#22C55E", pro: true, desc: "Trend-following line: green below price in an uptrend, red above price in a downtrend." },
   { key: "smc", group: "overlay", name: "Smart Money Concepts", color: "#089981", pro: true, desc: "Market structure (BOS / CHoCH), order blocks, fair value gaps, equal highs and lows, premium and discount zones, and the previous day's high and low." },
   { key: "rsi", group: "pane", name: "RSI (14)", color: "#7B61FF", pro: true, desc: "Momentum from 0 to 100. Above 70 is often called overbought, below 30 oversold." },
-  { key: "macd", group: "pane", name: "MACD (12, 26, 9)", color: "#14E8A0", pro: true, desc: "Difference between two EMAs with a signal line. Crossovers show changes in momentum." },
+  { key: "macd", group: "pane", name: "MACD (12, 26, 9)", color: "#22C55E", pro: true, desc: "Difference between two EMAs with a signal line. Crossovers show changes in momentum." },
   { key: "stoch", group: "pane", name: "Stochastic (14, 3)", color: IND_COLORS.stoch, pro: true, desc: "Where the close sits within the recent high-low range. Above 80 is high, below 20 low." },
   { key: "atr", group: "pane", name: "ATR (14)", color: IND_COLORS.atr, pro: true, desc: "Average True Range: how much price typically moves per candle. Useful for setting stop-losses." },
 ];
@@ -466,8 +466,8 @@ function prepLW(data) {
   return out;
 }
 
-const LW_COLORS = { bull: "#14E8A0", bear: "#FF5470", accent: "#7B61FF", amber: "#FFB020", grid: "#232B3D", text: "#8B96AA" };
-const ALLOC_PALETTE = ["#14E8A0", "#7B61FF", "#FFB020", "#FF5470", "#5EC8D8", "#B98EFF", "#FF8A5B", "#6FCF97"];
+const LW_COLORS = { bull: "#22C55E", bear: "#EF4444", accent: "#7B61FF", amber: "#FFB020", grid: "#232B3D", text: "#8B96AA" };
+const ALLOC_PALETTE = ["#22C55E", "#7B61FF", "#FFB020", "#EF4444", "#5EC8D8", "#B98EFF", "#FF8A5B", "#6FCF97"];
 
 function joinSyncGroup(chart, syncGroupRef) {
   syncGroupRef.current.push(chart);
@@ -942,7 +942,7 @@ function MACDChartImpl({ data, syncGroupRef }) {
     if (!histRef.current) return;
     const prepped = prepLW(data);
     histRef.current.setData(
-      prepped.filter(({ d }) => d.hist != null).map(({ t, d }) => ({ time: t, value: d.hist, color: d.hist >= 0 ? "rgba(20,232,160,0.5)" : "rgba(255,84,112,0.5)" }))
+      prepped.filter(({ d }) => d.hist != null).map(({ t, d }) => ({ time: t, value: d.hist, color: d.hist >= 0 ? "rgba(34,197,94,0.5)" : "rgba(239,68,68,0.5)" }))
     );
     macdRef.current.setData(prepped.filter(({ d }) => d.macdLine != null).map(({ t, d }) => ({ time: t, value: d.macdLine })));
     signalRef.current.setData(prepped.filter(({ d }) => d.signalLine != null).map(({ t, d }) => ({ time: t, value: d.signalLine })));
@@ -1571,8 +1571,8 @@ function MiniHeroChartImpl() {
       crosshair: { vertLine: { visible: false }, horzLine: { visible: false } },
     });
     const series = chart.addSeries(LW.CandlestickSeries, {
-      upColor: "#14E8A0", downColor: "#FF5470", borderVisible: false,
-      wickUpColor: "#14E8A0", wickDownColor: "#FF5470",
+      upColor: "#22C55E", downColor: "#EF4444", borderVisible: false,
+      wickUpColor: "#22C55E", wickDownColor: "#EF4444",
     });
     chartRef.current = chart;
     seriesRef.current = series;
@@ -1704,7 +1704,7 @@ function ReplaySpotlight() {
         {candles.slice(0, visible).map((c, i) => {
           const x = i * cw + cw / 2;
           const up = c.close >= c.open;
-          const color = up ? "#14E8A0" : "#FF5470";
+          const color = up ? "#22C55E" : "#EF4444";
           const top = y(Math.max(c.open, c.close));
           const bodyH = Math.max(2, Math.abs(y(c.open) - y(c.close)));
           return (
@@ -6458,7 +6458,7 @@ const CSS = `
 
 .app, .authWrap, .landingWrap {
   --bg: #0A0D14; --surface: #121722; --surface-2: #1A2130; --border: #232B3D;
-  --text: #E7ECF6; --text-dim: #8B96AA; --bull: #14E8A0; --bear: #FF5470;
+  --text: #E7ECF6; --text-dim: #8B96AA; --bull: #22C55E; --bear: #EF4444;
   --accent: #7B61FF; --amber: #FFB020;
   background: var(--bg); color: var(--text);
   font-family: 'Inter', sans-serif;
@@ -6497,8 +6497,8 @@ const CSS = `
 .statValue { font-size: 15px; font-weight: 500; }
 .pulse-bull { animation: pulseBull 0.7s ease; }
 .pulse-bear { animation: pulseBear 0.7s ease; }
-@keyframes pulseBull { 0% { background: rgba(20,232,160,0.25); } 100% { background: transparent; } }
-@keyframes pulseBear { 0% { background: rgba(255,84,112,0.25); } 100% { background: transparent; } }
+@keyframes pulseBull { 0% { background: rgba(34,197,94,0.25); } 100% { background: transparent; } }
+@keyframes pulseBear { 0% { background: rgba(239,68,68,0.25); } 100% { background: transparent; } }
 .topbarActions { display: flex; align-items: center; gap: 10px; }
 .userBadge { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); background: var(--surface-2); border: 1px solid var(--border); padding: 7px 12px; border-radius: 20px; }
 .proBadge { background: var(--amber); color: #241800; font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 999px; letter-spacing: 0.4px; }
@@ -6540,7 +6540,7 @@ const CSS = `
 .exBadge { font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 4px; letter-spacing: 0.4px; }
 .exBadge-NSE { background: rgba(123,97,255,0.18); color: #9E8CFF; }
 .exBadge-BSE { background: rgba(255,176,32,0.18); color: var(--amber); }
-.exBadge-INDEX { background: rgba(20,232,160,0.18); color: var(--bull); }
+.exBadge-INDEX { background: rgba(34,197,94,0.18); color: var(--bull); }
 
 .main { flex: 1; padding: 20px 28px; overflow-y: auto; min-width: 0; }
 .mainHead { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
@@ -6550,8 +6550,8 @@ const CSS = `
 .mainHeadPrice { display: flex; flex-direction: column; align-items: flex-end; }
 .bigPrice { font-size: 22px; font-weight: 700; color: var(--amber); }
 .marketStatusBadge { font-size: 10px; padding: 3px 9px; border-radius: 20px; margin-top: 4px; font-weight: 600; }
-.marketOpen { background: rgba(20,232,160,0.15); color: var(--bull); }
-.marketClosed { background: rgba(255,84,112,0.15); color: var(--bear); }
+.marketOpen { background: rgba(34,197,94,0.15); color: var(--bull); }
+.marketClosed { background: rgba(239,68,68,0.15); color: var(--bear); }
 
 .navBackBtn { display: inline-flex; align-items: center; gap: 6px; background: none; border: none; color: var(--text-dim); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; padding: 6px 2px; margin-bottom: 8px; }
 .navBackBtn:hover { color: var(--text); }
@@ -6629,7 +6629,7 @@ const CSS = `
 .btn:hover { opacity: 0.85; }
 .btn:active { transform: scale(0.98); }
 .btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.btnBull { background: var(--bull); color: #06231A; }
+.btnBull { background: var(--bull); color: #052E16; }
 .btnBear { background: var(--bear); color: #2B0710; }
 .btnGhost { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); }
 .btnMarigold { background: var(--amber); color: #241800; }
@@ -6745,7 +6745,7 @@ const CSS = `
 .popTradeHead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .popTradeHead h3 { margin: 0; font-size: 15px; }
 .popModeTag { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; padding: 3px 8px; border-radius: 4px; background: var(--bear); color: white; white-space: nowrap; }
-.popModeLive { background: var(--bull); color: #06231A; }
+.popModeLive { background: var(--bull); color: #052E16; }
 .popModeReplay { background: var(--amber); color: #241800; }
 .popTradeStats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .popTradeStats > div { display: flex; flex-direction: column; gap: 2px; font-size: 12px; background: color-mix(in srgb, var(--text) 4%, transparent); border-radius: 8px; padding: 8px 10px; }
@@ -6800,8 +6800,8 @@ const CSS = `
 .chainGutter { width: 4px; padding: 0; }
 .premCell { cursor: pointer; border-radius: 6px; transition: background 0.12s; }
 .premCell:hover { background: var(--surface-2); }
-.itmCall { background: rgba(20,232,160,0.18); font-weight: 700; box-shadow: inset 3px 0 0 var(--bull); }
-.itmPut { background: rgba(255,84,112,0.18); font-weight: 700; box-shadow: inset -3px 0 0 var(--bear); }
+.itmCall { background: rgba(34,197,94,0.18); font-weight: 700; box-shadow: inset 3px 0 0 var(--bull); }
+.itmPut { background: rgba(239,68,68,0.18); font-weight: 700; box-shadow: inset -3px 0 0 var(--bear); }
 .otmCall, .otmPut { opacity: 0.55; font-weight: 400; }
 .atmRow td { border-top: 1px dashed var(--amber); border-bottom: 1px dashed var(--amber); }
 .chainNote { margin-top: 12px; font-size: 11px; color: var(--text-dim); }
@@ -6932,7 +6932,7 @@ const CSS = `
 .replayResetBtn { margin-left: auto; }
 .alertStatus { font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
 .alertActive { background: rgba(255,176,32,0.15); color: var(--amber); }
-.alertTriggered { background: rgba(20,232,160,0.15); color: var(--bull); }
+.alertTriggered { background: rgba(34,197,94,0.15); color: var(--bull); }
 
 .modalOverlay { position: fixed; inset: 0; background: rgba(5,6,10,0.7); display: flex; align-items: center; justify-content: center; z-index: 50; backdrop-filter: blur(2px); }
 .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 22px; width: 340px; }
@@ -6949,10 +6949,10 @@ const CSS = `
 .ticketHead { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
 .ticketHead h3 { margin: 4px 0 2px; font-size: 20px; }
 .typeBadge { font-size: 10px; padding: 2px 8px; border-radius: 4px; font-weight: 700; }
-.typeBadge.call { background: rgba(20,232,160,0.15); color: var(--bull); }
-.typeBadge.put { background: rgba(255,84,112,0.15); color: var(--bear); }
+.typeBadge.call { background: rgba(34,197,94,0.15); color: var(--bull); }
+.typeBadge.put { background: rgba(239,68,68,0.15); color: var(--bear); }
 .ticketSection { font-size: 10px; text-transform: uppercase; letter-spacing: 0.6px; margin: 4px 0 6px; }
-.shortTag { background: rgba(255,84,112,0.15); color: var(--bear); font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 4px; margin-right: 6px; letter-spacing: 0.4px; }
+.shortTag { background: rgba(239,68,68,0.15); color: var(--bear); font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 4px; margin-right: 6px; letter-spacing: 0.4px; }
 .iconBtn { background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; color: var(--text-dim); padding: 6px; cursor: pointer; }
 .greeksGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; background: var(--surface-2); border-radius: 8px; padding: 12px; margin-bottom: 16px; font-size: 13px; }
 .greeksGrid div { display: flex; flex-direction: column; gap: 2px; }
@@ -6960,7 +6960,7 @@ const CSS = `
 .greeksGrid .dim[title] { cursor: help; text-decoration: underline dotted; text-underline-offset: 2px; }
 
 .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); padding: 12px 20px; border-radius: 10px; font-size: 13px; font-weight: 500; z-index: 60; box-shadow: 0 8px 24px rgba(0,0,0,0.4); max-width: 90vw; text-align: center; }
-.toast-bull { background: var(--bull); color: #06231A; }
+.toast-bull { background: var(--bull); color: #052E16; }
 .toast-bear { background: var(--bear); color: #2B0710; }
 
 .tickerTapeWrap { background: rgba(0,0,0,0.35); border-bottom: 1px solid rgba(255,255,255,0.08); overflow: hidden; white-space: nowrap; padding: 7px 0; position: relative; z-index: 1; }
@@ -6984,7 +6984,7 @@ const CSS = `
 .heroReveal-4 { animation-delay: 0.35s; }
 .heroReveal-5 { animation-delay: 0.45s; }
 
-@keyframes ctaGlow { 0%, 100% { box-shadow: 0 0 0 rgba(20,232,160,0); } 50% { box-shadow: 0 0 22px rgba(20,232,160,0.45); } }
+@keyframes ctaGlow { 0%, 100% { box-shadow: 0 0 0 rgba(34,197,94,0); } 50% { box-shadow: 0 0 22px rgba(34,197,94,0.45); } }
 .landingCta.btnBull { animation: ctaGlow 2.6s ease-in-out infinite; }
 
 .landingStats { display: flex; align-items: center; justify-content: center; gap: 36px; max-width: 900px; margin: 0 auto; padding: 0 40px 60px; flex-wrap: wrap; position: relative; z-index: 1; }
@@ -7048,7 +7048,7 @@ const CSS = `
 .replaySpotlightText { font-size: 14.5px; line-height: 1.65; margin: 0 0 18px; }
 .replayVisual { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px; box-shadow: 0 20px 50px rgba(0,0,0,0.25); }
 .replaySvg { width: 100%; height: 120px; display: block; }
-.replayPlayBadge { position: absolute; top: 14px; right: 14px; display: inline-flex; align-items: center; gap: 6px; background: rgba(20,232,160,0.15); color: var(--bull); font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 20px; }
+.replayPlayBadge { position: absolute; top: 14px; right: 14px; display: inline-flex; align-items: center; gap: 6px; background: rgba(34,197,94,0.15); color: var(--bull); font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 20px; }
 
 .mistakesSection { max-width: 900px; margin: 0 auto; padding: 20px 40px 70px; text-align: center; position: relative; z-index: 1; }
 .mistakesIntro { margin: -20px 0 34px; font-size: 14.5px; }
@@ -7225,7 +7225,7 @@ html { scroll-behavior: smooth; }
 .realitySrc { font-size: 13px; font-style: italic; color: var(--amber); }
 .howSteps { max-width: 1080px; margin: 0 auto; padding: 20px 40px 70px; text-align: center; position: relative; z-index: 1; }
 .howStepsRow { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; text-align: left; }
-.howStepNum { display: inline-flex; width: 30px; height: 30px; border-radius: 50%; align-items: center; justify-content: center; background: var(--bull); color: #06231A; font-weight: 700; font-family: 'Instrument Sans', sans-serif; margin-bottom: 10px; }
+.howStepNum { display: inline-flex; width: 30px; height: 30px; border-radius: 50%; align-items: center; justify-content: center; background: var(--bull); color: #052E16; font-weight: 700; font-family: 'Instrument Sans', sans-serif; margin-bottom: 10px; }
 .howStepsLink { display: inline-block; margin-top: 22px; color: var(--amber); font-size: 14px; font-weight: 600; text-decoration: none; }
 .howStepsLink:hover { text-decoration: underline; }
 @media (max-width: 760px) {
@@ -7503,7 +7503,7 @@ a.resetBtn { text-decoration: none; }
 .lbStatLabel { font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #9AA4C2; }
 .lbStatValue { font-size: 20px; font-weight: 700; color: #fff; }
 .lbStatMain .lbStatValue { font-size: 26px; }
-.lbHero .lbUp { color: #3DF2B0; } .lbHero .lbDown { color: #FF7A90; }
+.lbHero .lbUp { color: #4ADE80; } .lbHero .lbDown { color: #F87171; }
 .lbShare { align-self: center; flex: none; padding: 10px 16px; border-radius: 10px; background: #fff; color: #141A33; border: none; font-weight: 600; }
 .lbShare:hover { background: #E9ECF7; }
 .lbUp { color: var(--bull); } .lbDown { color: var(--bear); }
