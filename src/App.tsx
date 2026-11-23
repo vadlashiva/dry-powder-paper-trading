@@ -6252,6 +6252,7 @@ function BrokerGate({ children }) {
         onConnect={async (c) => { await broker.api.saveCredentials(c); writePending({ broker: broker.id, kind: "new" }); await trackThenGo("setup_login_redirect", { broker: broker.id, kind: "new" }, broker.api.loginUrl()); }}
         onReconnect={() => { writePending({ broker: broker.id, kind: "reconnect" }); trackThenGo("setup_login_redirect", { broker: broker.id, kind: "reconnect" }, broker.api.loginUrl()); }}
         onForget={() => { broker.api.forgetCredentials(); pick(""); setHasKey(false); setPhase("question"); }}
+        onPreview={hasKey ? undefined : () => { track("preview_view", { from: "setup" }); setPhase("preview"); }}
         brand={brand}
       />
     );
@@ -7770,6 +7771,9 @@ a.resetBtn { text-decoration: none; }
 .setupBrokers .btn { padding: 13px; font-size: 15px; justify-content: center; }
 .setupOpen { display: block; text-align: center; text-decoration: none; padding: 10px; }
 .setupNav { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.setupNav .btn:disabled, .authSubmit:disabled { opacity: .45; cursor: not-allowed; }
+.setupNoKey { margin-top: 12px; padding: 12px; border: 1px dashed var(--border); border-radius: 10px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.setupNoKey p { margin: 0; font-size: 12.5px; }
 .setupNav .btn { padding: 9px 16px; }
 .setupLink { background: none; border: none; color: var(--text-dim); text-decoration: underline; font: inherit; font-size: 12.5px; cursor: pointer; padding: 10px 0 0; }
 .setupHelp { margin-top: 10px; font-size: 12.5px; color: var(--text-dim); }

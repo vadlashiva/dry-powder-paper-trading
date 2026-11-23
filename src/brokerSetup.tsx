@@ -22,6 +22,11 @@ function StepShot({ broker, step }) {
 
 const TEXT = {
   en: {
+    signupNote: "No SmartAPI login yet? Click Sign Up on that site and register free with your Angel One client ID.",
+    openFirst: "Open the API site first. Next unlocks after that.", already: "I'm already logged in there",
+    gotKey: "I've copied my API Key",
+    noKeyT: "No key yet?", noKey: "Your API Key appears on the API site only after you create the app (Steps 1 to 3). Open the site, create the app, then come back. This page remembers your step.",
+    restart: "Start again from Step 1", explore: "Explore the preview meanwhile",
     qTitle: "Do you have an Angel One account?",
     qSub: "PaperRally uses your own free Angel One connection for live market prices. Your money and holdings are never touched.",
     yes: "Yes, I have Angel One", no: "No, not yet", other: "I use FYERS or Upstox",
@@ -56,6 +61,11 @@ const TEXT = {
     secretLabel: "Secret",
   },
   hi: {
+    signupNote: "SmartAPI लॉगिन नहीं है? उस साइट पर Sign Up पर क्लिक करें और अपने Angel One क्लाइंट ID से मुफ़्त रजिस्टर करें।",
+    openFirst: "पहले API साइट खोलें। उसके बाद आगे बटन खुलेगा।", already: "मैं वहाँ पहले से लॉगिन हूँ",
+    gotKey: "मैंने अपनी API Key कॉपी कर ली",
+    noKeyT: "अभी key नहीं है?", noKey: "आपकी API Key ऐप बनाने के बाद ही API साइट पर दिखती है (चरण 1 से 3)। साइट खोलें, ऐप बनाएँ, फिर यहाँ लौटें। यह पेज आपका चरण याद रखता है।",
+    restart: "चरण 1 से फिर शुरू करें", explore: "तब तक प्रीव्यू देखें",
     qTitle: "क्या आपका Angel One खाता है?",
     qSub: "PaperRally लाइव मार्केट कीमतों के लिए आपके अपने मुफ़्त Angel One कनेक्शन का उपयोग करता है। आपके पैसे और होल्डिंग्स को कभी छुआ नहीं जाता।",
     yes: "हाँ, मेरा Angel One खाता है", no: "नहीं, अभी नहीं", other: "मैं FYERS या Upstox उपयोग करता/करती हूँ",
@@ -90,6 +100,11 @@ const TEXT = {
     secretLabel: "Secret",
   },
   kn: {
+    signupNote: "SmartAPI ಲಾಗಿನ್ ಇಲ್ಲವೇ? ಆ ಸೈಟ್‌ನಲ್ಲಿ Sign Up ಕ್ಲಿಕ್ ಮಾಡಿ, ನಿಮ್ಮ Angel One ಕ್ಲೈಂಟ್ ID ಯಿಂದ ಉಚಿತವಾಗಿ ನೋಂದಾಯಿಸಿ.",
+    openFirst: "ಮೊದಲು API ಸೈಟ್ ತೆರೆಯಿರಿ. ನಂತರ ಮುಂದೆ ಬಟನ್ ತೆರೆಯುತ್ತದೆ.", already: "ನಾನು ಅಲ್ಲಿ ಈಗಾಗಲೇ ಲಾಗಿನ್ ಆಗಿದ್ದೇನೆ",
+    gotKey: "ನನ್ನ API Key ನಕಲಿಸಿದ್ದೇನೆ",
+    noKeyT: "ಇನ್ನೂ key ಇಲ್ಲವೇ?", noKey: "ಆ್ಯಪ್ ರಚಿಸಿದ ನಂತರವೇ API Key ಸೈಟ್‌ನಲ್ಲಿ ಕಾಣುತ್ತದೆ (ಹಂತ 1 ರಿಂದ 3). ಸೈಟ್ ತೆರೆಯಿರಿ, ಆ್ಯಪ್ ರಚಿಸಿ, ನಂತರ ಇಲ್ಲಿಗೆ ಬನ್ನಿ. ಈ ಪುಟ ನಿಮ್ಮ ಹಂತವನ್ನು ನೆನಪಿಡುತ್ತದೆ.",
+    restart: "ಹಂತ 1 ರಿಂದ ಮತ್ತೆ ಪ್ರಾರಂಭಿಸಿ", explore: "ಅಲ್ಲಿಯವರೆಗೆ ಪ್ರಿವ್ಯೂ ನೋಡಿ",
     qTitle: "ನಿಮ್ಮ ಬಳಿ Angel One ಖಾತೆ ಇದೆಯೇ?",
     qSub: "ಲೈವ್ ಮಾರುಕಟ್ಟೆ ಬೆಲೆಗಳಿಗಾಗಿ PaperRally ನಿಮ್ಮದೇ ಉಚಿತ Angel One ಸಂಪರ್ಕವನ್ನು ಬಳಸುತ್ತದೆ. ನಿಮ್ಮ ಹಣ ಮತ್ತು ಹೋಲ್ಡಿಂಗ್ಸ್ ಅನ್ನು ಎಂದಿಗೂ ಮುಟ್ಟುವುದಿಲ್ಲ.",
     yes: "ಹೌದು, ನನ್ನ ಬಳಿ Angel One ಇದೆ", no: "ಇಲ್ಲ, ಇನ್ನೂ ಇಲ್ಲ", other: "ನಾನು FYERS ಅಥವಾ Upstox ಬಳಸುತ್ತೇನೆ",
@@ -203,9 +218,15 @@ export function keyProblem(brokerId: string, key: string): string {
   return "";
 }
 
-export function BrokerSetup({ brokers, broker, hasKey, error, onChoose, onConnect, onReconnect, onForget, brand }) {
+export function BrokerSetup({ brokers, broker, hasKey, error, onChoose, onConnect, onReconnect, onForget, onPreview, brand }) {
   const { lang, t, langs } = useSetupLang();
-  const [step, setStep] = useState(1);
+  const stepKey = `pr_setup_step_${broker?.id || ""}`;
+  const [step, setStepRaw] = useState(() => { try { return Math.min(4, Math.max(1, +localStorage.getItem(stepKey) || 1)); } catch { return 1; } });
+  const setStep = (n) => { setStepRaw(n); try { localStorage.setItem(stepKey, String(n)); } catch { /* storage unavailable */ } };
+  useEffect(() => { try { setStepRaw(Math.min(4, Math.max(1, +localStorage.getItem(stepKey) || 1))); } catch { setStepRaw(1); } }, [broker?.id]);
+  const siteKey = `pr_setup_site_${broker?.id || ""}`;
+  const [siteOpened, setSiteOpenedRaw] = useState(() => { try { return !!localStorage.getItem(siteKey); } catch { return false; } });
+  const markSite = () => { setSiteOpenedRaw(true); try { localStorage.setItem(siteKey, "1"); } catch { /* storage unavailable */ } };
   // Record each setup step the person reaches. Reaching step 3 means they've created the app on the broker's site.
   useEffect(() => {
     if (!broker || hasKey) return;
@@ -241,6 +262,7 @@ export function BrokerSetup({ brokers, broker, hasKey, error, onChoose, onConnec
       return setBad(problem);
     }
     track("setup_key_entered", { broker: broker.id, cleaned: k !== key });
+    try { localStorage.removeItem(stepKey); } catch { /* storage unavailable */ }
     onConnect({ key: k, secret: sec });
   };
   const badMsg = { empty: t.badEmpty, secret: t.badSecret, short: t.badShort, chars: t.badChars }[bad] || t.bad;
@@ -287,7 +309,9 @@ export function BrokerSetup({ brokers, broker, hasKey, error, onChoose, onConnec
       <StepShot broker={broker.id} step={step} />
       {step === 1 && (<>
         <h2>{t.s1t}</h2><p>{t.s1(name)}</p>
-        <a className="btn btnGhost setupOpen" href={broker.site} target="_blank" rel="noopener noreferrer" onClick={() => track("setup_api_site_opened", { broker: broker.id })}>{t.s1b(name)}</a>
+        <a className="btn btnGhost setupOpen" href={broker.site} target="_blank" rel="noopener noreferrer" onClick={() => { markSite(); track("setup_api_site_opened", { broker: broker.id }); }}>{t.s1b(name)}</a>
+        {broker.id === "angel" && <div className="dim angelNote">{t.signupNote}</div>}
+        {!siteOpened && <button type="button" className="setupLink" onClick={() => { markSite(); track("setup_already_logged_in", { broker: broker.id }); }}>{t.already}</button>}
       </>)}
       {step === 2 && (<>
         <h2>{t.s2t}</h2><p>{s2}</p>
@@ -319,14 +343,24 @@ export function BrokerSetup({ brokers, broker, hasKey, error, onChoose, onConnec
         </>)}
         {cleaned && !bad && <div className="dim angelNote">{t.cleaned}</div>}
         {(bad || error) && <div className="authError" role="alert">{bad ? badMsg : error}</div>}
-        <button type="submit" className="btn btnBull authSubmit">{t.connect(name)}</button>
+        <button type="submit" className="btn btnBull authSubmit" disabled={!key.trim()}>{t.connect(name)}</button>
+        {!key.trim() && (
+          <div className="setupNoKey">
+            <b>{t.noKeyT}</b>
+            <p className="dim">{t.noKey}</p>
+            <a className="btn btnGhost" href={broker.site} target="_blank" rel="noopener noreferrer" onClick={() => { markSite(); track("setup_api_site_opened", { broker: broker.id, from: "nokey" }); }}>{t.s1b(name)}</a>
+            <button type="button" className="setupLink" onClick={() => { track("setup_restart", { broker: broker.id }); setStep(1); }}>{t.restart}</button>
+          </div>
+        )}
         <div className="dim angelNote">{t.note(name)}</div>
         <details className="setupHelp"><summary>{t.helpT}</summary><ul><li>{t.h1}</li><li>{t.h2}</li><li>{t.h3}</li></ul></details>
       </>)}
       <div className="setupNav">
         {step > 1 && <button type="button" className="btn btnGhost" onClick={() => setStep(step - 1)}>{t.back}</button>}
-        {step < 4 && <button type="button" className="btn btnBull" onClick={() => setStep(step + 1)}>{t.next}</button>}
+        {step < 4 && <button type="button" className="btn btnBull" disabled={step === 1 && !siteOpened} onClick={() => setStep(step + 1)}>{step === 3 ? t.gotKey : t.next}</button>}
       </div>
+      {step === 1 && !siteOpened && <div className="dim angelNote" style={{ textAlign: "right" }}>{t.openFirst}</div>}
+      {onPreview && <button type="button" className="setupLink" onClick={() => { track("setup_to_preview", { broker: broker.id, step }); onPreview(); }}>{t.explore}</button>}
     </form>
   );
 }

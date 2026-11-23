@@ -1,7 +1,7 @@
 {
   "name": "paperrally",
   "version": "1.0.0",
-  "description": "PaperRally \u2014 paper trading simulator for NSE & BSE stocks and NIFTY options",
+  "description": "PaperRally — paper trading simulator for NSE & BSE stocks and NIFTY options",
   "keywords": [
     "typescript",
     "react",
@@ -9,21 +9,23 @@
   ],
   "main": "src/index.tsx",
   "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "lightweight-charts": "^5.0.0",
     "loader-utils": "3.2.1",
+    "lucide-react": "1.28.0",
     "react": "18.2.0",
     "react-dom": "18.2.0",
-    "react-scripts": "5.0.1",
-    "recharts": "3.10.1",
-    "lucide-react": "1.28.0",
     "react-is": "19.2.8",
-    "lightweight-charts": "^5.0.0",
-    "@supabase/supabase-js": "^2.45.0"
+    "react-scripts": "5.0.1",
+    "recharts": "3.10.1"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^14.3.1",
     "@types/react": "18.2.38",
     "@types/react-dom": "18.2.15",
-    "typescript": "^5.4.5",
-    "eslint-plugin-react-hooks": "^4.6.0"
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "typescript": "^5.4.5"
   },
   "scripts": {
     "start": "react-scripts start",
