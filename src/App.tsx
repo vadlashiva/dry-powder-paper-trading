@@ -1775,8 +1775,8 @@ function LandingPage({ themeIdx, onEnter: onEnterRaw }) {
           <span>PAPERRALLY</span>
         </div>
         <nav className="landingMenu" aria-label="Main">
-          <a href="#features">Features</a>
           <a href="#new">What's new</a>
+          <a href="#features">Features</a>
           <a href="#how-it-works">How it works</a>
           <a href="#replay">Replay</a>
           <details className="landingMenuDrop" ref={guidesRef}>
@@ -1850,6 +1850,26 @@ function LandingPage({ themeIdx, onEnter: onEnterRaw }) {
         </div>
       </section>
 
+      <section className="whatsNew" id="new">
+        <div className="landingEyebrow whatsNewEyebrow">New on PaperRally</div>
+        <h2 className="landingH2">Practise whenever you want, on whatever you want</h2>
+        <div className="newGrid">
+          {WHATS_NEW.map((f) => (
+            <div key={f.title} className="newCard">
+              <div className="newCardTop">
+                <div className="newIcon"><f.icon size={18} /></div>
+                <span className="newTag">{f.tag}</span>
+              </div>
+              <h3>{f.title}</h3>
+              <p className="dim">{f.desc}</p>
+            </div>
+          ))}
+        </div>
+        <div className="whatsNewCta">
+          <button className="btn btnBull landingCta" onClick={() => onEnter("register")}><Sparkles size={15} /> Try it free — takes a minute</button>
+        </div>
+      </section>
+
       <section className="landingStats">
         <div className="landingStatItem">
           <span className="landingStatNum">₹10,00,000</span>
@@ -1892,25 +1912,6 @@ function LandingPage({ themeIdx, onEnter: onEnterRaw }) {
         </div>
       </section>
 
-      <section className="whatsNew" id="new">
-        <div className="landingEyebrow whatsNewEyebrow">New on PaperRally</div>
-        <h2 className="landingH2">Practise whenever you want, on whatever you want</h2>
-        <div className="newGrid">
-          {WHATS_NEW.map((f) => (
-            <div key={f.title} className="newCard">
-              <div className="newCardTop">
-                <div className="newIcon"><f.icon size={18} /></div>
-                <span className="newTag">{f.tag}</span>
-              </div>
-              <h3>{f.title}</h3>
-              <p className="dim">{f.desc}</p>
-            </div>
-          ))}
-        </div>
-        <div className="whatsNewCta">
-          <button className="btn btnBull landingCta" onClick={() => onEnter("register")}><Sparkles size={15} /> Try it free — takes a minute</button>
-        </div>
-      </section>
 
       <section className="realityBand">
         <div className="realityNum" aria-hidden="true">🏹</div>
@@ -7054,7 +7055,7 @@ html { scroll-behavior: smooth; }
 
 .landingHero {
   display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 48px; align-items: center;
-  padding: 64px 40px; max-width: 1180px; margin: 0 auto; position: relative;
+  padding: 64px 40px 24px; max-width: 1180px; margin: 0 auto; position: relative;
 }
 .landingHeroCopy { display: flex; flex-direction: column; align-items: flex-start; position: relative; z-index: 1; }
 .landingEyebrow { font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.6px; color: var(--amber); text-transform: uppercase; background: rgba(255,176,32,0.1); border: 1px solid rgba(255,176,32,0.25); padding: 5px 12px; border-radius: 20px; margin-bottom: 20px; }
@@ -7071,9 +7072,10 @@ html { scroll-behavior: smooth; }
 .landingHeroCard .authSub { margin: 6px 0 0; text-align: left; }
 .landingHeroCard .authSubmit { margin-top: 18px; }
 
-.whatsNew { max-width: 1120px; margin: 0 auto; padding: 56px 24px 24px; text-align: center; }
+.whatsNew { max-width: 1240px; margin: 0 auto; padding: 28px 24px 24px; text-align: center; }
 .whatsNewEyebrow { display: inline-block; margin-bottom: 10px; }
-.newGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; text-align: left; }
+.newGrid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; text-align: left; }
+@media (max-width: 1200px) { .newGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 .newCard { position: relative; background: var(--surface); border: 1px solid color-mix(in srgb, var(--bull) 35%, var(--border)); border-radius: 14px; padding: 20px; opacity: 0; transform: translateY(14px); transition: opacity 0.5s ease, transform 0.5s ease, box-shadow 0.15s ease; }
 .newCard.revealed { opacity: 1; transform: none; }
 .newCard:hover { box-shadow: 0 14px 34px rgba(0,0,0,0.22); }
