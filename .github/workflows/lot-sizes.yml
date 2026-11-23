@@ -3,9 +3,6 @@ on:
   schedule:
     - cron: "30 13 * * 1-5"   # 7:00 PM IST, after NSE publishes end-of-day files
   workflow_dispatch:
-  push:
-    branches: [stock-lot-sizes]   # TEMP: first run on the PR branch
-    paths: [.github/workflows/lot-sizes.yml, scripts/update_lot_sizes.py]
 permissions:
   contents: write
 jobs:
