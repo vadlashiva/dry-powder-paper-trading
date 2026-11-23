@@ -7788,10 +7788,10 @@ a.resetBtn { text-decoration: none; }
 .setupRow .btn { flex: none; padding: 7px 10px; font-size: 12.5px; }
 .setupBrokers { display: grid; gap: 8px; margin: 14px 0; }
 .setupBrokers .btn { padding: 13px; font-size: 15px; justify-content: center; }
-.setupOpen { display: block; text-align: center; text-decoration: none; padding: 10px; }
-.setupNav { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 .practiceBox { margin: 14px 0 6px; padding-top: 12px; border-top: 1px dashed var(--border); display: flex; flex-direction: column; gap: 6px; }
 .practiceBtn { width: 100%; }
+.setupOpen { display: block; text-align: center; text-decoration: none; padding: 10px; }
+.setupNav { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 .setupNav .btn:disabled, .authSubmit:disabled { opacity: .45; cursor: not-allowed; }
 .setupNoKey { margin-top: 12px; padding: 12px; border: 1px dashed var(--border); border-radius: 10px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 .setupNoKey p { margin: 0; font-size: 12.5px; }
