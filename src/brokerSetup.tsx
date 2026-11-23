@@ -22,6 +22,7 @@ function StepShot({ broker, step }) {
 
 const TEXT = {
   en: {
+    practice: "Practise now with a simulated market", practiceSub: "No broker needed. Prices are simulated, not real, and you can connect your broker any time for live prices.",
     signupNote: "No SmartAPI login yet? Click Sign Up on that site and register free with your Angel One client ID.",
     openFirst: "Open the API site first. Next unlocks after that.", already: "I'm already logged in there",
     gotKey: "I've copied my API Key",
@@ -61,6 +62,7 @@ const TEXT = {
     secretLabel: "Secret",
   },
   hi: {
+    practice: "अभी सिम्युलेटेड मार्केट में अभ्यास करें", practiceSub: "किसी ब्रोकर की ज़रूरत नहीं। कीमतें सिम्युलेटेड हैं, असली नहीं; लाइव कीमतों के लिए कभी भी अपना ब्रोकर जोड़ सकते हैं।",
     signupNote: "SmartAPI लॉगिन नहीं है? उस साइट पर Sign Up पर क्लिक करें और अपने Angel One क्लाइंट ID से मुफ़्त रजिस्टर करें।",
     openFirst: "पहले API साइट खोलें। उसके बाद आगे बटन खुलेगा।", already: "मैं वहाँ पहले से लॉगिन हूँ",
     gotKey: "मैंने अपनी API Key कॉपी कर ली",
@@ -100,6 +102,7 @@ const TEXT = {
     secretLabel: "Secret",
   },
   kn: {
+    practice: "ಈಗಲೇ ಸಿಮ್ಯುಲೇಟೆಡ್ ಮಾರುಕಟ್ಟೆಯಲ್ಲಿ ಅಭ್ಯಾಸ ಮಾಡಿ", practiceSub: "ಬ್ರೋಕರ್ ಬೇಕಿಲ್ಲ. ಬೆಲೆಗಳು ಸಿಮ್ಯುಲೇಟೆಡ್, ನಿಜವಲ್ಲ; ಲೈವ್ ಬೆಲೆಗಳಿಗಾಗಿ ಯಾವಾಗ ಬೇಕಾದರೂ ನಿಮ್ಮ ಬ್ರೋಕರ್ ಸಂಪರ್ಕಿಸಬಹುದು.",
     signupNote: "SmartAPI ಲಾಗಿನ್ ಇಲ್ಲವೇ? ಆ ಸೈಟ್‌ನಲ್ಲಿ Sign Up ಕ್ಲಿಕ್ ಮಾಡಿ, ನಿಮ್ಮ Angel One ಕ್ಲೈಂಟ್ ID ಯಿಂದ ಉಚಿತವಾಗಿ ನೋಂದಾಯಿಸಿ.",
     openFirst: "ಮೊದಲು API ಸೈಟ್ ತೆರೆಯಿರಿ. ನಂತರ ಮುಂದೆ ಬಟನ್ ತೆರೆಯುತ್ತದೆ.", already: "ನಾನು ಅಲ್ಲಿ ಈಗಾಗಲೇ ಲಾಗಿನ್ ಆಗಿದ್ದೇನೆ",
     gotKey: "ನನ್ನ API Key ನಕಲಿಸಿದ್ದೇನೆ",
@@ -166,7 +169,7 @@ function useSetupLang() {
 }
 
 // First question for a new user: do they already have an Angel One account?
-export function AccountQuestion({ brand, onYes, onOther, onBack }) {
+export function AccountQuestion({ brand, onYes, onOther, onBack, onPractice }) {
   const { t, langs } = useSetupLang();
   const [noAccount, setNoAccount] = useState(false);
   if (noAccount) {
@@ -179,6 +182,7 @@ export function AccountQuestion({ brand, onYes, onOther, onBack }) {
           <a className="btn btnBull setupOpen" href={ANGEL_OPEN_ACCOUNT_URL} target="_blank" rel="noopener noreferrer" onClick={() => track("setup_open_account_click")}>{t.openAcc}</a>
           <button type="button" className="btn btnGhost" onClick={() => { track("setup_account_ready"); onYes(); }}>{t.haveNow}</button>
         </div>
+        {onPractice && <PracticeBox t={t} onPractice={() => onPractice("no_account")} />}
         <button type="button" className="setupLink" onClick={() => { track("setup_other_broker", { from: "no_account" }); onOther(); }}>{t.other}</button>
         <br />
         <button type="button" className="setupLink" onClick={onBack}>{t.backPreview}</button>
@@ -194,9 +198,19 @@ export function AccountQuestion({ brand, onYes, onOther, onBack }) {
         <button type="button" className="btn btnBull" onClick={() => { track("setup_has_account", { answer: "yes" }); onYes(); }}>{t.yes}</button>
         <button type="button" className="btn btnGhost" onClick={() => { track("setup_has_account", { answer: "no" }); setNoAccount(true); }}>{t.no}</button>
       </div>
+      {onPractice && <PracticeBox t={t} onPractice={() => onPractice("question")} />}
       <button type="button" className="setupLink" onClick={() => { track("setup_other_broker", { from: "question" }); onOther(); }}>{t.other}</button>
       <br />
       <button type="button" className="setupLink" onClick={onBack}>{t.backPreview}</button>
+    </div>
+  );
+}
+
+function PracticeBox({ t, onPractice }) {
+  return (
+    <div className="practiceBox">
+      <button type="button" className="btn btnGhost practiceBtn" onClick={onPractice}>{t.practice}</button>
+      <div className="dim angelNote">{t.practiceSub}</div>
     </div>
   );
 }
@@ -273,7 +287,7 @@ export function BrokerSetup({ brokers, broker, hasKey, error, onChoose, onConnec
         <h1>{t.choose}</h1>
         <div className="authSub">{t.chooseSub}</div>
         <div className="setupBrokers">
-          {Object.values(brokers).map((b) => <button key={b.id} type="button" className="btn btnGhost" onClick={() => { track("setup_broker_chosen", { broker: b.id }); onChoose(b.id); }}>{b.name}</button>)}
+          {Object.values(brokers).filter((b) => !b.simulated).map((b) => <button key={b.id} type="button" className="btn btnGhost" onClick={() => { track("setup_broker_chosen", { broker: b.id }); onChoose(b.id); }}>{b.name}</button>)}
         </div>
         {error && <div className="authError" role="alert">{error}</div>}
         <div className="dim angelNote">{t.more}</div>

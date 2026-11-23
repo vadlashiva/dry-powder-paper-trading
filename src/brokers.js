@@ -3,16 +3,20 @@
 import * as angel from "./angel";
 import * as fyers from "./fyers";
 import * as upstox from "./upstox";
+import * as sim from "./sim";
 import { read, write, isoDay } from "./brokerUtil";
 
 export const BROKERS = {
   angel: { id: "angel", name: "Angel One", api: angel, site: "https://smartapi.angelone.in/", needsSecret: false, keyLabel: "SmartAPI key" },
   fyers: { id: "fyers", name: "FYERS", api: fyers, site: "https://myapi.fyers.in/dashboard", needsSecret: true, keyLabel: "App ID" },
   upstox: { id: "upstox", name: "Upstox", api: upstox, site: "https://account.upstox.com/developer/apps", needsSecret: true, keyLabel: "API key" },
+  // Simulated prices for practising without a broker account (see sim.js).
+  sim: { id: "sim", name: "Practice market", api: sim, site: "", needsSecret: false, keyLabel: "", simulated: true },
 };
 const STORE = "pr_broker";
 export const activeBroker = () => BROKERS[read(STORE)] || (angel.hasCredentials() ? BROKERS.angel : null);
-export const chooseBroker = (id) => write(STORE, id);
+export const chooseBroker = (id) => { write(STORE, id); try { window.dispatchEvent(new Event("pr-broker-changed")); } catch { /* no window */ } };
+export const isSimulated = () => !!activeBroker()?.simulated;
 const api = () => {
   const b = activeBroker();
   if (!b) throw new Error("No broker connected");

@@ -6181,13 +6181,29 @@ const writePending = (v) => { try { v ? sessionStorage.setItem(SETUP_PENDING, JS
 // Wait up to 800 ms for the event to be saved, so it isn't lost when the page navigates away.
 const trackThenGo = (name, props, url) => Promise.race([track(name, props), new Promise((r) => setTimeout(r, 800))]).then(() => { window.location.href = url; });
 
+// "Connect your broker" from the practice market lands on /?connect=1: leave the practice market
+// and start the broker setup. Practice positions stay; their prices switch to the broker's.
+function consumeConnectParam() {
+  try {
+    const qs = new URLSearchParams(window.location.search);
+    if (!qs.has("connect")) return false;
+    qs.delete("connect");
+    const rest = qs.toString();
+    window.history.replaceState(window.history.state, "", window.location.pathname + (rest ? `?${rest}` : "") + window.location.hash);
+    if (activeBroker()?.simulated) { chooseBroker(""); track("sim_to_broker"); }
+    return true;
+  } catch { return false; }
+}
+
 function BrokerGate({ children }) {
+  const wantsBroker = useRef(null);
+  if (wantsBroker.current === null) wantsBroker.current = consumeConnectParam();
   const [state, setState] = useState("checking"); // "checking" | "open" | "connect"
   const [broker, setBroker] = useState(activeBroker);
   const [hasKey, setHasKey] = useState(() => !!activeBroker()?.api.hasCredentials());
   const [error, setError] = useState("");
   // Brand-new users (no broker chosen, no key) start on the preview; anyone part-way through goes straight to setup.
-  const [phase, setPhase] = useState(() => (activeBroker() ? "setup" : "preview")); // "preview" | "question" | "setup"
+  const [phase, setPhase] = useState(() => (wantsBroker.current ? "question" : activeBroker() ? "setup" : "preview")); // "preview" | "question" | "setup"
   const opened = useRef(false);
   const verify = async () => {
     const b = activeBroker();
@@ -6229,9 +6245,11 @@ function BrokerGate({ children }) {
   if (state === "checking") return <SplashScreen label="Connecting to your broker…" themeIdx={0} />;
   const brand = <div className="authBrand"><Flame size={22} className="brandIcon" /><span>PAPERRALLY</span></div>;
   const pick = (id) => { chooseBroker(id); setBroker(id ? BROKERS[id] : null); setHasKey(id ? BROKERS[id].api.hasCredentials() : false); setError(""); };
+  // No broker account: open the app on the simulated practice market straight away.
+  const startPractice = (from) => { BROKERS.sim.api.saveCredentials(); pick("sim"); track("sim_start", { from }); verify(); };
   let body;
   if (phase === "preview" && !hasKey) {
-    body = <AppPreview brand={brand} onConnect={() => setPhase("question")} />;
+    body = <AppPreview brand={brand} onConnect={() => setPhase("question")} onPractice={startPractice} />;
   } else if (phase === "question" && !hasKey) {
     body = (
       <AccountQuestion
@@ -6239,6 +6257,7 @@ function BrokerGate({ children }) {
         onYes={() => { pick("angel"); setPhase("setup"); }}
         onOther={() => { pick(""); setPhase("setup"); }}
         onBack={() => { track("preview_view", { from: "question" }); setPhase("preview"); }}
+        onPractice={startPractice}
       />
     );
   } else {
@@ -7769,6 +7788,8 @@ a.resetBtn { text-decoration: none; }
 .setupRow .btn { flex: none; padding: 7px 10px; font-size: 12.5px; }
 .setupBrokers { display: grid; gap: 8px; margin: 14px 0; }
 .setupBrokers .btn { padding: 13px; font-size: 15px; justify-content: center; }
+.practiceBox { margin: 14px 0 6px; padding-top: 12px; border-top: 1px dashed var(--border); display: flex; flex-direction: column; gap: 6px; }
+.practiceBtn { width: 100%; }
 .setupOpen { display: block; text-align: center; text-decoration: none; padding: 10px; }
 .setupNav { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 .setupNav .btn:disabled, .authSubmit:disabled { opacity: .45; cursor: not-allowed; }
