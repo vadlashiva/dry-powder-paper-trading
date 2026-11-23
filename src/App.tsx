@@ -1308,7 +1308,7 @@ async function fetchSymbolNews(query) {
 }
 
 const LANDING_FEATURES = [
-  { icon: Activity, title: "Prices From Your Own Broker", desc: "Connect your own Angel One, FYERS or Upstox account. Prices come straight from your broker, while your trades use ₹10,00,000 of virtual cash — your real money is never touched." },
+  { icon: Activity, title: "Real Prices or a Practice Market", desc: "Connect your own Angel One, FYERS or Upstox account for real prices straight from your broker. No broker yet? Start at once on the Practice market with simulated prices. Either way you trade ₹10,00,000 of virtual cash and your real money is never touched." },
   { icon: Layers, title: "Options Chain With Real Premiums", desc: "NIFTY, BANKNIFTY and SENSEX options at their last traded premiums, with Delta, Gamma, Theta, Vega and IV on every strike and expiry." },
   { icon: TrendingDown, title: "Option Writing, With Margin", desc: "Sell calls and puts the way real writers do — premium credited, margin blocked — and see why the risk on that side is so different." },
   { icon: BarChart3, title: "Strategy Builder", desc: "Build multi-leg option strategies, see the payoff chart, place every leg at once and backtest on past index prices." },
@@ -1386,7 +1386,7 @@ const LEARN_LINKS = [
 const FAQ_ITEMS = [
   { q: "Is the money on PaperRally real?", a: "No. Every account starts with ₹10,00,000 in virtual cash. Trades, profits, and losses are simulated and have no monetary value." },
   { q: "How current are the prices?", a: "PaperRally uses a public market data feed, so prices can lag the exchange. BSE prices are typically about 15 minutes behind. Use them for practice, not for real trading decisions." },
-  { q: "Do I need a broker or demat account?", a: "Yes, an Angel One account. PaperRally isn't a broker: you connect your own Angel One account so prices come straight from your broker, then trade with ₹10,00,000 of virtual cash. No real order is ever placed and your real money is never touched. No Angel One account yet? Opening one is free." },
+  { q: "Do I need a broker or demat account?", a: "No. Without a broker you can start straight away on the Practice market, where prices are simulated (not real NSE data) but move like a real market. For real NSE & BSE prices, connect your own Angel One, FYERS or Upstox account. Either way PaperRally isn't a broker: you trade with ₹10,00,000 of virtual cash, no real order is ever placed and your real money is never touched." },
   { q: "What is Replay Mode?", a: "Pick any weekday from the last 30 days and PaperRally replays that day's real price action candle by candle, with its own separate ₹10,00,000 balance — so practicing in Replay never touches your main portfolio." },
   { q: "Do option prices match the exchange exactly?", a: "Not exactly. Premiums are worked out from the index or stock price with the Black-Scholes model, so they move realistically with the market but won't tick-for-tick match NSE's option quotes." },
   { q: "Is PaperRally free?", a: "Every new account gets a full 7-day Pro trial, no card required. After that, core paper trading stays free — Pro features like the options chain, alerts, and CSV export need an active subscription." },
@@ -1821,7 +1821,7 @@ function LandingPage({ themeIdx, onEnter: onEnterRaw }) {
             Practise any time: during market hours live, and after hours, at night or on weekends by replaying a real trading day.
           </p>
           <div className="heroTrust heroReveal heroReveal-3">
-            <span>Practise any time, 24×7</span><span>Use your own Angel One, FYERS or Upstox account</span><span>Your real money is never touched</span>
+            <span>Practise any time, 24×7</span><span>No broker? Start on the Practice market</span><span>Real prices with your Angel One, FYERS or Upstox</span><span>Your real money is never touched</span>
           </div>
           <LiveTradersCount />
           {!marketNow.isOpen && (
