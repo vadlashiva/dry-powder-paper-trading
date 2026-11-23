@@ -116,3 +116,120 @@ describe("rule tester engine", () => {
     expect(trades).toHaveLength(0);
   });
 });
+
+// ---- Lot sizes, option P&L and margin (positionMath.js) ----------------------------
+import fs from "fs";
+import path from "path";
+import { monthKey, lotSizeFrom, positionMultiplier, optionPnl, optionMarketValue, shortMarginPerLot, savePortfolioVersionedWith } from "./positionMath";
+
+// Expiry at 3:30 PM IST on a given date
+const expIST = (y, m, d) => Date.UTC(y, m - 1, d, 10, 0);
+// Fixed table in the same shape as public/lot-sizes.json (real file changes when NSE revises lots)
+const TABLE = {
+  COCHINSHIP: { "NOV-26": 400, "DEC-26": 400, "JAN-27": 400 },
+  TCS: { "NOV-26": 225, "DEC-26": 225, "JAN-27": 250 },
+  NIFTY: { "NOV-26": 65, "DEC-26": 65, "JAN-27": 65 },
+};
+
+describe("F&O lot sizes", () => {
+  test("expiry month uses the Indian calendar day", () => {
+    expect(monthKey(expIST(2026, 12, 29))).toBe("DEC-26");
+    expect(monthKey(Date.UTC(2026, 11, 31, 20, 0))).toBe("JAN-27"); // 1:30 AM IST on 1 Jan
+  });
+  test("stock options use NSE's lot, never 1", () => {
+    expect(lotSizeFrom(TABLE, "COCHINSHIP", expIST(2026, 12, 29))).toBe(400);
+  });
+  test("a lot revision applies only from its expiry month", () => {
+    expect(lotSizeFrom(TABLE, "TCS", expIST(2026, 12, 29))).toBe(225);
+    expect(lotSizeFrom(TABLE, "TCS", expIST(2027, 1, 26))).toBe(250);
+  });
+  test("SENSEX lot is 20 until Dec-2026 expiries and 25 from Jan-2027", () => {
+    expect(lotSizeFrom(TABLE, "SENSEX", expIST(2026, 12, 24))).toBe(20);
+    expect(lotSizeFrom(TABLE, "SENSEX", expIST(2027, 1, 7))).toBe(25);
+  });
+  test("unknown stock or missing table gives no lot (trade refused), indices fall back", () => {
+    expect(lotSizeFrom(TABLE, "NOTANFOSTOCK", expIST(2026, 12, 29))).toBeNull();
+    expect(lotSizeFrom(null, "COCHINSHIP", expIST(2026, 12, 29))).toBeNull();
+    expect(lotSizeFrom(null, "NIFTY", expIST(2026, 12, 29))).toBe(65);
+  });
+  test("the shipped lot-size file is complete and sane", () => {
+    const file = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "public", "lot-sizes.json"), "utf8"));
+    const lots = file.lots;
+    expect(Object.keys(lots).length).toBeGreaterThan(150);
+    for (const sym of ["NIFTY", "BANKNIFTY", "RELIANCE", "SBIN", "TCS"]) expect(lots[sym]).toBeDefined();
+    for (const [sym, months] of Object.entries(lots)) {
+      for (const v of Object.values(months)) {
+        if (!(Number.isInteger(v) && v >= 1 && v <= 100000)) throw new Error(`bad lot for ${sym}: ${v}`);
+      }
+    }
+  });
+});
+
+describe("option position value", () => {
+  const shortCall = { symbol: "COCHINSHIP.NS", side: "short", lotBased: true, lot: 400, qty: 1, avgPremium: 45.07 };
+  test("short stock option: P&L and market value scale by the lot", () => {
+    near(optionPnl(shortCall, 43.85, positionMultiplier(shortCall, "COCHINSHIP")), (45.07 - 43.85) * 400);
+    near(optionMarketValue(shortCall, 43.85, 400), -43.85 * 400);
+  });
+  test("long index option: 2 lots of NIFTY", () => {
+    const p = { side: "long", lotBased: true, lot: 65, qty: 2, avgPremium: 100 };
+    near(optionPnl(p, 130, positionMultiplier(p, "NIFTY")), 30 * 65 * 2);
+  });
+  test("positions saved before lots were stored keep their original lot", () => {
+    expect(positionMultiplier({ lotBased: true, qty: 1 }, "COCHINSHIP")).toBe(1);
+    expect(positionMultiplier({ lotBased: true, qty: 1 }, "NIFTY")).toBe(65);
+  });
+  test("short margin grows with the lot and is at least 4% of contract value", () => {
+    const m1 = shortMarginPerLot(1100, 1120, "call", 1);
+    const m400 = shortMarginPerLot(1100, 1120, "call", 400);
+    near(m400, 0.09 * 1100 * 400 - 0.5 * 20 * 400, 1);
+    expect(m400).toBeGreaterThan(m1 * 300);
+    expect(shortMarginPerLot(25000, 30000, "call", 65)).toBe(Math.round(0.04 * 25000 * 65));
+  });
+});
+
+// ---- Two devices saving the same portfolio --------------------------------------
+function fakeStore(initialVersion) {
+  const row = { updated_at: initialVersion, data: null };
+  const q = (result) => ({ maybeSingle: async () => result, then: (res) => res(result) });
+  const client = {
+    row,
+    from: () => ({
+      select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { updated_at: row.updated_at }, error: null }) }) }),
+      upsert: (v) => ({ select: () => { row.updated_at = v.updated_at; row.data = v.data; return q({ data: { updated_at: v.updated_at }, error: null }); } }),
+      update: (v) => ({ eq: () => ({ eq: (_c, ver) => ({ select: async () => {
+        if (row.updated_at !== ver) return { data: [], error: null };
+        row.updated_at = v.updated_at; row.data = v.data; return { data: [{ updated_at: v.updated_at }], error: null };
+      } }) }) }),
+    }),
+  };
+  return client;
+}
+
+describe("multi-device portfolio saves", () => {
+  test("a device saves when nothing changed since it loaded", async () => {
+    const c = fakeStore("2026-11-23T06:00:00.000+00:00");
+    const r = await savePortfolioVersionedWith(c, "u", { cash: 1 }, "2026-11-23T06:00:00.000+00:00", "2026-11-23T06:01:00.000Z");
+    expect(r).toEqual({ ok: true, version: "2026-11-23T06:01:00.000Z" });
+    expect(c.row.data).toEqual({ cash: 1 });
+  });
+  test("a stale device (phone) cannot overwrite what the laptop saved", async () => {
+    const c = fakeStore("2026-11-23T06:00:00.000+00:00");
+    await savePortfolioVersionedWith(c, "u", { cash: "laptop" }, "2026-11-23T06:00:00.000+00:00", "2026-11-23T06:05:00.000Z");
+    const phone = await savePortfolioVersionedWith(c, "u", { cash: "phone-old" }, "2026-11-23T06:00:00.000+00:00", "2026-11-23T06:06:00.000Z");
+    expect(phone).toEqual({ conflict: true });
+    expect(c.row.data).toEqual({ cash: "laptop" });
+  });
+  test("same instant written in another format is not treated as a conflict", async () => {
+    const c = fakeStore("2026-11-23T06:00:00+00:00");
+    const r = await savePortfolioVersionedWith(c, "u", { cash: 2 }, "2026-11-23T06:00:00.000Z", "2026-11-23T06:02:00.000Z");
+    expect(r.ok).toBe(true);
+    expect(c.row.data).toEqual({ cash: 2 });
+  });
+  test("first save of a new account creates the row", async () => {
+    const c = fakeStore(null);
+    const r = await savePortfolioVersionedWith(c, "u", { cash: 3 }, null, "2026-11-23T06:03:00.000Z");
+    expect(r.ok).toBe(true);
+    expect(c.row.data).toEqual({ cash: 3 });
+  });
+});
