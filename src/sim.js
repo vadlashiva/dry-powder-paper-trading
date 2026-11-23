@@ -95,6 +95,23 @@ function tradeIndex(d) {
 // The most recent weekday on or before IST day `d`.
 function lastTradeDay(d) { while (!isWeekday(d)) d--; return d; }
 
+/* ---- market mood ---- */
+// The market moves in short phases: each week (5 trading days) leans up or down, and the lean
+// usually changes from one week to the next, so beginners see rising, falling and mixed weeks
+// instead of one long trend. Stocks follow the lean in proportion to how closely they track the index.
+const REGIME_DAYS = 5;
+const REGIME_TILT = 0.35; // daily lean, as a fraction of the daily volatility
+const FLIP_CHANCE = 0.65;
+const regimeCache = {};
+function regimeSign(ix, w) {
+  const r = regimeCache[ix] || (regimeCache[ix] = [1]);
+  for (let k = r.length; k <= w; k++) {
+    const flip = rng(hash(`regime|${ix}|${k}`))() < FLIP_CHANCE;
+    r[k] = flip ? -r[k - 1] : r[k - 1];
+  }
+  return r[w];
+}
+
 /* ---- daily closes ---- */
 const closeCache = {};
 function dailyCloses(symbol, upTo) {
@@ -107,8 +124,9 @@ function dailyCloses(symbol, upTo) {
     const m = normals(`mkt|${ix}|d${i}`, 1)[0];
     const e = normals(`${k}|d${i}`, 1)[0];
     const b = Math.min(p.beta, 1);
-    const shock = p.vol * (b * m + Math.sqrt(1 - b * b) * e);
-    const pull = -0.01 * Math.log(c[i - 1] / p.base); // drifts back toward its usual level over months
+    const tilt = REGIME_TILT * b * regimeSign(ix, Math.floor(i / REGIME_DAYS));
+    const shock = p.vol * (b * m + Math.sqrt(1 - b * b) * e + tilt);
+    const pull = -0.03 * Math.log(c[i - 1] / p.base); // drifts back toward its usual level over weeks
     c[i] = c[i - 1] * Math.exp(shock + pull - (p.vol * p.vol) / 2);
   }
   return c;

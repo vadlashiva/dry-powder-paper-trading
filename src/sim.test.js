@@ -45,3 +45,18 @@ test("before the open and at the weekend the quote is the last session's close",
 test("search finds practice stocks by ticker or name", async () => {
   expect((await searchStocks("tata")).map((r) => r.symbol)).toEqual(expect.arrayContaining(["TATAMOTORS.NS", "TATASTEEL.NS"]));
 });
+
+test("the market mixes rising and falling weeks", () => {
+  const now = ist(2026, 11, 23, 16, 0);
+  for (const s of ["^NSEI", "RELIANCE.NS", "TCS.NS"]) {
+    const d = simCandles({ symbol: s, interval: "1d", fromMs: ist(2026, 5, 25, 0, 0), toMs: now }, now);
+    const weeks = [];
+    for (let i = 0; i + 5 <= d.length; i += 5) weeks.push(d[i + 4].c > d[i].o);
+    const up = weeks.filter(Boolean).length / weeks.length;
+    expect(up).toBeGreaterThan(0.3);
+    expect(up).toBeLessThan(0.7);
+    let run = 1, maxRun = 1;
+    for (let i = 1; i < weeks.length; i++) { run = weeks[i] === weeks[i - 1] ? run + 1 : 1; maxRun = Math.max(maxRun, run); }
+    expect(maxRun).toBeLessThanOrEqual(5);
+  }
+});
