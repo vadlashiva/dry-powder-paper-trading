@@ -68,3 +68,31 @@ export async function savePortfolioVersionedWith(client, userId, payload, versio
   }
   return { ok: true, version: data[0].updated_at };
 }
+
+// ---- Product type: intraday (MIS) or carry-forward (CNC for stocks, NRML for F&O) ----
+// Positions saved before product types existed have no `product` and count as carry-forward.
+export const MIS = "MIS";
+export const CF = "CF";
+export const productOf = (p) => (p && p.product === MIS ? MIS : CF);
+export const isIntraday = (p) => productOf(p) === MIS;
+// Intraday stock trades block 20% of the order value (5x leverage), like a discount broker.
+export const MIS_STOCK_MARGIN = 0.2;
+// Cash an order of `qty` shares at `price` takes from the account.
+export const stockCashNeeded = (price, qty, product) => price * qty * (product === MIS ? MIS_STOCK_MARGIN : 1);
+// What a stock position is worth in the account at `price`: shares for delivery,
+// blocked margin plus profit or loss for intraday.
+export const stockPositionValue = (p, price) =>
+  isIntraday(p) ? (p.margin || 0) + (price - p.avgPrice) * p.qty : price * p.qty;
+// Cash returned when `qty` shares of position `p` are sold at `price`.
+export const stockSaleCash = (p, price, qty) =>
+  isIntraday(p) ? (p.margin || 0) * (qty / p.qty) + (price - p.avgPrice) * qty : price * qty;
+
+// Intraday positions are squared off at 3:20 PM IST on the day they were opened.
+export const SQUARE_OFF_MIN = 15 * 60 + 20;
+const istDay = (ms) => Math.floor((ms + IST_MS) / 86400000);
+const istMinute = (ms) => Math.floor(((ms + IST_MS) % 86400000) / 60000);
+// True once 3:20 PM IST has passed on the day `openedAt` falls on (or a later day has started).
+export const squareOffDue = (openedAt, now) =>
+  istDay(now) > istDay(openedAt ?? now) || istMinute(now) >= SQUARE_OFF_MIN;
+// True when new intraday orders are no longer accepted today.
+export const intradayClosed = (now) => istMinute(now) >= SQUARE_OFF_MIN;

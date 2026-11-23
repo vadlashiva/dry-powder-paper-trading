@@ -233,3 +233,45 @@ describe("multi-device portfolio saves", () => {
     expect(c.row.data).toEqual({ cash: 3 });
   });
 });
+
+// ---- Intraday (MIS) vs carry-forward ------------------------------------------------
+import { productOf, isIntraday, stockCashNeeded, stockPositionValue, stockSaleCash, squareOffDue, intradayClosed } from "./positionMath";
+const istMs = (y, mo, d, h, mi) => Date.UTC(y, mo - 1, d, h, mi) - 5.5 * 3600 * 1000;
+
+test("old positions without a product count as carry-forward", () => {
+  expect(productOf({})).toBe("CF");
+  expect(isIntraday({ product: "MIS" })).toBe(true);
+});
+
+test("intraday stock buy blocks 20%, delivery the full value", () => {
+  expect(stockCashNeeded(1000, 10, "MIS")).toBe(2000);
+  expect(stockCashNeeded(1000, 10, "CF")).toBe(10000);
+});
+
+test("intraday stock value and sale return margin plus P&L", () => {
+  const p = { product: "MIS", qty: 10, avgPrice: 1000, margin: 2000 };
+  expect(stockPositionValue(p, 1050)).toBe(2500);
+  expect(stockSaleCash(p, 950, 10)).toBe(1500);
+  expect(stockSaleCash(p, 1100, 5)).toBe(1500);
+  const d = { qty: 10, avgPrice: 1000 };
+  expect(stockPositionValue(d, 1050)).toBe(10500);
+  expect(stockSaleCash(d, 1050, 4)).toBe(4200);
+});
+
+test("intraday money round trip: buy then sell leaves cash changed by P&L only", () => {
+  let cash = 100000;
+  const need = stockCashNeeded(500, 100, "MIS");
+  cash -= need;
+  const p = { product: "MIS", qty: 100, avgPrice: 500, margin: need };
+  cash += stockSaleCash(p, 512.5, 100);
+  expect(cash).toBeCloseTo(100000 + 1250, 6);
+});
+
+test("square-off is due from 3:20 PM IST, and on any later day", () => {
+  const opened = istMs(2026, 11, 23, 10, 0);
+  expect(squareOffDue(opened, istMs(2026, 11, 23, 15, 19))).toBe(false);
+  expect(squareOffDue(opened, istMs(2026, 11, 23, 15, 20))).toBe(true);
+  expect(squareOffDue(opened, istMs(2026, 11, 24, 9, 0))).toBe(true);
+  expect(intradayClosed(istMs(2026, 11, 23, 15, 25))).toBe(true);
+  expect(intradayClosed(istMs(2026, 11, 23, 9, 30))).toBe(false);
+});
