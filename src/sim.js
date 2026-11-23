@@ -5,9 +5,10 @@
 // gives the same price on every device and after every reload, so charts, positions and the
 // leaderboard stay consistent. Stocks move partly with the index (a shared "market" factor),
 // sessions run 9:15 AM to 3:30 PM IST on weekdays, and each day opens near the previous close.
-import { read, write, remove, IST_MS } from "./brokerUtil";
+import { read, write, remove, readJson, IST_MS } from "./brokerUtil";
 
 const STORE = "pr_sim_on";
+const CLOCK = "pr_sim_clock"; // { realStart, simStart }: set when the user presses "Start market"
 const DAY = 86400000;
 const OPEN_MIN = 9 * 60 + 15;
 const MINUTES = 375; // 9:15 to 3:30
@@ -170,7 +171,7 @@ const tick = (v) => Math.round(v * 20) / 20; // 5-paisa tick
 const r2 = (b) => ({ o: tick(b.o), h: tick(b.h), l: tick(b.l), c: tick(b.c) });
 
 // Price now (or at `nowMs`): inside a session it moves within the current minute; outside, the last close.
-export function simQuote(symbol, nowMs = Date.now()) {
+export function simQuote(symbol, nowMs = simNow()) {
   let d = istDayNum(nowMs);
   const minute = Math.floor((nowMs - sessionOpenMs(d)) / 60000);
   const today = isWeekday(d) && minute >= 0 ? tradeIndex(d) : null;
@@ -193,7 +194,7 @@ export function simQuote(symbol, nowMs = Date.now()) {
 
 const STEP = { "1m": 1, "5m": 5, "15m": 15, "30m": 30, "60m": 60, "1h": 60 };
 // Candles between fromMs and toMs, never past `nowMs`. Daily candles for interval "1d".
-export function simCandles({ symbol, interval, fromMs, toMs }, nowMs = Date.now()) {
+export function simCandles({ symbol, interval, fromMs, toMs }, nowMs = simNow()) {
   const end = Math.min(toMs, nowMs);
   const out = [];
   for (let d = istDayNum(fromMs); d <= istDayNum(end); d++) {
@@ -221,6 +222,38 @@ export function simCandles({ symbol, interval, fromMs, toMs }, nowMs = Date.now(
   }
   return out;
 }
+
+/* ---- the practice market's own clock ---- */
+// Until the user first presses "Start market", the practice market keeps real India time.
+// "Start market" moves its clock forward to the next 9:15 AM open and lets it run at normal
+// speed from there, so a beginner can trade a full session at any hour, day or night.
+// The clock only ever moves forward, so positions, intraday square-off and history stay in order.
+export function simNow(realMs = Date.now()) {
+  const c = readJson(CLOCK);
+  return c && c.simStart > 0 ? c.simStart + (realMs - c.realStart) : realMs;
+}
+// Is the practice market in session at practice time `t`? (Weekdays 9:15 AM to 3:30 PM.)
+export function simIsOpen(t = simNow()) {
+  const d = istDayNum(t);
+  const m = (t - sessionOpenMs(d)) / 60000;
+  return isWeekday(d) && m >= 0 && m < MINUTES;
+}
+// The open of the next practice session after practice time `t` (today's, if it hasn't opened yet).
+export function nextSimOpen(t = simNow()) {
+  let d = istDayNum(t);
+  if (!isWeekday(d) || t >= sessionOpenMs(d)) { d++; while (!isWeekday(d)) d++; }
+  return sessionOpenMs(d);
+}
+// "Start market": open a new session now. Does nothing while a session is already running.
+export function startSimMarket(realMs = Date.now()) {
+  const t = simNow(realMs);
+  if (simIsOpen(t)) return t;
+  const simStart = nextSimOpen(t);
+  write(CLOCK, JSON.stringify({ realStart: realMs, simStart }));
+  try { window.dispatchEvent(new Event("pr-sim-clock")); } catch { /* no window */ }
+  return simStart;
+}
+export const clockNow = () => simNow();
 
 /* ---- the broker interface (see brokers.js) ---- */
 export const hasCredentials = () => read(STORE) === "1";
