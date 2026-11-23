@@ -1073,14 +1073,40 @@ function hydratePortfolio(raw) {
     weekStart: base.weekStart ?? null,
   };
 }
+// The portfolio row's updated_at works as a version number, so that two devices
+// (say a laptop and the phone app) never overwrite each other's trades.
 async function fetchPortfolio(userId) {
-  const { data, error } = await supabase.from("portfolios").select("data").eq("user_id", userId).maybeSingle();
+  const { data, error } = await supabase.from("portfolios").select("data, updated_at").eq("user_id", userId).maybeSingle();
   if (error) throw error;
-  return hydratePortfolio(data?.data ?? null);
+  const p = hydratePortfolio(data?.data ?? null);
+  Object.defineProperty(p, "_version", { value: data?.updated_at ?? null, enumerable: false });
+  return p;
 }
-async function upsertPortfolio(userId, payload) {
-  const { error } = await supabase.from("portfolios").upsert({ user_id: userId, data: payload, updated_at: new Date().toISOString() });
-  if (error) console.error("portfolio save failed", error);
+async function fetchPortfolioVersion(userId) {
+  const { data, error } = await supabase.from("portfolios").select("updated_at").eq("user_id", userId).maybeSingle();
+  if (error) throw error;
+  return data?.updated_at ?? null;
+}
+// Saves only if nobody else saved since `version`. Returns { ok, version } or { conflict: true }.
+async function savePortfolioVersioned(userId, payload, version) {
+  const now = new Date().toISOString();
+  if (!version) {
+    const { data, error } = await supabase.from("portfolios").upsert({ user_id: userId, data: payload, updated_at: now }).select("updated_at").maybeSingle();
+    if (error) { console.error("portfolio save failed", error); return { ok: false }; }
+    return { ok: true, version: data?.updated_at ?? now };
+  }
+  const { data, error } = await supabase.from("portfolios").update({ data: payload, updated_at: now }).eq("user_id", userId).eq("updated_at", version).select("updated_at");
+  if (error) { console.error("portfolio save failed", error); return { ok: false }; }
+  if (!data || data.length === 0) {
+    // Safety net: if the stored version is still the one we hold, the mismatch was only a
+    // timestamp-format difference, not another device. Save normally instead of reloading.
+    const cur = await fetchPortfolioVersion(userId).catch(() => undefined);
+    if (cur === undefined || !cur || Date.parse(cur) !== Date.parse(version)) return { conflict: true };
+    const r = await supabase.from("portfolios").upsert({ user_id: userId, data: payload, updated_at: now }).select("updated_at").maybeSingle();
+    if (r.error) { console.error("portfolio save failed", r.error); return { ok: false }; }
+    return { ok: true, version: r.data?.updated_at ?? now };
+  }
+  return { ok: true, version: data[0].updated_at };
 }
 
 async function fetchSubscription(userId) {
@@ -2660,15 +2686,69 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
   const pendingOrdersRef = useRef(pendingOrders);
   useEffect(() => { pendingOrdersRef.current = pendingOrders; }, [pendingOrders]);
 
+  // ---- Saving and multi-device sync ----
+  // Saves are queued one at a time and carry the version they were based on. If another
+  // device saved in between, this device reloads the newer portfolio instead of overwriting it.
   const saveTimerRef = useRef(null);
+  const versionRef = useRef(saved?._version ?? null);
+  const skipSaveRef = useRef(true); // the first render is the portfolio we just loaded; nothing to save
+  const saveChainRef = useRef(Promise.resolve());
+  const dirtyRef = useRef(false);
+  const payloadRef = useRef(null);
+  payloadRef.current = { cash, stockPositions, optionPositions, trades, alerts, pendingOrders, customInstruments, prefs, weekStart };
+  const applyRemote = (p) => {
+    skipSaveRef.current = true;
+    versionRef.current = p._version ?? null;
+    setCash(p.cash); setStockPositions(p.stockPositions); setOptionPositions(p.optionPositions); setTrades(p.trades);
+    setAlerts(p.alerts); setPendingOrders(p.pendingOrders); setCustomInstruments(p.customInstruments); setPrefs(p.prefs); setWeekStart(p.weekStart);
+  };
+  const reloadFromServer = async (why) => {
+    try {
+      const p = await fetchPortfolio(userId);
+      applyRemote(p);
+      if (why === "conflict") showToast("Your portfolio changed on another device — showing the latest. Please repeat your last action if it's missing.", "bear");
+      else showToast("Portfolio updated from your other device", "bull");
+    } catch (e) { console.error("portfolio reload failed", e); }
+  };
+  const reloadRef = useRef(reloadFromServer);
+  reloadRef.current = reloadFromServer;
   useEffect(() => {
     if (replayActive) return; // replay sessions are never saved over the real portfolio
+    if (skipSaveRef.current) { skipSaveRef.current = false; return; }
+    dirtyRef.current = true;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
-      upsertPortfolio(userId, { cash, stockPositions, optionPositions, trades, alerts, pendingOrders, customInstruments, prefs, weekStart });
+      saveChainRef.current = saveChainRef.current.then(async () => {
+        if (!dirtyRef.current) return;
+        dirtyRef.current = false;
+        const r = await savePortfolioVersioned(userId, payloadRef.current, versionRef.current);
+        if (r.ok) versionRef.current = r.version;
+        else if (r.conflict) await reloadRef.current("conflict");
+      });
     }, 600);
     return () => clearTimeout(saveTimerRef.current);
   }, [userId, cash, stockPositions, optionPositions, trades, alerts, pendingOrders, customInstruments, prefs, weekStart, replayActive]);
+
+  // Pick up changes made on another device: when the app comes back on screen, and every 15 s while visible.
+  useEffect(() => {
+    if (replayActive) return;
+    let busy = false;
+    const check = async () => {
+      if (busy || document.visibilityState !== "visible" || dirtyRef.current) return;
+      busy = true;
+      try {
+        await saveChainRef.current;
+        const v = await fetchPortfolioVersion(userId);
+        if (v && Date.parse(v) !== Date.parse(versionRef.current || "") && !dirtyRef.current) await reloadRef.current("remote");
+      } catch (e) { /* offline: try again later */ }
+      busy = false;
+    };
+    const onVis = () => { if (document.visibilityState === "visible") check(); };
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("focus", check);
+    const id = setInterval(check, 15000);
+    return () => { document.removeEventListener("visibilitychange", onVis); window.removeEventListener("focus", check); clearInterval(id); };
+  }, [userId, replayActive]);
 
   useEffect(() => {
     let cancelled = false;
