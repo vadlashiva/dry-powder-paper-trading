@@ -11,7 +11,7 @@ import { computeSMC, SMCPrimitive } from "./smc";
 import { BrokerSetup, AccountQuestion } from "./brokerSetup";
 import { AppPreview, PREVIEW_CSS } from "./preview";
 import { BROKERS, activeBroker, chooseBroker, answerFeedRequest, fetchQuotes, fetchOptionQuotes, isSimulated, marketNow } from "./brokers";
-import { startSimMarket } from "./sim";
+import { startSimMarket, setSimSpeed, simSpeed, SIM_SPEEDS } from "./sim";
 import { LEARN, LangSwitch, loadLang, saveLang } from "./i18n";
 import { useIsMobile, loadSetting, saveSetting, computeCharges, PerformancePanel } from "./extras";
 import { isoWeekIST, initTelemetry, track, tradeKey, TagChips, JournalModal, JournalStatsCard, computeAchievements, AchievementsGrid, ACHIEVEMENTS, makeShareImage, shareImage, captureReferralFromUrl, syncReferrals, InvitePanel, LeaderboardPanel, TourOverlay, InstallHelp } from "./growth";
@@ -2425,6 +2425,8 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
   // No broker connected: the simulated practice market. Replay and "Practice today" need real past prices,
   // so they are for broker users only; practice users get "Start market" instead.
   const practiceMode = isSimulated();
+  const [simRate, setSimRate] = useState(() => simSpeed());
+  const changeSimSpeed = (r) => { setSimSpeed(r); setSimRate(r); track("sim_speed", { rate: r }); };
   useEffect(() => {
     const onClock = () => setMarketStatus(getMarketStatus());
     window.addEventListener("pr-sim-clock", onClock);
@@ -2436,7 +2438,7 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
   const marketStatusRef = useRef(marketStatus);
   useEffect(() => { marketStatusRef.current = marketStatus; }, [marketStatus]);
   useEffect(() => {
-    const iv = setInterval(() => setMarketStatus(getMarketStatus()), 30000);
+    const iv = setInterval(() => setMarketStatus(getMarketStatus()), isSimulated() ? 5000 : 30000);
     return () => clearInterval(iv);
   }, []);
   const [exchangeFilter, setExchangeFilter] = useState("ALL");
@@ -2777,8 +2779,11 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
       });
     };
     pull();
-    const stop = visibleInterval(pull, 10000);
-    return () => { cancelled = true; stop(); };
+    // The practice market is computed on the device, so it can refresh often; brokers every 10 s.
+    const stop = visibleInterval(pull, isSimulated() ? 2000 : 10000);
+    const onClock = () => pull();
+    window.addEventListener("pr-sim-clock", onClock);
+    return () => { cancelled = true; stop(); window.removeEventListener("pr-sim-clock", onClock); };
   }, []);
 
   // Prices come only from the real feed (no simulated ticks), so fills and P&L use real prices.
@@ -4410,6 +4415,17 @@ function TradingApp({ username, userId, userEmail, contactEmail = null, memberSi
             <li>{L.firstTrade.step2}</li>
             <li>{L.firstTrade.step3}</li>
           </ol>
+        </div>
+      )}
+      {practiceMode && liveMarketStatus.isOpen && (
+        <div className="closedBar simSpeedBar">
+          <span className="closedBarTag simOpenTag">Practice market open</span>
+          <span className="closedBarText">Simulated prices. Too slow? Speed up the market:</span>
+          <div className="simSpeeds">
+            {SIM_SPEEDS.map((r) => (
+              <button key={r} className={`indToggle ${simRate === r ? "indToggleActive" : ""}`} onClick={() => changeSimSpeed(r)} title={r === 1 ? "Real-market speed" : `${r}x: a full day in about ${Math.round(375 / r)} minutes`}>{r}x</button>
+            ))}
+          </div>
         </div>
       )}
       {practiceMode && !liveMarketStatus.isOpen && (
@@ -6710,6 +6726,8 @@ const CSS = `
 .indToggle:hover { color: var(--text); }
 .indDot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
 .indToggleActive { background: var(--amber); color: #241800; border-color: var(--amber); }
+.simSpeedBar .simOpenTag { background: #16a34a; }
+.simSpeeds { display: flex; gap: 6px; margin-left: auto; }
 .practiceTopBtn { background: var(--accent); color: white; border-color: var(--accent); font-weight: 600; }
 .practiceTopBtn:hover:not(:disabled) { filter: brightness(1.1); color: white; border-color: var(--accent); }
 .practiceTopBtn:disabled { opacity: 0.6; cursor: wait; }
