@@ -1296,17 +1296,18 @@ async function fetchSymbolNews(query) {
 }
 
 const LANDING_FEATURES = [
-  { icon: FlaskConical, title: "Rule Tester: Backtest Your Idea", desc: "Write your intraday rule — opening-range breakout, EMA cross, RSI bounce — and see in seconds how it did on past days: win rate, profit and every trade." },
+  { icon: Activity, title: "Prices From Your Own Broker", desc: "Connect your own Angel One, FYERS or Upstox account. Prices come straight from your broker, while your trades use ₹10,00,000 of virtual cash — your real money is never touched." },
+  { icon: Layers, title: "Options Chain With Real Premiums", desc: "NIFTY, BANKNIFTY and SENSEX options at their last traded premiums, with Delta, Gamma, Theta, Vega and IV on every strike and expiry." },
+  { icon: TrendingDown, title: "Option Writing, With Margin", desc: "Sell calls and puts the way real writers do — premium credited, margin blocked — and see why the risk on that side is so different." },
   { icon: BarChart3, title: "Strategy Builder", desc: "Build multi-leg option strategies, see the payoff chart, place every leg at once and backtest on past index prices." },
-  { icon: Activity, title: "NSE & BSE Market Data", desc: "Market prices from a public data feed, updated during market hours. Prices can lag the exchange." },
-  { icon: Layers, title: "Options Chain & Greeks", desc: "Black-Scholes pricing with Delta, Gamma, Theta, and Vega across every strike and expiry." },
-  { icon: LineChart, title: "Charts & Indicators", desc: "Candlestick and line charts with MA, RSI, and MACD, across five timeframes." },
-  { icon: TrendingDown, title: "Option Writing, with Margin", desc: "Sell calls and puts the way real writers do — premium credited, margin blocked — and see why the risk on that side is so different." },
+  { icon: Play, title: "Replay Any Trading Day", desc: "Market closed? Trade a past session from its 9:15 AM open as if it were live — at night, on weekends, any time." },
+  { icon: FlaskConical, title: "Rule Tester", desc: "Test an intraday rule — opening-range breakout, EMA cross, RSI bounce — on past days and see its win rate, profit and every trade in seconds." },
+  { icon: LineChart, title: "Charts & 11 Indicators", desc: "Candles from 1-minute to daily with SMA, EMA, Bollinger Bands, Supertrend, RSI, MACD, Stochastic, ATR and Smart Money Concepts." },
   { icon: Crosshair, title: "Stop-Losses on Every Trade", desc: "Stop orders on stocks and an automatic stop-loss on option positions, so protecting a trade becomes a reflex, not an afterthought." },
-  { icon: Bell, title: "Price Alerts", desc: "Get notified the moment a stock crosses the price you're watching for." },
-  { icon: Download, title: "Trade History Export", desc: "Download your full trade log as a CSV whenever you want to review your performance." },
-  { icon: Maximize2, title: "Pop-out Trading Window", desc: "Open a full-screen chart in its own window and buy, sell, or trade options right beside it — on the same balance." },
-  { icon: Activity, title: "5,000+ BSE Stocks", desc: "Every actively traded BSE company, searchable by name or ticker — from Reliance to the smallest caps." },
+  { icon: Bell, title: "Price Alerts", desc: "Get a notification on your phone the moment a stock crosses the price you're watching." },
+  { icon: Trophy, title: "Performance, Journal & Leaderboard", desc: "Your win rate and P&L stats, a trade journal with tags, achievements, and a weekly leaderboard to measure yourself against." },
+  { icon: GraduationCap, title: "Learn in Your Language", desc: "Short lessons on orders, stop-losses and options in English, हिंदी and ಕನ್ನಡ." },
+  { icon: Smartphone, title: "Works on Phone & Desktop", desc: "Install it on your phone like an app, or open a pop-out chart window on desktop and trade beside it — on the same balance." },
 ];
 
 const WHATS_NEW = [
@@ -1774,8 +1775,8 @@ function LandingPage({ themeIdx, onEnter: onEnterRaw }) {
           <span>PAPERRALLY</span>
         </div>
         <nav className="landingMenu" aria-label="Main">
-          <a href="#new">What's new</a>
           <a href="#features">Features</a>
+          <a href="#new">What's new</a>
           <a href="#how-it-works">How it works</a>
           <a href="#replay">Replay</a>
           <details className="landingMenuDrop" ref={guidesRef}>
@@ -1808,7 +1809,7 @@ function LandingPage({ themeIdx, onEnter: onEnterRaw }) {
             Practise any time: during market hours live, and after hours, at night or on weekends by replaying a real trading day.
           </p>
           <div className="heroTrust heroReveal heroReveal-3">
-            <span>Practise any time, 24×7</span><span>Use your own Angel One account</span><span>Your real money is never touched</span>
+            <span>Practise any time, 24×7</span><span>Use your own Angel One, FYERS or Upstox account</span><span>Your real money is never touched</span>
           </div>
           <LiveTradersCount />
           {!marketNow.isOpen && (
@@ -1836,11 +1837,15 @@ function LandingPage({ themeIdx, onEnter: onEnterRaw }) {
           </div>
           <div className="authSub">Start trading in under a minute</div>
           <LiveHeroPrice />
-          <ul className="upgradeList" style={{ marginTop: "18px" }}>
-            <li>₹10,00,000 virtual starting balance</li>
-            <li>NSE &amp; BSE market data</li>
-            <li>No card required to sign up</li>
-          </ul>
+          <div className="heroInside">
+            <div className="heroInsideHead">Inside PaperRally</div>
+            <ul className="heroInsideList">
+              {LANDING_FEATURES.slice(0, 8).map((f) => (
+                <li key={f.title}><span className="heroInsideIcon"><f.icon size={14} /></span>{f.title}</li>
+              ))}
+            </ul>
+            <a href="#features" className="heroInsideMore">See all {LANDING_FEATURES.length} features →</a>
+          </div>
           <button className="btn btnBull authSubmit" onClick={() => onEnter("register")}>Create free account</button>
         </div>
       </section>
@@ -1864,6 +1869,26 @@ function LandingPage({ themeIdx, onEnter: onEnterRaw }) {
         <div className="landingStatItem">
           <span className="landingStatNum">7 Days</span>
           <span className="landingStatLabel">Every feature free</span>
+        </div>
+      </section>
+
+      <section className="landingFeatures" id="features">
+        <div className="landingFeatHead">
+          <div className="landingEyebrow">Features</div>
+          <h2 className="landingH2">Everything you need to practise like a real trader</h2>
+          <p className="landingFeatSub dim">One terminal for stocks, options and indices — with your broker’s prices and none of your money at risk.</p>
+        </div>
+        <div className="landingFeatureGrid">
+          {LANDING_FEATURES.map((f, i) => {
+            const color = ALLOC_PALETTE[i % ALLOC_PALETTE.length];
+            return (
+              <div key={f.title} className="landingFeatureCard" style={{ borderTopColor: color }}>
+                <div className="landingFeatureIcon" style={{ background: `color-mix(in srgb, ${color} 18%, transparent)`, color }}><f.icon size={18} /></div>
+                <h3>{f.title}</h3>
+                <p className="dim">{f.desc}</p>
+              </div>
+            );
+          })}
         </div>
       </section>
 
@@ -1928,21 +1953,6 @@ function LandingPage({ themeIdx, onEnter: onEnterRaw }) {
         <ReplaySpotlight />
       </section>
 
-      <section className="landingFeatures" id="features">
-        <h2 className="landingH2">Everything you need to learn the market</h2>
-        <div className="landingFeatureGrid">
-          {LANDING_FEATURES.map((f, i) => {
-            const color = ALLOC_PALETTE[i % ALLOC_PALETTE.length];
-            return (
-              <div key={f.title} className="landingFeatureCard" style={{ borderTopColor: color }}>
-                <div className="landingFeatureIcon" style={{ background: `color-mix(in srgb, ${color} 18%, transparent)`, color }}><f.icon size={18} /></div>
-                <h3>{f.title}</h3>
-                <p className="dim">{f.desc}</p>
-              </div>
-            );
-          })}
-        </div>
-      </section>
 
       <section className="demoSection" id="demo">
         <div className="demoCopy">
@@ -7084,6 +7094,18 @@ html { scroll-behavior: smooth; }
 @media (max-width: 560px) { .newGrid { grid-template-columns: 1fr; } .whatsNew { padding: 40px 16px 16px; } }
 .landingH2 { font-family: 'Instrument Sans', sans-serif; font-weight: 700; font-size: 26px; letter-spacing: -0.3px; text-align: center; margin: 0 0 36px; }
 .landingFeatures { padding: 70px 40px; max-width: 1180px; margin: 0 auto; }
+.landingFeatHead { text-align: center; max-width: 720px; margin: 0 auto 34px; }
+.landingFeatHead .landingEyebrow { display: inline-block; margin-bottom: 14px; }
+.landingFeatHead .landingH2 { margin-bottom: 10px; }
+.landingFeatSub { font-size: 16px; line-height: 1.6; margin: 0; }
+.heroInside { margin-top: 18px; text-align: left; }
+.heroInsideHead { font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim); margin-bottom: 10px; }
+.heroInsideList { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 9px 14px; }
+.heroInsideList li { display: flex; align-items: center; gap: 8px; font-size: 13px; line-height: 1.3; color: var(--text); }
+.heroInsideIcon { flex-shrink: 0; width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center; color: var(--bull); background: color-mix(in srgb, var(--bull) 14%, transparent); }
+.heroInsideMore { display: inline-block; margin: 14px 0 16px; font-size: 13px; font-weight: 600; color: var(--bull); text-decoration: none; }
+.heroInsideMore:hover { text-decoration: underline; }
+@media (max-width: 700px) { .heroInsideList { grid-template-columns: 1fr; } .landingFeatSub { font-size: 14.5px; } }
 .landingFeatureGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
 .landingFeatureCard { background: var(--surface); border: 1px solid var(--border); border-top: 3px solid var(--accent); border-radius: 12px; padding: 22px; transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease, opacity 0.5s ease; }
 .landingFeatureCard:hover { transform: translateY(-3px); box-shadow: 0 14px 34px rgba(0,0,0,0.22); }
