@@ -6343,7 +6343,15 @@ function BrokerGate({ children }) {
     const pending = readPending();
     try {
       await b.api.finishLogin();
-      if (!b.api.hasSession()) return setState("connect");
+      if (!b.api.hasSession()) {
+        // Came back from the broker's login page without a session: they gave up or the login failed there.
+        if (pending) {
+          const qs = new URLSearchParams(window.location.search);
+          track("setup_return_no_login", { broker: b.id, kind: pending.kind, params: [...qs.keys()].join(",").slice(0, 80) });
+          writePending(null);
+        }
+        return setState("connect");
+      }
       if (pending) track("setup_logged_in", { broker: b.id, kind: pending.kind });
       await b.api.fetchProfile();
       if (pending) {
