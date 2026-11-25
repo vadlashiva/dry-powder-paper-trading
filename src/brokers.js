@@ -25,13 +25,14 @@ const api = () => {
   return b.api;
 };
 
-export const fetchQuotes = (symbols) => api().fetchQuotes(symbols);
+// Calls that need a broker reject (rather than throw at once) when none is connected, so a caller's
+// .catch() handles it instead of it surfacing as an uncaught "No broker connected" error.
+const viaApi = (fn) => { try { return Promise.resolve(fn(api())); } catch (e) { return Promise.reject(e); } };
+
+export const fetchQuotes = (symbols) => viaApi((a) => a.fetchQuotes(symbols));
 // Real option premiums, where the connected broker supplies them. Brokers without this return nothing,
 // and the app falls back to its calculated premium.
-export const fetchOptionQuotes = (contracts) => {
-  const a = api();
-  return a.fetchOptionQuotes ? a.fetchOptionQuotes(contracts) : Promise.resolve({});
-};
+export const fetchOptionQuotes = (contracts) => viaApi((a) => (a.fetchOptionQuotes ? a.fetchOptionQuotes(contracts) : {}));
 
 const RANGE_DAYS = { "1d": 6, "5d": 8, "1mo": 32, "6mo": 190, "1y": 370 };
 async function chartJson({ symbol, interval, range, period1, period2 }) {
@@ -57,7 +58,7 @@ export function answerFeedRequest(url) {
   const qs = new URL(url).searchParams;
   if (qs.get("type") === "search") {
     if (Number(qs.get("newsCount")) > 0) return Promise.resolve({ news: [] }); // brokers have no news feed here
-    return api().searchStocks(qs.get("q")).then((rows) => ({ quotes: rows.map((r) => ({ symbol: r.symbol, quoteType: "EQUITY", longname: r.name })) }));
+    return viaApi((a) => a.searchStocks(qs.get("q"))).then((rows) => ({ quotes: rows.map((r) => ({ symbol: r.symbol, quoteType: "EQUITY", longname: r.name })) }));
   }
   return chartJson({ symbol: qs.get("symbol"), interval: qs.get("interval"), range: qs.get("range"), period1: qs.get("period1"), period2: qs.get("period2") });
 }
