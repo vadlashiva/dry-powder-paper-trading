@@ -6327,9 +6327,27 @@ function consumeConnectParam() {
   } catch { return false; }
 }
 
+// Brand-new users (no broker chosen yet) open straight on the practice market, once per device,
+// instead of the broker preview: most of them leave at the broker step. "Connect your broker"
+// from the practice market still leads to the broker setup.
+const AUTO_SIM_KEY = "pr_auto_sim_done";
+function autoStartPracticeForNewUser() {
+  try {
+    if (activeBroker() || localStorage.getItem(AUTO_SIM_KEY)) return false;
+    localStorage.setItem(AUTO_SIM_KEY, "1");
+    BROKERS.sim.api.saveCredentials();
+    chooseBroker("sim");
+    track("sim_start", { from: "auto_new_user" });
+    return true;
+  } catch { return false; }
+}
+
 function BrokerGate({ children }) {
   const wantsBroker = useRef(null);
-  if (wantsBroker.current === null) wantsBroker.current = consumeConnectParam();
+  if (wantsBroker.current === null) {
+    wantsBroker.current = consumeConnectParam();
+    if (!wantsBroker.current) autoStartPracticeForNewUser();
+  }
   const [state, setState] = useState("checking"); // "checking" | "open" | "connect"
   const [broker, setBroker] = useState(activeBroker);
   const [hasKey, setHasKey] = useState(() => !!activeBroker()?.api.hasCredentials());
